@@ -1,128 +1,7 @@
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm install  
-npm WARN config global `--global`, `--local` are deprecated. Use `--location=global` instead.
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@eslint/config-array@0.21.2',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@eslint/config-helpers@0.4.2',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@eslint/core@0.17.0',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@eslint/eslintrc@3.3.7',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'globals@14.0.0',
-npm WARN EBADENGINE   required: { node: '>=18' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@eslint/js@9.39.5',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@eslint/object-schema@2.1.7',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@eslint/plugin-kit@0.4.1',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@humanfs/core@0.19.2',
-npm WARN EBADENGINE   required: { node: '>=18.18.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@humanfs/node@0.16.8',
-npm WARN EBADENGINE   required: { node: '>=18.18.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@humanfs/types@0.15.0',
-npm WARN EBADENGINE   required: { node: '>=18.18.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: '@humanwhocodes/retry@0.4.3',
-npm WARN EBADENGINE   required: { node: '>=18.18' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'cookie@1.1.1',
-npm WARN EBADENGINE   required: { node: '>=18' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'esbuild@0.25.12',
-npm WARN EBADENGINE   required: { node: '>=18' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'eslint@9.39.5',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'eslint-scope@8.4.0',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'eslint-visitor-keys@4.2.1',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'espree@10.4.0',
-npm WARN EBADENGINE   required: { node: '^18.18.0 || ^20.9.0 || >=21.1.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'globals@15.15.0',
-npm WARN EBADENGINE   required: { node: '>=18' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'node-releases@2.0.57',
-npm WARN EBADENGINE   required: { node: '>=18' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'react-router@7.18.4',
-npm WARN EBADENGINE   required: { node: '>=20.0.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'react-router-dom@7.18.4',
-npm WARN EBADENGINE   required: { node: '>=20.0.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'rollup@4.64.0',
-npm WARN EBADENGINE   required: { node: '>=18.0.0', npm: '>=8.0.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN EBADENGINE Unsupported engine {
-npm WARN EBADENGINE   package: 'vite@6.4.4',
-npm WARN EBADENGINE   required: { node: '^18.0.0 || ^20.0.0 || >=22.0.0' },
-npm WARN EBADENGINE   current: { node: 'v17.9.1', npm: '8.11.0' }
-npm WARN EBADENGINE }
-npm WARN deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm install
+npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
 
-added 203 packages, and audited 204 packages in 36s
+added 204 packages, and audited 205 packages in 24s
 
 43 packages are looking for funding
   run `npm fund` for details
@@ -133,8 +12,11 @@ Some issues need review, and may require choosing
 a different dependency.
 
 Run `npm audit` for details.
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+npm warn allow-scripts   esbuild@0.25.12 (postinstall: node install.js)
+npm warn allow-scripts
+npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.
 PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> 
 
 
-
-estto que me sale es por versi´kn  de npm que tengo instalada? cual deberia tener?
+Mira lo que me sale al final solo eliminpe lo del nvm 17 y me quedó el de program files v24.18.0
