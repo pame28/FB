@@ -1,21 +1,5 @@
-npm ERR! code ETIMEDOUT
-npm ERR! syscall connect
-npm ERR! errno ETIMEDOUT
-npm ERR! network request to https://registry.npmjs.org/vite/-/vite-6.4.4.tgz failed, reason: connect ETIMEDOUT 10.40.30.45:9090
-npm ERR! network This is a problem related to network connectivity.
-npm ERR! network In most cases you are behind a proxy or have bad network settings.
-npm ERR! network
-npm ERR! network If you are behind a proxy, please make sure that the
-npm ERR! network 'proxy' config is set properly.  See: 'npm help config'
+# Configuración de proxy de Windows (lo que usan Edge/Chrome)
+Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" | Select ProxyServer, ProxyEnable, AutoConfigURL
 
-npm ERR! A complete log of this run can be found in:
-npm ERR!     C:\Users\80730.HN\AppData\Local\npm-cache\_logs\2026-10-12T20_38_16_223Z-debug-0.log
-
-
-mira que sigo teniendo este error cuando intento hacer el npm install
-
-Y antes configuré esto: npm config set proxy "http://80730:Pfarramt_708%21%21@pxhn.corporacionbi.com:9090"
-npm config set https-proxy http://80730:Pfarramt_708%21%21@pxhn.corporacionbi.com:9090
-
-
-y nada, pero si lo cargo en el navegador si me descarga el archivo. ayudame por favir
+# Proxy del sistema
+netsh winhttp show proxy
