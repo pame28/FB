@@ -1,22 +1,14 @@
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm install
-npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+rebuilt dependencies successfully
+PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm audit
+# npm audit report
 
-added 204 packages, and audited 205 packages in 24s
-
-43 packages are looking for funding
-  run `npm fund` for details
+node-forge  *
+Severity: high
+node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements - https://github.com/advisories/GHSA-86w9-cpqp-85rv
+No fix available
+node_modules/node-forge
 
 1 high severity vulnerability
 
 Some issues need review, and may require choosing
 a different dependency.
-
-Run `npm audit` for details.
-npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
-npm warn allow-scripts   esbuild@0.25.12 (postinstall: node install.js)
-npm warn allow-scripts
-npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> 
-
-
-Mira lo que me sale al final solo eliminpe lo del nvm 17 y me quedó el de program files v24.18.0
