@@ -1,14 +1,12 @@
-rebuilt dependencies successfully
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm audit
-# npm audit report
+  Plugin: vite:import-analysis
+  File: C:/Users/80730.HN/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/src/shared/components/Navbar/Navbar.jsx:1:35
+  15 |    window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+  16 |  }
+  17 |  import { Menu, Search, Bell } from "lucide-react";
+     |                                      ^
+  18 |  import styles from "./Navbar.module.css";
+  19 |  export function Navbar({
 
-node-forge  *
-Severity: high
-node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements - https://github.com/advisories/GHSA-86w9-cpqp-85rv
-No fix available
-node_modules/node-forge
 
-1 high severity vulnerability
 
-Some issues need review, and may require choosing
-a different dependency.
+Ayudame con este error
