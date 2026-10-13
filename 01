@@ -1,57 +1,106 @@
-import { Fragment } from "react";
-import { Link } from "react-router-dom";
-import { Menu } from "lucide-react";
-import styles from "./Navbar.module.css";
+.header {
+  height: 80px;
+  background: var(--bp-blue-expert);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 3px solid var(--bp-yellow-opt);
+}
 
-export function Navbar({
-  user = { name: "Pamela Suazo", role: "Administrador", initials: "PS" },
-  crumbs = [],
-  onMenuClick,
-}) {
-  return (
-    <header className={styles.header}>
-      <div className={styles.brandGroup}>
-        <button
-          type="button"
-          className={styles.iconBtn}
-          onClick={onMenuClick}
-          aria-label="Mostrar u ocultar menú"
-        >
-          <Menu size={20} />
-        </button>
+.brandGroup { display: flex; align-items: center; gap: 14px; min-width: 0; }
 
-        <Link to="/home" className={styles.brand}>
-          <div className={styles.logo}>eC</div>
-          <span className={styles.brandName}>
-            <span className={styles.brandE}>e</span>Coaching
-          </span>
-        </Link>
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
 
-        {crumbs.length > 0 && (
-          <nav className={styles.breadcrumb} aria-label="Ruta actual">
-            {crumbs.map((c, i) => (
-              <Fragment key={c.to}>
-                <span className={styles.separator}>/</span>
-                {i < crumbs.length - 1 ? (
-                  <Link to={c.to} className={styles.crumbLink}>{c.label}</Link>
-                ) : (
-                  <span className={styles.currentPage}>{c.label}</span>
-                )}
-              </Fragment>
-            ))}
-          </nav>
-        )}
-      </div>
+.logo {
+  width: 32px; height: 32px; border-radius: 8px; background: var(--bp-yellow-opt);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; color: var(--bp-blue-expert); font-size: 14px;
+}
 
-      <div className={styles.actions}>
-        <div className={styles.userGroup}>
-          <div className={styles.userMeta}>
-            <div className={styles.userName}>{user.name}</div>
-            <span className={styles.rolePill}>{user.role}</span>
-          </div>
-          <div className={styles.avatar}>{user.initials}</div>
-        </div>
-      </div>
-    </header>
-  );
+.brandName {
+  font-family: "Sora", system-ui, sans-serif;
+  color: #fff;
+  font-weight: 800;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.brandE { font-weight: 400; color: var(--bp-yellow-opt); }
+
+/* ---- Breadcrumb ---- */
+.breadcrumb { display: flex; align-items: center; gap: 10px; min-width: 0; margin-left: 4px; }
+.separator { color: rgba(255, 255, 255, 0.25); font-size: 20px; font-weight: 300; }
+.crumbLink,
+.currentPage {
+  font-family: "Sora", system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crumbLink { color: rgba(255, 255, 255, 0.5); text-decoration: none; transition: color 0.15s; }
+.crumbLink:hover { color: #fff; }
+.currentPage { color: rgba(255, 255, 255, 0.8); }
+
+/* ---- Acciones / usuario ---- */
+.actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.iconBtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 8px; border: none;
+  background: transparent; color: #fff; cursor: pointer; flex-shrink: 0;
+}
+.iconBtn:hover { background: rgba(255, 255, 255, 0.08); }
+.iconBtn:focus-visible { outline: 2px solid var(--bp-yellow-opt); outline-offset: 2px; }
+
+.userGroup {
+  display: flex; align-items: center; gap: 10px; margin-left: 8px;
+  padding-left: 12px; border-left: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.userMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+.userName { color: #fff; font-size: 13.5px; font-weight: 700; line-height: 1.2; }
+
+.rolePill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bp-yellow-light);
+  background: color-mix(in srgb, var(--bp-yellow-opt) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bp-yellow-opt) 45%, transparent);
+  white-space: nowrap;
+}
+
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%; background: var(--bp-blue-digital);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 13px; color: var(--bp-blue-expert); flex-shrink: 0;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1024px) {
+  .crumbLink, .crumbLink + .separator { display: none; } /* solo muestra la página actual */
+}
+@media (max-width: 860px) {
+  .userMeta { display: none; }
+  .userGroup { border-left: none; padding-left: 0; }
+}
+@media (max-width: 600px) {
+  .header { padding: 0 12px; }
+  .breadcrumb { display: none; }
+  .brandName { font-size: 21px; }
 }
