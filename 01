@@ -1,116 +1,200 @@
-import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { ChevronDown, Home, LogOut } from "lucide-react";
-import styles from "./Sidebar.module.css";
+.sidebar {
+  --sb-expanded: 264px;
+  --sb-collapsed: 76px;
 
-const cx = (...classes) => classes.filter(Boolean).join(" ");
+  width: var(--sb-expanded);
+  flex-shrink: 0;
+  position: sticky;
+  top: var(--navbar-h, 80px);
+  height: calc(100vh - var(--navbar-h, 80px));
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px;
+  background: var(--bp-blue-expert, #0b2545);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  transition: width 0.22s ease;
+}
+.collapsed { width: var(--sb-collapsed); }
 
-export function Sidebar({ modules = [], collapsed = false, open = false, onClose, onLogout }) {
-  const { pathname } = useLocation();
-  const [openKeys, setOpenKeys] = useState([]);
+.nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
 
-  // Abre automáticamente el módulo de la página actual
-  useEffect(() => {
-    const current = modules.find((m) => pathname.startsWith(m.path));
-    if (current?.pages.length) {
-      setOpenKeys((keys) => (keys.includes(current.key) ? keys : [...keys, current.key]));
-    }
-  }, [pathname, modules]);
+.label {
+  padding: 14px 14px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+}
+.label:first-child { padding-top: 4px; }
 
-  const toggle = (key) =>
-    setOpenKeys((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]));
+/* En modo colapsado, las etiquetas se vuelven una línea divisoria */
+.collapsed .label { font-size: 0; padding: 10px 8px; }
+.collapsed .label::after {
+  content: "";
+  display: block;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
 
-  const linkClass = ({ isActive }) => cx(styles.link, isActive && styles.active);
+/* ---- Ítems ---- */
+.link {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: rgba(255, 255, 255, 0.75);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.link svg { flex-shrink: 0; }
+.link:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.link:focus-visible,
+.chevron:focus-visible,
+.subLink:focus-visible {
+  outline: 2px solid var(--bp-yellow-opt, #f5b301);
+  outline-offset: -2px;
+}
 
-  return (
-    <>
-      {open && <div className={styles.overlay} onClick={onClose} aria-hidden="true" />}
+.active { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--bp-yellow-opt, #f5b301);
+}
 
-      <aside
-        className={cx(styles.sidebar, collapsed && styles.collapsed, open && styles.open)}
-        aria-label="Navegación principal"
-      >
-        <nav className={styles.nav}>
-          <span className={styles.label}>General</span>
-          <NavLink to="/home" end className={linkClass} title={collapsed ? "Inicio" : undefined}>
-            <Home size={18} strokeWidth={2.1} />
-            <span className={styles.text}>Inicio</span>
-          </NavLink>
+.text { overflow: hidden; text-overflow: ellipsis; }
 
-          <span className={styles.label}>Módulos</span>
+.collapsed .link { justify-content: center; padding: 0; }
+.collapsed .text,
+.collapsed .soon { display: none; }
 
-          {modules.map((m) => {
-            const Icon = m.icon;
-            const hasPages = m.pages.length > 0;
-            const expanded = hasPages && !collapsed && openKeys.includes(m.key);
+/* ---- Módulo con submenú ---- */
+.row { display: flex; align-items: center; gap: 2px; }
 
-            if (!hasPages) {
-              return (
-                <div
-                  key={m.key}
-                  className={cx(styles.link, styles.disabled)}
-                  title={collapsed ? `${m.label} (próximamente)` : undefined}
-                  aria-disabled="true"
-                >
-                  <Icon size={18} strokeWidth={2.1} />
-                  <span className={styles.text}>{m.label}</span>
-                  <span className={styles.soon}>Pronto</span>
-                </div>
-              );
-            }
+.chevron {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+.chevron:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.chevron svg { transition: transform 0.2s ease; }
+.chevronOpen svg { transform: rotate(180deg); }
 
-            return (
-              <div key={m.key}>
-                <div className={styles.row}>
-                  <NavLink to={m.path} className={linkClass} title={collapsed ? m.label : undefined}>
-                    <Icon size={18} strokeWidth={2.1} />
-                    <span className={styles.text}>{m.label}</span>
-                  </NavLink>
+.submenu {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.22s ease;
+}
+.submenuOpen { grid-template-rows: 1fr; }
 
-                  {!collapsed && (
-                    <button
-                      type="button"
-                      className={cx(styles.chevron, expanded && styles.chevronOpen)}
-                      onClick={() => toggle(m.key)}
-                      aria-label={expanded ? `Contraer ${m.label}` : `Expandir ${m.label}`}
-                      aria-expanded={expanded}
-                    >
-                      <ChevronDown size={16} />
-                    </button>
-                  )}
-                </div>
+.submenuInner {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 23px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+.submenuOpen .submenuInner { padding-top: 4px; padding-bottom: 6px; }
 
-                <div className={cx(styles.submenu, expanded && styles.submenuOpen)}>
-                  <div className={styles.submenuInner}>
-                    {m.pages.map((p) => (
-                      <NavLink
-                        key={p.key}
-                        to={p.fullPath}
-                        tabIndex={expanded ? 0 : -1}
-                        className={({ isActive }) => cx(styles.subLink, isActive && styles.subActive)}
-                      >
-                        {p.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </nav>
+.subLink {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.subLink:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.subActive { color: var(--bp-yellow-light, #ffd76a); font-weight: 700; }
 
-        <div className={styles.footer}>
-          <button
-            type="button"
-            className={styles.link}
-            onClick={onLogout}
-            title={collapsed ? "Cerrar sesión" : undefined}
-          >
-            <LogOut size={18} strokeWidth={2.1} />
-            <span className={styles.text}>Cerrar sesión</span>
-          </button>
-        </div>
-      </aside>
-    </>
-  );
+/* ---- Módulos próximamente ---- */
+.disabled { cursor: not-allowed; opacity: 0.45; }
+.disabled:hover { background: none; color: rgba(255, 255, 255, 0.75); }
+.soon {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ---- Footer ---- */
+.footer {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* ---- Móvil ---- */
+.overlay { display: none; }
+
+@media (max-width: 860px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: var(--navbar-h, 80px);
+    bottom: 0;
+    height: auto;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  }
+  .overlay {
+    display: block;
+    position: fixed;
+    inset: var(--navbar-h, 80px) 0 0 0;
+    z-index: 35;
+    background: rgba(0, 20, 35, 0.45);
+  }
 }
