@@ -1,222 +1,41 @@
-import { useState } from "react";
-import { Heading, Text, Button, Badge, Navbar, Sidebar, Card } from "../shared/components";
+import styles from "../Pages.module.css";
 
-export const HomePage = () => {
-    
-    const [sidebarOpen, setSidebarOpen] = useState(false);
-    return (
-        <>
-        <Navbar onMenuClick={() => setSidebarOpen((v) => !v)} />
-        </>
-    )
-}
+export const MantenimientoUsuariosPage = () => (
+  <header className={styles.header}>
+    <div>
+      <span className={styles.eyebrow}>Mantenimientos</span>
+      <h1 className={styles.title}>Mantenimiento de Usuarios</h1>
+    </div>
+  </header>
+);
 
 
 
-Mira esta es mi pagina de home, pero.. necesito que hayan unas cards, que me redirecciones a otras paginas sera tipo asi:
-
-En esta pantalla se mostrarám en Cards todos los modulos: Administración, Mantenimientos, Coach, Traslados, Indicadores, Plamtillas. Consulta, Certificaciones.
-
-Pero.. dentro de esos modulos tambien hay otras paginas ... me comprendes? 
-Te pongo un ejemplo: 
-- Mantenimiento
-    * Mantenimiento de Usuarios
-    * Editar Perfil
-    * Mantenimiento de Lider
 
 
+import styles from "../Pages.module.css";
 
-Es ese justamente el que vamos a trabajar ahorita. Me gustraia que, en la pagina de Home esté la card de MANTENIMIENTOS
-Y al darle clic, me r4edirecciones a la pantalla de Mantenimientos donde esten estas tres cards:
-
-    * Mantenimiento de Usuarios
-    * Editar Perfil
-    * Mantenimiento de Lider
-
-
-Y estas cards te redirijan a las paginas que segun corresponda. 
-
-Y de igual forma para el sidebar
-
-El Sidebar actualemte está asi:
-
-import { LayoutDashboard, Users, UserCog, BarChart3, Settings, LogOut } from "lucide-react";
-import styles from "./Sidebar.module.css";
-
-// Edita esta lista para cambiar las opciones del menú.
-export const NAV_ITEMS = [
-  { key: "dashboard", label: "Panel general", icon: LayoutDashboard },
-  { key: "usuarios", label: "Mantenimiento de usuarios", icon: Users },
-  { key: "lideres", label: "Mantenimiento de líder", icon: UserCog },
-  { key: "reportes", label: "Reportes", icon: BarChart3 },
-  { key: "config", label: "Configuración", icon: Settings },
-];
-
-
-export function Sidebar({ open, active, onSelect, items = NAV_ITEMS }) {
-  return (
-    <>
-      {open && <div className={styles.overlay} onClick={() => onSelect(active)} />}
-      <aside className={`${styles.sidebar} ${open ? styles.open : ""}`}>
-        <span className={styles.label}>MÓDULO</span>
-        {items.map(({ key, label, icon: Icon }) => (
-          <div
-            key={key}
-            className={`${styles.navlink} ${active === key ? styles.active : ""}`}
-            onClick={() => onSelect(key)}
-          >
-            <Icon size={17} strokeWidth={2.25} />
-            {label}
-          </div>
-        ))}
-        <div className={styles.footer}>
-          <div className={styles.navlink}>
-            <LogOut size={17} /> Cerrar sesión
-          </div>
-        </div>
-      </aside>
-    </>
-  );
-}
+export const EditarPerfilPage = () => (
+  <header className={styles.header}>
+    <div>
+      <span className={styles.eyebrow}>Mantenimientos</span>
+      <h1 className={styles.title}>Editar Perfil</h1>
+    </div>
+  </header>
+);
 
 
 
 
 
 
+import styles from "../Pages.module.css";
 
-
-.sidebar {
-  width: 250px;
-  background: var(--navy);
-  min-height: calc(100vh - 64px);
-  padding: 18px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.label {
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: rgba(255,255,255,0.5);
-  padding: 6px 14px 4px;
-}
-
-.navlink {
-  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-  border-radius: 6px; color: rgba(255,255,255,0.78); font-size: 14px;
-  font-weight: 600; cursor: pointer; border-left: 3px solid transparent;
-}
-.navlink:hover { background: rgba(255,255,255,0.06); color: #fff; }
-
-.active {
-  background: rgba(0,193,212,0.14);
-  color: #fff;
-  border-left-color: var(--aqua);
-}
-
-.footer {
-  margin-top: auto;
-  border-top: 1px solid rgba(255,255,255,0.12);
-  padding-top: 10px;
-}
-
-.overlay { display: none; }
-
-@media (max-width: 860px) {
-  .sidebar {
-    position: fixed; left: 0; top: 64px; bottom: 0; z-index: 40;
-    transform: translateX(-100%); transition: transform .2s ease;
-  }
-  .sidebar.open { transform: translateX(0); box-shadow: 2px 0 12px rgba(0,0,0,0.18); }
-  .overlay {
-    display: block; position: fixed; inset: 64px 0 0 0;
-    background: rgba(0,20,35,0.35); z-index: 35;
-  }
-}
-
-
-
-
-
-
-Pero si me gustaria que, se pudiera extender y ocultar .... como que se expanda y cuando no esté expandido ... que solo se muestren como los iconos, comprendes? 
-
-Necesito que todo sea muy profesional, y responsive.
-
-
-
-Estaba pensando que, me gustaria que, al agregar una pagina esta automaticamente se agrega en las cards de donde corresponda y en el sidebar. O sea, que sea dinamico. Quizas que se llene del  AppRouter.. supongo que habria que reorganizarlo todo ahi 
-import { Navigate, Route, Routes } from 'react-router-dom'
-import { LoginPage } from '../pages/LoginPage'
-
-import { useAuthStore } from '../hooks/useAuthStore'
-
-import { useEffect, useState } from 'react'
-import { apiFeedbackAuthorized } from '../api/APIS'
-import { endpointsAPI } from '../api/endpointApi'
-import { messagesFunctions } from '../helpers/messagesFunctions'
-import { useUiStore } from '../hooks/useUiStore'
-import { useIDBStore } from '../hooks/useIDBStore'
-import { ModalConfirmation } from '../components/ModalConfirmation'
-import { HomePage } from '../pages/HomePage'
-import { UsuariosRolesPage } from '../pages/UsuariosRolesPage'
-import { PermisosRolPage } from '../pages/PermisosRolPage'
-import { VistaUsuarioRolPage } from '../pages/VistaUsuarioRolPage'
-
-export const AppRouter = () => {
-    const { status, logout } = useAuthStore();
-    const [modal, setModal] = useState();
-
-    const { getMessage } = messagesFunctions();
-    const { openModalConfirmation, closeModalConfirmation } = useUiStore();
-    const { crearIDB, addData } = useIDBStore();
-
-    //Inicializa el proceso de validación de los tiempos de inactividad
-    const init = () => {
-        window.addEventListener("mousemove", resetTimer, false);
-        window.addEventListener("mousedown", resetTimer, false);
-        window.addEventListener("mousewheel", resetTimer, false);
-        window.addEventListener("touchmove", resetTimer, false);
-        window.addEventListener("touchstart", resetTimer, false);
-        window.addEventListener("MSPointerMove", resetTimer, false);
-        window.addEventListener("keypress", resetTimer, false);
-        window.addEventListener("DOMMouseScroll", resetTimer, false);
-        window.addEventListener("unload", resetTimer, false);
-        startTimer();
-
-        // console.log("init")
-    }
-
-    return (
-        <>
-            {modal}
-            <Routes>
-                {status != "authenticated" //Esto lo tengo solo provisional para que me deje pasar del login
-                    ?
-                    <>
-                        <Route path="/home" element={<HomePage />} />
-                        <Route path="/usuarios-roles" element={<UsuariosRolesPage />} />
-                        <Route path="/permisos-rol" element={<PermisosRolPage />} />
-                        <Route path="/vista-roles" element={<VistaUsuarioRolPage />} />
-                        <Route path="/*" element={<HomePage />} />
-                    </>
-                    :
-                    <>
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/*" element={<Navigate to="/login" />} />
-                    </>
-                }
-
-            </Routes>
-        </>
-    )
-}
-
-
-
-
-
-Necesito que me digas paso a paso que hacer y que me brindes el codigo completo solo para copiar y pegar
+export const MantenimientoLiderPage = () => (
+  <header className={styles.header}>
+    <div>
+      <span className={styles.eyebrow}>Mantenimientos</span>
+      <h1 className={styles.title}>Mantenimiento de Líder</h1>
+    </div>
+  </header>
+);
