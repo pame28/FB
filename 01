@@ -1,223 +1,874 @@
-.header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+Hay unos archivos que no modifiqué(las del paso 7), porque quiero que veas antes lo que yo tengo, porque se me hace que tengo varios archivos desorganizados y que no necesito, aun estamos a tiempo de reorganizar todo, que tenga una buena estructura y sea muy ordenado y facil de entender. Y que no tengamos cosas innecesarias o redundantes
 
-.headerIcon {
-  width: 56px; height: 56px; flex-shrink: 0; border-radius: 14px;
-  display: grid; place-items: center;
-  background: var(--bp-blue-expert, #0b2545);
-  color: var(--bp-yellow-opt, #f5b301);
+.counter {
+  font-size: 16px;
+  padding: 5px 10px;
+  border-radius: 5px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+  margin-bottom: 24px;
+
+  &:hover {
+    border-color: var(--accent-border);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
-.eyebrow {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8592a3;
+.hero {
+  position: relative;
+
+  .base,
+  .framework,
+  .vite {
+    inset-inline: 0;
+    margin: 0 auto;
+  }
+
+  .base {
+    width: 170px;
+    position: relative;
+    z-index: 0;
+  }
+
+  .framework,
+  .vite {
+    position: absolute;
+  }
+
+  .framework {
+    z-index: 1;
+    top: 34px;
+    height: 28px;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
+      scale(1.4);
+  }
+
+  .vite {
+    z-index: 0;
+    top: 107px;
+    height: 26px;
+    width: auto;
+    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
+      scale(0.8);
+  }
 }
 
-.title {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--bp-blue-expert, #0b2545);
+#center {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+  place-content: center;
+  place-items: center;
+  flex-grow: 1;
+
+  @media (max-width: 1024px) {
+    padding: 32px 20px 24px;
+    gap: 18px;
+  }
 }
 
-.subtitle { margin: 6px 0 0; font-size: 14.5px; color: #5b6b80; }
+#next-steps {
+  display: flex;
+  border-top: 1px solid var(--border);
+  text-align: left;
 
-.back {
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-bottom: 18px;
-  font-size: 13.5px; font-weight: 600;
-  color: #5b6b80; text-decoration: none;
+  & > div {
+    flex: 1 1 0;
+    padding: 32px;
+    @media (max-width: 1024px) {
+      padding: 24px 20px;
+    }
+  }
+
+  .icon {
+    margin-bottom: 16px;
+    width: 22px;
+    height: 22px;
+  }
+
+  @media (max-width: 1024px) {
+    flex-direction: column;
+    text-align: center;
+  }
 }
-.back:hover { color: var(--bp-blue-expert, #0b2545); }
 
-.empty {
-  padding: 48px 24px;
-  text-align: center;
-  border: 1px dashed #cfd7e2;
-  border-radius: 14px;
-  background: #fff;
-  color: #6b7a8f;
-  font-weight: 600;
+#docs {
+  border-right: 1px solid var(--border);
+
+  @media (max-width: 1024px) {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
 }
 
-@media (max-width: 600px) {
-  .title { font-size: 22px; }
-  .headerIcon { width: 46px; height: 46px; }
-}
+#next-steps ul {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  gap: 8px;
+  margin: 32px 0 0;
 
+  .logo {
+    height: 18px;
+  }
 
+  a {
+    color: var(--text-h);
+    font-size: 16px;
+    border-radius: 6px;
+    background: var(--social-bg);
+    display: flex;
+    padding: 6px 12px;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: box-shadow 0.3s;
 
+    &:hover {
+      box-shadow: var(--shadow);
+    }
+    .button-icon {
+      height: 18px;
+      width: 18px;
+    }
+  }
 
+  @media (max-width: 1024px) {
+    margin-top: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
 
-
-
-
-import { NavCard, CardGrid } from "../shared/components";
-import { MODULES } from "../router/routesConfig";
-import styles from "./Pages.module.css";
-
-export const HomePage = () => {
-  return (
-    <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Inicio</span>
-          <h1 className={styles.title}>Módulos</h1>
-          <p className={styles.subtitle}>Selecciona un módulo para continuar.</p>
-        </div>
-      </header>
-
-      <CardGrid>
-        {MODULES.map((m) => {
-          const total = m.pages.length;
-          return (
-            <NavCard
-              key={m.key}
-              to={m.path}
-              icon={m.icon}
-              title={m.label}
-              description={m.description}
-              meta={total ? `${total} ${total === 1 ? "opción" : "opciones"}` : "Próximamente"}
-              disabled={total === 0}
-            />
-          );
-        })}
-      </CardGrid>
-    </>
-  );
-};
-
-
-
-
-
-
-import { Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { NavCard, CardGrid } from "../shared/components";
-import styles from "./Pages.module.css";
-
-export const ModulePage = ({ module }) => {
-  const Icon = module.icon;
-
-  return (
-    <>
-      <Link to="/home" className={styles.back}>
-        <ArrowLeft size={16} /> Volver al inicio
-      </Link>
-
-      <header className={styles.header}>
-        <div className={styles.headerIcon}>
-          <Icon size={26} />
-        </div>
-        <div>
-          <span className={styles.eyebrow}>Módulo</span>
-          <h1 className={styles.title}>{module.label}</h1>
-          <p className={styles.subtitle}>{module.description}</p>
-        </div>
-      </header>
-
-      {module.pages.length > 0 ? (
-        <CardGrid>
-          {module.pages.map((p) => (
-            <NavCard
-              key={p.key}
-              to={p.fullPath}
-              icon={p.icon}
-              title={p.label}
-              description={p.description}
-              meta="Abrir"
-            />
-          ))}
-        </CardGrid>
-      ) : (
-        <div className={styles.empty}>Este módulo estará disponible próximamente.</div>
-      )}
-    </>
-  );
-};
-
-
-
-
-
-
-
-
-
-
-
-import { Fragment, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
-import { LoginPage } from '../pages/LoginPage'
-
-import { useAuthStore } from '../hooks/useAuthStore'
-import { apiFeedbackAuthorized } from '../api/APIS'
-import { endpointsAPI } from '../api/endpointApi'
-import { messagesFunctions } from '../helpers/messagesFunctions'
-import { useUiStore } from '../hooks/useUiStore'
-import { useIDBStore } from '../hooks/useIDBStore'
-import { ModalConfirmation } from '../components/ModalConfirmation'
-
-import { MainLayout } from '../layout/MainLayout'
-import { HomePage } from '../pages/HomePage'
-import { ModulePage } from '../pages/ModulePage'
-import { MODULES } from './routesConfig'
-
-export const AppRouter = () => {
-    const { status, logout } = useAuthStore();
-    const [modal, setModal] = useState();
-
-    const { getMessage } = messagesFunctions();
-    const { openModalConfirmation, closeModalConfirmation } = useUiStore();
-    const { crearIDB, addData } = useIDBStore();
-
-    //Inicializa el proceso de validación de los tiempos de inactividad
-    const init = () => {
-        window.addEventListener("mousemove", resetTimer, false);
-        window.addEventListener("mousedown", resetTimer, false);
-        window.addEventListener("mousewheel", resetTimer, false);
-        window.addEventListener("touchmove", resetTimer, false);
-        window.addEventListener("touchstart", resetTimer, false);
-        window.addEventListener("MSPointerMove", resetTimer, false);
-        window.addEventListener("keypress", resetTimer, false);
-        window.addEventListener("DOMMouseScroll", resetTimer, false);
-        window.addEventListener("unload", resetTimer, false);
-        startTimer();
+    li {
+      flex: 1 1 calc(50% - 8px);
     }
 
-    return (
-        <>
-            {modal}
-            <Routes>
-                {status != "authenticated" //Esto lo tengo solo provisional para que me deje pasar del login
-                    ?
-                    <Route element={<MainLayout />}>
-                        <Route path="/home" element={<HomePage />} />
-
-                        {MODULES.map((module) => (
-                            <Fragment key={module.key}>
-                                <Route path={module.path} element={<ModulePage module={module} />} />
-                                {module.pages.map((page) => (
-                                    <Route key={page.key} path={page.fullPath} element={<page.component />} />
-                                ))}
-                            </Fragment>
-                        ))}
-
-                        <Route path="/*" element={<Navigate to="/home" replace />} />
-                    </Route>
-                    :
-                    <>
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/*" element={<Navigate to="/login" />} />
-                    </>
-                }
-            </Routes>
-        </>
-    )
+    a {
+      width: 100%;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+  }
 }
+
+#spacer {
+  height: 88px;
+  border-top: 1px solid var(--border);
+  @media (max-width: 1024px) {
+    height: 48px;
+  }
+}
+
+.ticks {
+  position: relative;
+  width: 100%;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    top: -4.5px;
+    border: 5px solid transparent;
+  }
+
+  &::before {
+    left: 0;
+    border-left-color: var(--border);
+  }
+  &::after {
+    right: 0;
+    border-right-color: var(--border);
+  }
+}
+
+
+
+
+import { BrowserRouter } from 'react-router-dom'
+import { AppRouter } from './routes/AppRouter'
+import { Provider } from 'react-redux'
+import { store } from './store/store'
+
+export const App = () => {
+  return (
+    <>
+      <Provider store={store}>
+        <BrowserRouter>
+          <AppRouter />
+        </BrowserRouter>
+      </Provider>
+    </>
+  )
+}
+
+
+
+
+
+:root {
+  --bp-red: #A32D2D;
+  --bp-red-light: #ffcfcf;
+
+  --bp-white: #FFFFFF;
+  --bp-black: #000;
+  --bp-grey-l: #EEEEEE;
+  --bp-grey-d: #F3F3F5;
+  --bp-grey-dark: #979999;
+
+  --bp-blue-expert: #003964;
+  --bp-blue: #0C5ABA;
+  --bp-blue-digital: #05c0cf;
+  --bp-cyan: #7DDFDE;
+  --bp-yellow-opt: #FFC000;
+  --bp-yellow-light: #FBCE64;
+  --bp-warning: #7A4F00;
+  --bp-green: #0F6E56;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.table-mant thead {
+  font-size: 12px;
+}
+
+.table-mant th {
+  padding: 15px;
+  color: var(--bp-grey-dark);
+}
+
+.table-mant td {
+  font-size: 12px;
+  padding: 2px;
+  color: var(--bp-black);
+}
+
+.icon-edit {
+  height: 20px;
+  margin: 10px;
+  cursor: pointer;
+}
+
+/* Estilos Login Page */
+
+/* Styles for redesigned LoginPage */
+
+.hr-yellow {
+  /* color: var(--bp-yellow-opt);s */
+  border: 3px solid var(--bp-yellow-opt);
+}
+
+.login-page {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  background: var(--bp-grey-l);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+}
+
+.login-left {
+  flex: 1 1 60%;
+  background: linear-gradient(180deg, var(--bp-blue) 0%, var(--bp-blue-expert) 100%);
+  color: var(--bp-white);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-left .brand {
+  text-align: center;
+}
+
+.login-left .brand img.logo {
+  width: 88px;
+  height: auto;
+  margin-bottom: 18px;
+}
+
+.login-left .brand h1 {
+  margin: 0;
+  font-size: 42px;
+  letter-spacing: -1px;
+  font-weight: 700;
+}
+
+.login-left .subtitle {
+  margin-top: 14px;
+  opacity: 0.9;
+  font-size: 18px;
+}
+
+.login-right {
+  flex: 1 1 40%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 36px;
+  background: var(--bp-grey-l);
+}
+
+.login-card {
+  width: 100%;
+  height: auto;
+  max-width: 420px;
+  background: var(--bp-white);
+  border-radius: 12px;
+  /* box-shadow: 0 6px 20px rgba(20, 40, 60, 0.12); */
+  padding: 34px;
+  box-sizing: border-box;
+  box-shadow: 0px -3px 0px 0px var(--bp-yellow-opt);
+}
+
+.login-card .title {
+  font-size: 26px;
+  color: var(--bp-blue-expert);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.login-card .help {
+  color: var(--bp-black);
+  font-size: 13px;
+  margin-bottom: 22px;
+}
+
+.login-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--bp-grey-l);
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  background: var(--bp-white);
+  margin-top: 15px;
+}
+
+.login-field img {
+  width: 22px;
+  height: 22px;
+  opacity: 0.7;
+}
+
+.login-label {
+  font-size: 13px;
+  color: var(--bp-blue-expert);
+  font-weight: bold;
+  margin-top: 30px;
+
+}
+
+.login-field input {
+  border: none;
+  outline: none;
+  flex: 1 1 auto;
+  font-size: 14px;
+  color: var(--bp-blue-expert);
+  background: transparent;
+}
+
+.login-field input::placeholder {
+  color: var(--bp-grey-o);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 18px 0;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.login-btn {
+  margin-top: 40px;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  background: linear-gradient(90deg, var(--bp-yellow-a), var(--bp-yellow-a));
+  color: var(--bp-blue-expert);
+  background-color: var(--bp-yellow-opt);
+  transition: opacity 0.2s ease;
+}
+
+.login-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.login-btn:disabled,
+.login-btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--bp-grey-l);
+}
+
+.loading {
+  display: block;
+  margin: 8px auto;
+  height: 30px;
+}
+
+.div-error {
+  background-color: var(--bp-white);
+  border: 1px solid var(--bp-red-light);
+  border-radius: 5px;
+  padding: 10px;
+  width: 100%;
+  height: 50px;
+  box-shadow: -3px 0px 0px 0px var(--bp-red);
+}
+
+.label-error {
+  color: var(--bp-red);
+  width: 100%;
+  height: 50px;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .login-page {
+    flex-direction: column;
+  }
+
+  .login-left {
+    display: none;
+  }
+
+  .login-right {
+    flex: 1 1 100%;
+    padding: 24px;
+    min-height: 100vh;
+  }
+}
+
+
+/* EStilos para Navbar */
+
+.navbar-blue {
+  color: var(--bp-white);
+  background-color: var(--bp-blue-expert);
+  padding: 15px;
+}
+
+.title-app {
+  font-weight: bold;
+  font-size: 30px;
+}
+
+.lbl-user {
+  color: var(--bp-grey-d);
+}
+
+/* Estilos Usuarios RolesPage*/
+.usuarios-roles-page {
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.main-container {
+  display: flex;
+  margin-top: 10px;
+  margin-left: 50px;
+}
+
+.content-area {
+  margin-left: 250px;
+  padding: 30px;
+  flex: 1;
+}
+
+.page-header {
+  margin-bottom: 25px;
+}
+
+.page-title {
+  font-size: 30px;
+  font-weight: bold;
+  color: var(--bp-blue-expert);
+  vertical-align: bottom;
+  padding-top: 10px;
+  padding-bottom: 0px;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: #666;
+  margin: 5px 0 15px 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-excel {
+  background-color: white;
+  color: #00b050;
+  border: 2px solid #00b050;
+}
+
+.btn-excel:hover {
+  background-color: #f0f9f4;
+}
+
+.btn-pdf {
+  background-color: white;
+  color: #e74c3c;
+  border: 2px solid #e74c3c;
+}
+
+.btn-pdf:hover {
+  background-color: #faf1f0;
+}
+
+.btn-new {
+  background-color: #ffc107;
+  color: #333;
+  border: none;
+}
+
+.btn-new:hover {
+  background-color: #ffb300;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.stats-container {
+  display: flex;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  background: var(--bp-white);
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 5px solid Var(--bp-blue-expert);
+  /* min-width: 180px; */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.stat-card:nth-child(2) {
+  border-left-color: var(--bp-yellow-opt);
+}
+
+.stat-card:nth-child(3) {
+  border-left-color: var(--bp-green);
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 8px;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: #999;
+}
+
+.info-banner {
+  background-color: #e3f2fd;
+  border-left: 4px solid #2196f3;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 25px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.info-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.info-text {
+  font-size: 14px;
+  color: #1565c0;
+  line-height: 1.5;
+}
+
+.filters-container {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 25px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.search-box {
+  flex: 1;
+  min-width: 250px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #0d47a1;
+  box-shadow: 0 0 0 3px rgba(13, 71, 161, 0.1);
+}
+
+.filter-select {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background-color: white;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #0d47a1;
+  box-shadow: 0 0 0 3px rgba(13, 71, 161, 0.1);
+}
+
+.record-count {
+  font-size: 12px;
+  color: #999;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.table-container {
+  background: white;
+  border-radius: 8px;
+  overflow: auto;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  padding: 20px;
+}
+
+/* Responsive */
+/* @media (max-width: 1024px) {
+  .content-area {
+    margin-left: 200px;
+    padding: 20px;
+  }
+
+  .page-title {
+    font-size: 24px;
+  }
+
+  .stats-container {
+    gap: 15px;
+  }
+
+  .stat-card {
+    min-width: 150px;
+    padding: 15px;
+  }
+} */
+
+/* @media (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+  }
+
+  .content-area {
+    margin-left: 0;
+    padding: 15px;
+  }
+
+  .header-actions {
+    flex-direction: column;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .stats-container {
+    flex-direction: column;
+  }
+
+  .stat-card {
+    width: 100%;
+  }
+
+  .filters-container {
+    flex-direction: column;
+  }
+
+  .search-box {
+    width: 100%;
+  }
+
+  .filter-select {
+    width: 100%;
+  }
+
+  .record-count {
+    margin-left: 0;
+  }
+} */
+
+
+
+
+
+
+
+import { createRoot } from 'react-dom/client'
+import 'bootstrap/dist/css/bootstrap.min.css'; //Estilos de Bootstrap
+import './shared/styles.css';
+import './index.css'
+import { App } from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+  <App />
+)
+
+
+
+
+export { Navbar } from "./Navbar";
+export { Sidebar, NAV_ITEMS } from "./Sidebar";
+export { Button } from "./Button";
+export { Badge } from "./Badge";
+export { Heading, Text } from "./Typography";
+export { Card } from "./Card";
+export { Navcard } from "./Navcard";
+
+
+
+
+
+
+
+
+
+export const colors = {
+  azulExperto: "#003865",
+  azulFinanciero: "#2D8C9E",
+  aquaDigital: "#00C1D4",
+  amarilloOptimista: "#FFB81C",
+  amarilloEmpatico: "#FDD26E",
+  blanco: "#FFFFFF",
+  grisNeutro: "#9EA2A2",
+};
+
+export const radius = { sm: "6px", md: "10px", lg: "16px" };
+export const shadow = "0 1px 2px rgba(0,56,101,0.06), 0 1px 3px rgba(0,56,101,0.08)";
+
+// azulExperto        -> marca, navbar, sidebar, títulos
+// azulFinanciero     -> acentos secundarios, etiquetas
+// aquaDigital        -> estado "activo", focus, avatares
+// amarilloOptimista  -> botón primario / acción principal
+// amarilloEmpatico   -> estado "vacaciones" / pendiente
+// grisNeutro         -> texto secundario, estado "inactivo"
+
+
+
+
+
+
+
+.app-root {
+  --navy: #003865;       /* azulExperto */
+  --blue-fin: #2D8C9E;   /* azulFinanciero */
+  --aqua: #00C1D4;       /* aquaDigital */
+  --gold: #FFB81C;       /* amarilloOptimista */
+  --gold-soft: #FDD26E;  /* amarilloEmpatico */
+  --white: #FFFFFF;
+  --gray: #9EA2A2;       /* grisNeutro */
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(0,56,101,0.06), 0 1px 3px rgba(0,56,101,0.08);
+
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--navy);
+  background: #F5F7F8;
+}
+
+
+
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/assets/images/icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Feedback Colaboradores</title>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script>
+    const fechaActual = new Date().getTime();
+    document.write(`<script src="config/config.js?v=${fechaActual}"><\/script>`);
+  </script>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
+</html>
+
+
+
