@@ -1,123 +1,116 @@
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 20px;
-}
+import { useEffect, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import { ChevronDown, Home, LogOut } from "lucide-react";
+import styles from "./Sidebar.module.css";
 
-.card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 200px;
-  padding: 22px;
-  background: #fff;
-  border: 1px solid #e3e8ef;
-  border-radius: 14px;
-  color: inherit;
-  text-decoration: none;
-  overflow: hidden;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-}
+const cx = (...classes) => classes.filter(Boolean).join(" ");
 
-/* Línea amarilla superior que aparece en hover */
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  background: var(--bp-yellow-opt, #f5b301);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.25s ease;
-}
+export function Sidebar({ modules = [], collapsed = false, open = false, onClose, onLogout }) {
+  const { pathname } = useLocation();
+  const [openKeys, setOpenKeys] = useState([]);
 
-.card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 14px 30px rgba(11, 37, 69, 0.12);
-  border-color: transparent;
-}
-.card:hover::before { transform: scaleX(1); }
+  // Abre automáticamente el módulo de la página actual
+  useEffect(() => {
+    const current = modules.find((m) => pathname.startsWith(m.path));
+    if (current?.pages.length) {
+      setOpenKeys((keys) => (keys.includes(current.key) ? keys : [...keys, current.key]));
+    }
+  }, [pathname, modules]);
 
-.card:focus-visible {
-  outline: 3px solid var(--bp-blue-digital, #00c1d4);
-  outline-offset: 2px;
-}
+  const toggle = (key) =>
+    setOpenKeys((keys) => (keys.includes(key) ? keys.filter((k) => k !== key) : [...keys, key]));
 
-.iconWrap {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--bp-blue-expert, #0b2545) 8%, white);
-  color: var(--bp-blue-expert, #0b2545);
-  transition: background 0.18s ease, color 0.18s ease;
-}
-.card:hover .iconWrap {
-  background: var(--bp-blue-expert, #0b2545);
-  color: var(--bp-yellow-opt, #f5b301);
-}
+  const linkClass = ({ isActive }) => cx(styles.link, isActive && styles.active);
 
-.title {
-  margin: 0 0 6px;
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--bp-blue-expert, #0b2545);
-}
+  return (
+    <>
+      {open && <div className={styles.overlay} onClick={onClose} aria-hidden="true" />}
 
-.description {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: #5b6b80;
-}
+      <aside
+        className={cx(styles.sidebar, collapsed && styles.collapsed, open && styles.open)}
+        aria-label="Navegación principal"
+      >
+        <nav className={styles.nav}>
+          <span className={styles.label}>General</span>
+          <NavLink to="/home" end className={linkClass} title={collapsed ? "Inicio" : undefined}>
+            <Home size={18} strokeWidth={2.1} />
+            <span className={styles.text}>Inicio</span>
+          </NavLink>
 
-.footer {
-  margin-top: auto;
-  padding-top: 14px;
-  border-top: 1px solid #eef1f5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #8592a3;
-}
+          <span className={styles.label}>Módulos</span>
 
-.arrow {
-  color: var(--bp-blue-expert, #0b2545);
-  transition: transform 0.18s ease;
-}
-.card:hover .arrow { transform: translateX(4px); }
+          {modules.map((m) => {
+            const Icon = m.icon;
+            const hasPages = m.pages.length > 0;
+            const expanded = hasPages && !collapsed && openKeys.includes(m.key);
 
-/* Módulos sin páginas todavía */
-.disabled {
-  cursor: not-allowed;
-  background: #f8fafc;
-  opacity: 0.7;
-}
-.disabled:hover {
-  transform: none;
-  box-shadow: none;
-  border-color: #e3e8ef;
-}
-.disabled::before { display: none; }
-.disabled:hover .iconWrap {
-  background: color-mix(in srgb, var(--bp-blue-expert, #0b2545) 8%, white);
-  color: var(--bp-blue-expert, #0b2545);
-}
+            if (!hasPages) {
+              return (
+                <div
+                  key={m.key}
+                  className={cx(styles.link, styles.disabled)}
+                  title={collapsed ? `${m.label} (próximamente)` : undefined}
+                  aria-disabled="true"
+                >
+                  <Icon size={18} strokeWidth={2.1} />
+                  <span className={styles.text}>{m.label}</span>
+                  <span className={styles.soon}>Pronto</span>
+                </div>
+              );
+            }
 
-.soon {
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: #eef1f5;
-  color: #6b7a8f;
-  font-size: 11px;
-  font-weight: 700;
-}
+            return (
+              <div key={m.key}>
+                <div className={styles.row}>
+                  <NavLink to={m.path} className={linkClass} title={collapsed ? m.label : undefined}>
+                    <Icon size={18} strokeWidth={2.1} />
+                    <span className={styles.text}>{m.label}</span>
+                  </NavLink>
 
-@media (max-width: 600px) {
-  .grid { grid-template-columns: 1fr; gap: 14px; }
-  .card { min-height: auto; }
+                  {!collapsed && (
+                    <button
+                      type="button"
+                      className={cx(styles.chevron, expanded && styles.chevronOpen)}
+                      onClick={() => toggle(m.key)}
+                      aria-label={expanded ? `Contraer ${m.label}` : `Expandir ${m.label}`}
+                      aria-expanded={expanded}
+                    >
+                      <ChevronDown size={16} />
+                    </button>
+                  )}
+                </div>
+
+                <div className={cx(styles.submenu, expanded && styles.submenuOpen)}>
+                  <div className={styles.submenuInner}>
+                    {m.pages.map((p) => (
+                      <NavLink
+                        key={p.key}
+                        to={p.fullPath}
+                        tabIndex={expanded ? 0 : -1}
+                        className={({ isActive }) => cx(styles.subLink, isActive && styles.subActive)}
+                      >
+                        {p.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+
+        <div className={styles.footer}>
+          <button
+            type="button"
+            className={styles.link}
+            onClick={onLogout}
+            title={collapsed ? "Cerrar sesión" : undefined}
+          >
+            <LogOut size={18} strokeWidth={2.1} />
+            <span className={styles.text}>Cerrar sesión</span>
+          </button>
+        </div>
+      </aside>
+    </>
+  );
 }
