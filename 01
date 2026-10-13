@@ -1,200 +1,57 @@
-.sidebar {
-  --sb-expanded: 264px;
-  --sb-collapsed: 76px;
+import { Fragment } from "react";
+import { Link } from "react-router-dom";
+import { Menu } from "lucide-react";
+import styles from "./Navbar.module.css";
 
-  width: var(--sb-expanded);
-  flex-shrink: 0;
-  position: sticky;
-  top: var(--navbar-h, 80px);
-  height: calc(100vh - var(--navbar-h, 80px));
-  display: flex;
-  flex-direction: column;
-  padding: 14px 12px;
-  background: var(--bp-blue-expert, #0b2545);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-  transition: width 0.22s ease;
-}
-.collapsed { width: var(--sb-collapsed); }
+export function Navbar({
+  user = { name: "Pamela Suazo", role: "Administrador", initials: "PS" },
+  crumbs = [],
+  onMenuClick,
+}) {
+  return (
+    <header className={styles.header}>
+      <div className={styles.brandGroup}>
+        <button
+          type="button"
+          className={styles.iconBtn}
+          onClick={onMenuClick}
+          aria-label="Mostrar u ocultar menú"
+        >
+          <Menu size={20} />
+        </button>
 
-.nav {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-}
+        <Link to="/home" className={styles.brand}>
+          <div className={styles.logo}>eC</div>
+          <span className={styles.brandName}>
+            <span className={styles.brandE}>e</span>Coaching
+          </span>
+        </Link>
 
-.label {
-  padding: 14px 14px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.45);
-  white-space: nowrap;
-}
-.label:first-child { padding-top: 4px; }
+        {crumbs.length > 0 && (
+          <nav className={styles.breadcrumb} aria-label="Ruta actual">
+            {crumbs.map((c, i) => (
+              <Fragment key={c.to}>
+                <span className={styles.separator}>/</span>
+                {i < crumbs.length - 1 ? (
+                  <Link to={c.to} className={styles.crumbLink}>{c.label}</Link>
+                ) : (
+                  <span className={styles.currentPage}>{c.label}</span>
+                )}
+              </Fragment>
+            ))}
+          </nav>
+        )}
+      </div>
 
-/* En modo colapsado, las etiquetas se vuelven una línea divisoria */
-.collapsed .label { font-size: 0; padding: 10px 8px; }
-.collapsed .label::after {
-  content: "";
-  display: block;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-/* ---- Ítems ---- */
-.link {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: rgba(255, 255, 255, 0.75);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.link svg { flex-shrink: 0; }
-.link:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
-.link:focus-visible,
-.chevron:focus-visible,
-.subLink:focus-visible {
-  outline: 2px solid var(--bp-yellow-opt, #f5b301);
-  outline-offset: -2px;
-}
-
-.active { background: rgba(255, 255, 255, 0.1); color: #fff; }
-.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--bp-yellow-opt, #f5b301);
-}
-
-.text { overflow: hidden; text-overflow: ellipsis; }
-
-.collapsed .link { justify-content: center; padding: 0; }
-.collapsed .text,
-.collapsed .soon { display: none; }
-
-/* ---- Módulo con submenú ---- */
-.row { display: flex; align-items: center; gap: 2px; }
-
-.chevron {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: rgba(255, 255, 255, 0.55);
-  cursor: pointer;
-}
-.chevron:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
-.chevron svg { transition: transform 0.2s ease; }
-.chevronOpen svg { transform: rotate(180deg); }
-
-.submenu {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.22s ease;
-}
-.submenuOpen { grid-template-rows: 1fr; }
-
-.submenuInner {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-left: 23px;
-  padding-left: 12px;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-}
-.submenuOpen .submenuInner { padding-top: 4px; padding-bottom: 6px; }
-
-.subLink {
-  display: flex;
-  align-items: center;
-  height: 36px;
-  padding: 0 12px;
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.62);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.subLink:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
-.subActive { color: var(--bp-yellow-light, #ffd76a); font-weight: 700; }
-
-/* ---- Módulos próximamente ---- */
-.disabled { cursor: not-allowed; opacity: 0.45; }
-.disabled:hover { background: none; color: rgba(255, 255, 255, 0.75); }
-.soon {
-  margin-left: auto;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-/* ---- Footer ---- */
-.footer {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-/* ---- Móvil ---- */
-.overlay { display: none; }
-
-@media (max-width: 860px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: var(--navbar-h, 80px);
-    bottom: 0;
-    height: auto;
-    z-index: 40;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-  }
-  .open {
-    transform: translateX(0);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
-  }
-  .overlay {
-    display: block;
-    position: fixed;
-    inset: var(--navbar-h, 80px) 0 0 0;
-    z-index: 35;
-    background: rgba(0, 20, 35, 0.45);
-  }
+      <div className={styles.actions}>
+        <div className={styles.userGroup}>
+          <div className={styles.userMeta}>
+            <div className={styles.userName}>{user.name}</div>
+            <span className={styles.rolePill}>{user.role}</span>
+          </div>
+          <div className={styles.avatar}>{user.initials}</div>
+        </div>
+      </div>
+    </header>
+  );
 }
