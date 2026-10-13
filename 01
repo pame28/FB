@@ -1,41 +1,109 @@
-import styles from "../Pages.module.css";
+import {
+  ShieldCheck, Wrench, GraduationCap, ArrowLeftRight, BarChart3,
+  FileText, Search, Award, Users, User, UserCog, KeyRound, Eye,
+} from "lucide-react";
 
-export const MantenimientoUsuariosPage = () => (
-  <header className={styles.header}>
-    <div>
-      <span className={styles.eyebrow}>Mantenimientos</span>
-      <h1 className={styles.title}>Mantenimiento de Usuarios</h1>
-    </div>
-  </header>
-);
+import { UsuariosRolesPage } from "../pages/UsuariosRolesPage";
+import { PermisosRolPage } from "../pages/PermisosRolPage";
+import { VistaUsuarioRolPage } from "../pages/VistaUsuarioRolPage";
+import { MantenimientoUsuariosPage } from "../pages/mantenimientos/MantenimientoUsuariosPage";
+import { EditarPerfilPage } from "../pages/mantenimientos/EditarPerfilPage";
+import { MantenimientoLiderPage } from "../pages/mantenimientos/MantenimientoLiderPage";
 
+/**
+ * ÚNICA fuente de verdad de la navegación.
+ * - Cada módulo genera: una card en Home, un ítem en el sidebar y su página de módulo.
+ * - Cada página dentro de "pages" genera: una card en su módulo, un subítem en el sidebar y su ruta.
+ * - Un módulo con pages: [] aparece como "Próximamente".
+ */
+const RAW_MODULES = [
+  {
+    key: "administracion",
+    label: "Administración",
+    description: "Roles, permisos y accesos de los usuarios del sistema.",
+    icon: ShieldCheck,
+    path: "/administracion",
+    pages: [
+      {
+        key: "usuarios-roles",
+        label: "Usuarios y roles",
+        description: "Asigna roles a los usuarios del sistema.",
+        icon: Users,
+        path: "usuarios-roles",
+        component: UsuariosRolesPage,
+      },
+      {
+        key: "permisos-rol",
+        label: "Permisos por rol",
+        description: "Define qué puede hacer cada rol.",
+        icon: KeyRound,
+        path: "permisos-rol",
+        component: PermisosRolPage,
+      },
+      {
+        key: "vista-roles",
+        label: "Vista de roles",
+        description: "Consulta los usuarios agrupados por rol.",
+        icon: Eye,
+        path: "vista-roles",
+        component: VistaUsuarioRolPage,
+      },
+    ],
+  },
+  {
+    key: "mantenimientos",
+    label: "Mantenimientos",
+    description: "Gestión de usuarios, perfiles y líderes.",
+    icon: Wrench,
+    path: "/mantenimientos",
+    pages: [
+      {
+        key: "usuarios",
+        label: "Mantenimiento de Usuarios",
+        description: "Crea, edita y desactiva usuarios.",
+        icon: Users,
+        path: "usuarios",
+        component: MantenimientoUsuariosPage,
+      },
+      {
+        key: "editar-perfil",
+        label: "Editar Perfil",
+        description: "Actualiza la información de tu perfil.",
+        icon: User,
+        path: "editar-perfil",
+        component: EditarPerfilPage,
+      },
+      {
+        key: "lider",
+        label: "Mantenimiento de Líder",
+        description: "Administra los líderes y sus equipos.",
+        icon: UserCog,
+        path: "lider",
+        component: MantenimientoLiderPage,
+      },
+    ],
+  },
+  { key: "coach", label: "Coach", description: "Sesiones y seguimiento de coaching.", icon: GraduationCap, path: "/coach", pages: [] },
+  { key: "traslados", label: "Traslados", description: "Movimientos de personal entre equipos.", icon: ArrowLeftRight, path: "/traslados", pages: [] },
+  { key: "indicadores", label: "Indicadores", description: "Métricas y resultados de desempeño.", icon: BarChart3, path: "/indicadores", pages: [] },
+  { key: "plantillas", label: "Plantillas", description: "Formatos y plantillas de evaluación.", icon: FileText, path: "/plantillas", pages: [] },
+  { key: "consulta", label: "Consulta", description: "Búsqueda y consulta de información.", icon: Search, path: "/consulta", pages: [] },
+  { key: "certificaciones", label: "Certificaciones", description: "Gestión de certificaciones del personal.", icon: Award, path: "/certificaciones", pages: [] },
+];
 
+// Agrega a cada página su ruta completa, ej: "/mantenimientos/usuarios"
+export const MODULES = RAW_MODULES.map((m) => ({
+  ...m,
+  pages: m.pages.map((p) => ({ ...p, fullPath: `${m.path}/${p.path}` })),
+}));
 
+// Genera el breadcrumb del navbar a partir de la URL actual
+export const getBreadcrumb = (pathname) => {
+  const module = MODULES.find((m) => pathname === m.path || pathname.startsWith(`${m.path}/`));
+  if (!module) return [];
 
-
-import styles from "../Pages.module.css";
-
-export const EditarPerfilPage = () => (
-  <header className={styles.header}>
-    <div>
-      <span className={styles.eyebrow}>Mantenimientos</span>
-      <h1 className={styles.title}>Editar Perfil</h1>
-    </div>
-  </header>
-);
-
-
-
-
-
-
-import styles from "../Pages.module.css";
-
-export const MantenimientoLiderPage = () => (
-  <header className={styles.header}>
-    <div>
-      <span className={styles.eyebrow}>Mantenimientos</span>
-      <h1 className={styles.title}>Mantenimiento de Líder</h1>
-    </div>
-  </header>
-);
+  const crumbs = [{ label: module.label, to: module.path }];
+  const page = module.pages.find((p) => pathname.startsWith(p.fullPath));
+  if (page) crumbs.push({ label: page.label, to: page.fullPath });
+  return crumbs;
+};
