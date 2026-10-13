@@ -1,15 +1,39 @@
-import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight } from "lucide-react";
+import styles from "./NavCard.module.css";
 
-export const useMediaQuery = (query) => {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+export function CardGrid({ children }) {
+  return <div className={styles.grid}>{children}</div>;
+}
 
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const handler = (e) => setMatches(e.matches);
-    setMatches(mql.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, [query]);
+export function NavCard({ to, icon: Icon, title, description, meta, disabled = false }) {
+  const content = (
+    <>
+      <div className={styles.iconWrap}>
+        <Icon size={24} strokeWidth={2} />
+      </div>
+      <div>
+        <h3 className={styles.title}>{title}</h3>
+        {description && <p className={styles.description}>{description}</p>}
+      </div>
+      <div className={styles.footer}>
+        <span className={disabled ? styles.soon : undefined}>{meta}</span>
+        {!disabled && <ArrowRight size={18} className={styles.arrow} />}
+      </div>
+    </>
+  );
 
-  return matches;
-};
+  if (disabled) {
+    return (
+      <div className={`${styles.card} ${styles.disabled}`} aria-disabled="true">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Link to={to} className={styles.card}>
+      {content}
+    </Link>
+  );
+}
