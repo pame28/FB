@@ -1,39 +1,123 @@
-import { Link } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
-import styles from "./NavCard.module.css";
-
-export function CardGrid({ children }) {
-  return <div className={styles.grid}>{children}</div>;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
 }
 
-export function NavCard({ to, icon: Icon, title, description, meta, disabled = false }) {
-  const content = (
-    <>
-      <div className={styles.iconWrap}>
-        <Icon size={24} strokeWidth={2} />
-      </div>
-      <div>
-        <h3 className={styles.title}>{title}</h3>
-        {description && <p className={styles.description}>{description}</p>}
-      </div>
-      <div className={styles.footer}>
-        <span className={disabled ? styles.soon : undefined}>{meta}</span>
-        {!disabled && <ArrowRight size={18} className={styles.arrow} />}
-      </div>
-    </>
-  );
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 200px;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #e3e8ef;
+  border-radius: 14px;
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
 
-  if (disabled) {
-    return (
-      <div className={`${styles.card} ${styles.disabled}`} aria-disabled="true">
-        {content}
-      </div>
-    );
-  }
+/* Línea amarilla superior que aparece en hover */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--bp-yellow-opt, #f5b301);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s ease;
+}
 
-  return (
-    <Link to={to} className={styles.card}>
-      {content}
-    </Link>
-  );
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px rgba(11, 37, 69, 0.12);
+  border-color: transparent;
+}
+.card:hover::before { transform: scaleX(1); }
+
+.card:focus-visible {
+  outline: 3px solid var(--bp-blue-digital, #00c1d4);
+  outline-offset: 2px;
+}
+
+.iconWrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bp-blue-expert, #0b2545) 8%, white);
+  color: var(--bp-blue-expert, #0b2545);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.card:hover .iconWrap {
+  background: var(--bp-blue-expert, #0b2545);
+  color: var(--bp-yellow-opt, #f5b301);
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--bp-blue-expert, #0b2545);
+}
+
+.description {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #5b6b80;
+}
+
+.footer {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #eef1f5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #8592a3;
+}
+
+.arrow {
+  color: var(--bp-blue-expert, #0b2545);
+  transition: transform 0.18s ease;
+}
+.card:hover .arrow { transform: translateX(4px); }
+
+/* Módulos sin páginas todavía */
+.disabled {
+  cursor: not-allowed;
+  background: #f8fafc;
+  opacity: 0.7;
+}
+.disabled:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: #e3e8ef;
+}
+.disabled::before { display: none; }
+.disabled:hover .iconWrap {
+  background: color-mix(in srgb, var(--bp-blue-expert, #0b2545) 8%, white);
+  color: var(--bp-blue-expert, #0b2545);
+}
+
+.soon {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef1f5;
+  color: #6b7a8f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .grid { grid-template-columns: 1fr; gap: 14px; }
+  .card { min-height: auto; }
 }
