@@ -1,106 +1,223 @@
-.header {
-  height: 80px;
-  background: var(--bp-blue-expert);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 20px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  border-bottom: 3px solid var(--bp-yellow-opt);
+.header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+
+.headerIcon {
+  width: 56px; height: 56px; flex-shrink: 0; border-radius: 14px;
+  display: grid; place-items: center;
+  background: var(--bp-blue-expert, #0b2545);
+  color: var(--bp-yellow-opt, #f5b301);
 }
 
-.brandGroup { display: flex; align-items: center; gap: 14px; min-width: 0; }
-
-.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
-
-.logo {
-  width: 32px; height: 32px; border-radius: 8px; background: var(--bp-yellow-opt);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 800; color: var(--bp-blue-expert); font-size: 14px;
-}
-
-.brandName {
-  font-family: "Sora", system-ui, sans-serif;
-  color: #fff;
-  font-weight: 800;
-  font-size: 24px;
-  letter-spacing: -0.04em;
-  line-height: 1;
-}
-.brandE { font-weight: 400; color: var(--bp-yellow-opt); }
-
-/* ---- Breadcrumb ---- */
-.breadcrumb { display: flex; align-items: center; gap: 10px; min-width: 0; margin-left: 4px; }
-.separator { color: rgba(255, 255, 255, 0.25); font-size: 20px; font-weight: 300; }
-.crumbLink,
-.currentPage {
-  font-family: "Sora", system-ui, sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.crumbLink { color: rgba(255, 255, 255, 0.5); text-decoration: none; transition: color 0.15s; }
-.crumbLink:hover { color: #fff; }
-.currentPage { color: rgba(255, 255, 255, 0.8); }
-
-/* ---- Acciones / usuario ---- */
-.actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-
-.iconBtn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 38px; height: 38px; border-radius: 8px; border: none;
-  background: transparent; color: #fff; cursor: pointer; flex-shrink: 0;
-}
-.iconBtn:hover { background: rgba(255, 255, 255, 0.08); }
-.iconBtn:focus-visible { outline: 2px solid var(--bp-yellow-opt); outline-offset: 2px; }
-
-.userGroup {
-  display: flex; align-items: center; gap: 10px; margin-left: 8px;
-  padding-left: 12px; border-left: 1px solid rgba(255, 255, 255, 0.16);
-}
-
-.userMeta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 4px;
-}
-.userName { color: #fff; font-size: 13.5px; font-weight: 700; line-height: 1.2; }
-
-.rolePill {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 11px;
+.eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
   font-weight: 700;
-  color: var(--bp-yellow-light);
-  background: color-mix(in srgb, var(--bp-yellow-opt) 15%, transparent);
-  border: 1px solid color-mix(in srgb, var(--bp-yellow-opt) 45%, transparent);
-  white-space: nowrap;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8592a3;
 }
 
-.avatar {
-  width: 34px; height: 34px; border-radius: 50%; background: var(--bp-blue-digital);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 13px; color: var(--bp-blue-expert); flex-shrink: 0;
+.title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--bp-blue-expert, #0b2545);
 }
 
-/* ---- Responsive ---- */
-@media (max-width: 1024px) {
-  .crumbLink, .crumbLink + .separator { display: none; } /* solo muestra la página actual */
+.subtitle { margin: 6px 0 0; font-size: 14.5px; color: #5b6b80; }
+
+.back {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-bottom: 18px;
+  font-size: 13.5px; font-weight: 600;
+  color: #5b6b80; text-decoration: none;
 }
-@media (max-width: 860px) {
-  .userMeta { display: none; }
-  .userGroup { border-left: none; padding-left: 0; }
+.back:hover { color: var(--bp-blue-expert, #0b2545); }
+
+.empty {
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px dashed #cfd7e2;
+  border-radius: 14px;
+  background: #fff;
+  color: #6b7a8f;
+  font-weight: 600;
 }
+
 @media (max-width: 600px) {
-  .header { padding: 0 12px; }
-  .breadcrumb { display: none; }
-  .brandName { font-size: 21px; }
+  .title { font-size: 22px; }
+  .headerIcon { width: 46px; height: 46px; }
+}
+
+
+
+
+
+
+
+
+import { NavCard, CardGrid } from "../shared/components";
+import { MODULES } from "../router/routesConfig";
+import styles from "./Pages.module.css";
+
+export const HomePage = () => {
+  return (
+    <>
+      <header className={styles.header}>
+        <div>
+          <span className={styles.eyebrow}>Inicio</span>
+          <h1 className={styles.title}>Módulos</h1>
+          <p className={styles.subtitle}>Selecciona un módulo para continuar.</p>
+        </div>
+      </header>
+
+      <CardGrid>
+        {MODULES.map((m) => {
+          const total = m.pages.length;
+          return (
+            <NavCard
+              key={m.key}
+              to={m.path}
+              icon={m.icon}
+              title={m.label}
+              description={m.description}
+              meta={total ? `${total} ${total === 1 ? "opción" : "opciones"}` : "Próximamente"}
+              disabled={total === 0}
+            />
+          );
+        })}
+      </CardGrid>
+    </>
+  );
+};
+
+
+
+
+
+
+import { Link } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import { NavCard, CardGrid } from "../shared/components";
+import styles from "./Pages.module.css";
+
+export const ModulePage = ({ module }) => {
+  const Icon = module.icon;
+
+  return (
+    <>
+      <Link to="/home" className={styles.back}>
+        <ArrowLeft size={16} /> Volver al inicio
+      </Link>
+
+      <header className={styles.header}>
+        <div className={styles.headerIcon}>
+          <Icon size={26} />
+        </div>
+        <div>
+          <span className={styles.eyebrow}>Módulo</span>
+          <h1 className={styles.title}>{module.label}</h1>
+          <p className={styles.subtitle}>{module.description}</p>
+        </div>
+      </header>
+
+      {module.pages.length > 0 ? (
+        <CardGrid>
+          {module.pages.map((p) => (
+            <NavCard
+              key={p.key}
+              to={p.fullPath}
+              icon={p.icon}
+              title={p.label}
+              description={p.description}
+              meta="Abrir"
+            />
+          ))}
+        </CardGrid>
+      ) : (
+        <div className={styles.empty}>Este módulo estará disponible próximamente.</div>
+      )}
+    </>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+import { Fragment, useState } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { LoginPage } from '../pages/LoginPage'
+
+import { useAuthStore } from '../hooks/useAuthStore'
+import { apiFeedbackAuthorized } from '../api/APIS'
+import { endpointsAPI } from '../api/endpointApi'
+import { messagesFunctions } from '../helpers/messagesFunctions'
+import { useUiStore } from '../hooks/useUiStore'
+import { useIDBStore } from '../hooks/useIDBStore'
+import { ModalConfirmation } from '../components/ModalConfirmation'
+
+import { MainLayout } from '../layout/MainLayout'
+import { HomePage } from '../pages/HomePage'
+import { ModulePage } from '../pages/ModulePage'
+import { MODULES } from './routesConfig'
+
+export const AppRouter = () => {
+    const { status, logout } = useAuthStore();
+    const [modal, setModal] = useState();
+
+    const { getMessage } = messagesFunctions();
+    const { openModalConfirmation, closeModalConfirmation } = useUiStore();
+    const { crearIDB, addData } = useIDBStore();
+
+    //Inicializa el proceso de validación de los tiempos de inactividad
+    const init = () => {
+        window.addEventListener("mousemove", resetTimer, false);
+        window.addEventListener("mousedown", resetTimer, false);
+        window.addEventListener("mousewheel", resetTimer, false);
+        window.addEventListener("touchmove", resetTimer, false);
+        window.addEventListener("touchstart", resetTimer, false);
+        window.addEventListener("MSPointerMove", resetTimer, false);
+        window.addEventListener("keypress", resetTimer, false);
+        window.addEventListener("DOMMouseScroll", resetTimer, false);
+        window.addEventListener("unload", resetTimer, false);
+        startTimer();
+    }
+
+    return (
+        <>
+            {modal}
+            <Routes>
+                {status != "authenticated" //Esto lo tengo solo provisional para que me deje pasar del login
+                    ?
+                    <Route element={<MainLayout />}>
+                        <Route path="/home" element={<HomePage />} />
+
+                        {MODULES.map((module) => (
+                            <Fragment key={module.key}>
+                                <Route path={module.path} element={<ModulePage module={module} />} />
+                                {module.pages.map((page) => (
+                                    <Route key={page.key} path={page.fullPath} element={<page.component />} />
+                                ))}
+                            </Fragment>
+                        ))}
+
+                        <Route path="/*" element={<Navigate to="/home" replace />} />
+                    </Route>
+                    :
+                    <>
+                        <Route path="/login" element={<LoginPage />} />
+                        <Route path="/*" element={<Navigate to="/login" />} />
+                    </>
+                }
+            </Routes>
+        </>
+    )
 }
