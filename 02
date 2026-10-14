@@ -1,2 +1,10 @@
-git checkout --ours -- BasePerdidasOperativas/BasePerdidasOperativas/BasePerdidasOperativas.Publish.xml
-git add BasePerdidasOperativas/BasePerdidasOperativas/BasePerdidasOperativas.Publish.xml
+git checkout --theirs -- BasePerdidasOperativas/BasePerdidasOperativas/Web.config
+
+
+
+
+git diff HEAD -- BasePerdidasOperativas/BasePerdidasOperativas/Web.config
+
+
+
+git add BasePerdidasOperativas/BasePerdidasOperativas/Web.config
