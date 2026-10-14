@@ -1,9 +1,10 @@
-grep -n "<<<<<<<\|=======\|>>>>>>>" BasePerdidasOperativas/BasePerdidasOperativas/BasePerdidasOperativas.csproj
-
-
-git add BasePerdidasOperativas/BasePerdidasOperativas/BasePerdidasOperativas.csproj
-git status
+git log --graph --oneline -10 --format="%h %an %s"
 
 
 
-git commit --no-edit
+
+
+git stash list
+git stash pop
+
+
