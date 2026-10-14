@@ -70,11 +70,6 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="DevExpress.Web.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
-<<<<<<< HEAD
-=======
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\PerdidasOperativas\PerdidasOperativas\BasePerdidasOperativas\BasePerdidasOperativas\bin\DevExpress.Web.v10.1.dll</HintPath>
->>>>>>> origin/feature/reporteCNBS
       <Private>True</Private>
     </Reference>
     <Reference Include="DevExpress.XtraCharts.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
@@ -181,12 +176,8 @@
     </Reference>
     <Reference Include="Telerik.Reporting, Version=4.2.10.1110, Culture=neutral, PublicKeyToken=a9d7983dfcc261be, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-<<<<<<< HEAD
       <HintPath>..\..\..\..\..\..\PROYECTOS\2024\PerdidasOperativas\bin\Telerik.Reporting.dll</HintPath>
       <Private>True</Private>
-=======
-      <HintPath>..\..\..\..\Telerik\Telerik\Reporting Q1 2010\Bin\Telerik.Reporting.dll</HintPath>
->>>>>>> origin/feature/reporteCNBS
     </Reference>
     <Reference Include="Telerik.ReportViewer.WebForms, Version=4.2.10.1110, Culture=neutral, PublicKeyToken=a9d7983dfcc261be, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
@@ -267,7 +258,6 @@
     <Content Include="Mantenimientos\AgrupacionEventos.aspx" />
     <Content Include="Mantenimientos\Ciberincidentes1.aspx" />
     <Content Include="Mantenimientos\Ciberincidentes2.aspx" />
-<<<<<<< HEAD
     <Content Include="Mantenimientos\ControlCorreoPeriodicidad.aspx" />
     <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ProbabilidadPerdida.aspx" />
     <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\DemandaAsociadaRiesgoCredito.aspx" />
@@ -515,7 +505,6 @@
     <Compile Include="Mantenimientos\Ciberincidentes2.aspx.designer.cs">
       <DependentUpon>Ciberincidentes2.aspx</DependentUpon>
     </Compile>
-<<<<<<< HEAD
     <Compile Include="Mantenimientos\ControlCorreoPeriodicidad.aspx.cs">
       <DependentUpon>ControlCorreoPeriodicidad.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
@@ -599,14 +588,13 @@
     </Compile>
     <Compile Include="Mantenimientos\TransaccionesPOS.aspx.designer.cs">
       <DependentUpon>TransaccionesPOS.aspx</DependentUpon>
-=======
+    </Compile>
     <Compile Include="Mantenimientos\EquiCuentContables.aspx.cs">
       <DependentUpon>EquiCuentContables.aspx</DependentUpon>
       <SubType>ASPXCodeBehind</SubType>
     </Compile>
     <Compile Include="Mantenimientos\EquiCuentContables.aspx.designer.cs">
       <DependentUpon>EquiCuentContables.aspx</DependentUpon>
->>>>>>> origin/feature/reporteCNBS
     </Compile>
     <Compile Include="Mantenimientos\UsuarioAcceso.aspx.cs">
       <DependentUpon>UsuarioAcceso.aspx</DependentUpon>
