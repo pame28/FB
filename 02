@@ -1,0 +1,14 @@
+Mira que en Gitlab neceito hacer un merge de dos ramas distintas a la master
+
+Lo que quiero hacer es crear una nueva rama ... que tengas ambas versiones 
+
+Ramas: 
+RAMA 01: 
+|BH-21980_AdecuaciON_Fase2_Megre_PU          (tiene erroes ortograficos jajaj asi que no te preocupes) 
+
+RAMA 02: 
+|feature/reporteCNBS
+
+Dime paso a paso que tengo que hacer para no arruinar todo jajaja ni que se pieda la trzabilidad de .. de quien es cada commit ....
+
+la rama que tiene mas camnbios es la 01. Cabe recalcar que yo aun no clono nada de eso
