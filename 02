@@ -1,3 +1,7 @@
+git checkout HEAD -- BasePerdidasOperativas/BasePerdidasOperativas/Web.config
+
+
+
 git checkout --theirs -- BasePerdidasOperativas/BasePerdidasOperativas/Web.config
 
 
