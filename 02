@@ -1,10 +1,52 @@
-git log --graph --oneline -10 --format="%h %an %s"
+$ git status
+On branch BH-21980_Control-Cambios-Fase2
+Your branch is up to date with 'origin/BH-21980_AdecuaciON_Fase2_Megre_PU'.
+
+All conflicts fixed but you are still merging.
+  (use "git commit" to conclude merge)
+
+Changes to be committed:
+        modified:   BasePerdidasOperativas/BasePerdidasOperativas/BasePerdidasOperativas.csproj
+        new file:   BasePerdidasOperativas/BasePerdidasOperativas/Mantenimientos/EquiCuentContables.aspx
+        new file:   BasePerdidasOperativas/BasePerdidasOperativas/Mantenimientos/EquiCuentContables.aspx.cs
+        new file:   BasePerdidasOperativas/BasePerdidasOperativas/Mantenimientos/EquiCuentContables.aspx.designer.cs
+        deleted:    BasePerdidasOperativas/BasePerdidasOperativas/bin/Telerik.ReportViewer.WebForms.pdb
+        deleted:    BasePerdidasOperativas/BasePerdidasOperativas/bin/Telerik.ReportViewer.WebForms.xml
+        new file:   BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/Package/PackageTmp/Mantenimientos/EquiCuentContables.aspx
 
 
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (BH-21980_Control-Cambios-Fase2|MERGING)
+$ git commit --no-edit
+[BH-21980_Control-Cambios-Fase2 e5753fb] Merge feature/reporteCNBS en rama integrada con Fase 2
 
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (BH-21980_Control-Cambios-Fase2)
+$ git log --graph --oneline -10 --format="%h %an %s"
+*   e5753fb Pamela Suazo Merge feature/reporteCNBS en rama integrada con Fase 2
+|\
+| * 700361e Edman Montoya Lagos Agrega cambios en reporte y equivalencias cuentas contables
+* | b8e0cad Henrry M. Padilla Dominguez Se corrige campo usado en Recordatorio PM de Parametrizacion de Periodicidad de avisos y se agregó servicio de integración de Envío de Corres
+* | eb7050f Valeria M. Lopez / BANCO DEL PAIS Se modifico fecha de reporte para que al momento de generar ASC tome la fecha fin
+* | 7eb49ba Valeria M. Lopez / BANCO DEL PAIS Se modifico fecha de reporte para que al momento de generar ASC tome la fecha fin
+* | 2f46032 Valeria M. Lopez / BANCO DEL PAIS Se agrego origen de datos en el reporte evento de perdidas
+* | 83330e9 Valeria M. Lopez / BANCO DEL PAIS Se corrigio la validacion de rango de fecha pars que no permita nulos y la nomenclatura del archivo ASC
+* | 30f451d Valeria M. Lopez / BANCO DEL PAIS Se atendio bug BH-45329, BH-45334, BH-45402, BH-45419, BH-45423
+* | c20f437 65715 Update de rama
+* | e88c858 65715 Correccion de bugs BH 45063 / 45151
 
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (BH-21980_Control-Cambios-Fase2)
+$ git stash list
 
-git stash list
-git stash pop
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (BH-21980_Control-Cambios-Fase2)
+$ git stash pop
+No stash entries found.
 
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (BH-21980_Control-Cambios-Fase2)
+$ git status
+On branch BH-21980_Control-Cambios-Fase2
+Your branch is ahead of 'origin/BH-21980_AdecuaciON_Fase2_Megre_PU' by 2 commits.
+  (use "git push" to publish your local commits)
 
+nothing to commit, working tree clean
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (BH-21980_Control-Cambios-Fase2)
+$
