@@ -1,14 +1,1197 @@
-git checkout HEAD -- BasePerdidasOperativas/BasePerdidasOperativas/Web.config
-
-
-
-git checkout --theirs -- BasePerdidasOperativas/BasePerdidasOperativas/Web.config
-
-
-
-
-git diff HEAD -- BasePerdidasOperativas/BasePerdidasOperativas/Web.config
-
-
-
-git add BasePerdidasOperativas/BasePerdidasOperativas/Web.config
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>
+    </ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{893902E8-75DF-494E-B4CE-05C05FCED33F}</ProjectGuid>
+    <ProjectTypeGuids>{349c5851-65df-11da-9384-00065b846f21};{fae04ec0-301f-11d3-bf4b-00c04f79efbc}</ProjectTypeGuids>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>BasePerdidasOperativas</RootNamespace>
+    <AssemblyName>BasePerdidasOperativas</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <UseIISExpress>false</UseIISExpress>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="DevExpress.Charts.v10.1.Core, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Data.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.RichEdit.v10.1.Core, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Utils.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.ASPxEditors.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.ASPxGauges.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.ASPxGridView.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.ASPxGridView.v10.1.Export, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.ASPxPivotGrid.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.ASPxPivotGrid.v10.1.Export, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.ASPxThemes.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.Web.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+<<<<<<< HEAD
+=======
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\PerdidasOperativas\PerdidasOperativas\BasePerdidasOperativas\BasePerdidasOperativas\bin\DevExpress.Web.v10.1.dll</HintPath>
+>>>>>>> origin/feature/reporteCNBS
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraCharts.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraCharts.v10.1.Web, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraEditors.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraGauges.v10.1.Core, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraGauges.v10.1.Presets, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraPivotGrid.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraPivotGrid.v10.1.Core, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraPrinting.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraReports.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraReports.v10.1.Web, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="DevExpress.XtraRichEdit.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd, processorArchitecture=MSIL">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="EPPlus, Version=4.1.0.0, Culture=neutral, PublicKeyToken=ea159fdaa78159a1, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>bin\EPPlus.dll</HintPath>
+    </Reference>
+    <Reference Include="Log4NetLibrary, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\Users\valerial\Downloads\Log4NetLibrary\Log4NetLibrary.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.CSharp">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Microsoft.ReportViewer.WebForms, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="SpreadsheetGear, Version=5.1.1.134, Culture=neutral, PublicKeyToken=39c186f5904944ec, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>bin\SpreadsheetGear.dll</HintPath>
+    </Reference>
+    <Reference Include="System">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Data">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Core">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Data.DataSetExtensions">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Web" />
+    <Reference Include="System.Web.Extensions">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Windows.Forms">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Windows.Forms.DataVisualization">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Xml.Linq">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Drawing">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Xml">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Configuration">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Web.Services">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.EnterpriseServices">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Web.DynamicData">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Web.Entity">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System.Web.ApplicationServices">
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Telerik.Reporting, Version=4.2.10.1110, Culture=neutral, PublicKeyToken=a9d7983dfcc261be, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+<<<<<<< HEAD
+      <HintPath>..\..\..\..\..\..\PROYECTOS\2024\PerdidasOperativas\bin\Telerik.Reporting.dll</HintPath>
+      <Private>True</Private>
+=======
+      <HintPath>..\..\..\..\Telerik\Telerik\Reporting Q1 2010\Bin\Telerik.Reporting.dll</HintPath>
+>>>>>>> origin/feature/reporteCNBS
+    </Reference>
+    <Reference Include="Telerik.ReportViewer.WebForms, Version=4.2.10.1110, Culture=neutral, PublicKeyToken=a9d7983dfcc261be, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\PROYECTOS\2024\PerdidasOperativas\bin\Telerik.ReportViewer.WebForms.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Telerik.Web.Design, Version=2010.3.1109.40, Culture=neutral, PublicKeyToken=121fae78165ba3d4, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\PROYECTOS\2024\PerdidasOperativas\bin\Telerik.Web.Design.dll</HintPath>
+    </Reference>
+    <Reference Include="Telerik.Web.UI, Version=2010.1.415.20, Culture=neutral, PublicKeyToken=121fae78165ba3d4, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\PROYECTOS\2024\PerdidasOperativas\bin\Telerik.Web.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="Telerik.WinControls, Version=2010.1.10.409, Culture=neutral, PublicKeyToken=5bb2a467cbec794e, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\PROYECTOS\2024\PerdidasOperativas\bin\Telerik.WinControls.dll</HintPath>
+    </Reference>
+    <Reference Include="TelerikCommon, Version=2010.1.10.409, Culture=neutral, PublicKeyToken=5bb2a467cbec794e, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\PROYECTOS\2024\PerdidasOperativas\bin\TelerikCommon.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="FormIngresoInfo\ActualizacionRegistroATM.aspx" />
+    <Content Include="FormIngresoInfo\ActualizacionRegistroPOS.aspx" />
+    <Content Include="FormIngresoInfo\CargaArchivoDemandasJuiciosEjecucion.aspx" />
+    <Content Include="FormIngresoInfo\DemandasJuiciosEjecucionBajas.aspx" />
+    <Content Include="FormIngresoInfo\DetalleDemandasJuiciosEjecucion.aspx" />
+    <Content Include="FormIngresoInfo\RegistroCanalesServiciosDisponibles%28ATM%29.aspx" />
+    <Content Include="FormIngresoInfo\RegistroCanalesServiciosDisponibles%28POS%29.aspx" />
+    <Content Include="FormIngresoInfo\RegistroDemandasJuiciosEjecucion.aspx" />
+    <Content Include="FormIngresoInfo\RegistroTransaccionesCanalesServiciosPOS.aspx" />
+    <Content Include="Imagenes\archivo.png" />
+    <Content Include="Imagenes\asignar.png" />
+    <Content Include="Imagenes\b2.jpg" />
+    <Content Include="Imagenes\Cancel.png" />
+    <Content Include="Imagenes\cargar.png" />
+    <Content Include="Imagenes\cn.png" />
+    <Content Include="Imagenes\cnbs1.png" />
+    <Content Include="Imagenes\Delete.png" />
+    <Content Include="Imagenes\dt.png" />
+    <Content Include="Imagenes\Edit.png" />
+    <Content Include="Imagenes\ExcelBtn.png" />
+    <Content Include="Imagenes\Filter.png" />
+    <Content Include="Imagenes\Find.png" />
+    <Content Include="Imagenes\GP.jpg" />
+    <Content Include="Imagenes\GP.png" />
+    <Content Include="Imagenes\h1.png" />
+    <Content Include="Imagenes\hhh.jpg" />
+    <Content Include="Imagenes\homepage.png" />
+    <Content Include="Imagenes\Log Off.png" />
+    <Content Include="Imagenes\logo.jpg" />
+    <Content Include="Imagenes\mantenimiento.png" />
+    <Content Include="Imagenes\New.png" />
+    <Content Include="Imagenes\Registrar.gif" />
+    <Content Include="Imagenes\Regresar.png" />
+    <Content Include="Imagenes\Rename.png" />
+    <Content Include="Imagenes\report.png" />
+    <Content Include="Imagenes\Reportes.png" />
+    <Content Include="Imagenes\reportes2.png" />
+    <Content Include="Imagenes\report_magnify.png" />
+    <Content Include="Imagenes\save.png" />
+    <Content Include="Imagenes\titulo-pruebas.png" />
+    <Content Include="Imagenes\titulo.PNG" />
+    <Content Include="Imagenes\UGR.jpg" />
+    <Content Include="Imagenes\UGR.png" />
+    <Content Include="Imagenes\User.png" />
+    <Content Include="Index.aspx" />
+    <Content Include="Mantenimientos\Areas.aspx" />
+    <Content Include="Mantenimientos\Causas.aspx" />
+    <Content Include="Mantenimientos\CierreMensual.aspx" />
+    <Content Include="Mantenimientos\CodigoCierreDemanda.aspx" />
+    <Content Include="Mantenimientos\CodigoResultadoDemanda.aspx" />
+    <Content Include="Mantenimientos\CodigosATM.aspx" />
+    <Content Include="Mantenimientos\CodigosPOS.aspx" />
+    <Content Include="Mantenimientos\ControlCorreo.aspx" />
+    <Content Include="Mantenimientos\AgrupacionEventos.aspx" />
+    <Content Include="Mantenimientos\Ciberincidentes1.aspx" />
+    <Content Include="Mantenimientos\Ciberincidentes2.aspx" />
+<<<<<<< HEAD
+    <Content Include="Mantenimientos\ControlCorreoPeriodicidad.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ProbabilidadPerdida.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\DemandaAsociadaRiesgoCredito.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoGarantia.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ResultadoSegundaInstancia.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ResultadoPrimeraInstancia.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\JuzgadoDemanda.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoDemanda.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoDemandante.aspx" />
+    <Content Include="Mantenimientos\DemandasYjuiciosEnEjecucion\NaturalezaDemanda.aspx" />
+    <Content Include="Mantenimientos\RegistroTransacciones.aspx" />
+    <Content Include="Mantenimientos\TransaccionesPOS.aspx" />
+    <Content Include="Mantenimientos\EquiCuentContables.aspx" />
+    <Content Include="Mantenimientos\UsuarioAcceso.aspx" />
+    <Content Include="Mantenimientos\RiesgoAsociado.aspx" />
+    <Content Include="Mantenimientos\TipoFraude2.aspx" />
+    <Content Include="Mantenimientos\TipoFraude1.aspx" />
+    <Content Include="Mantenimientos\Departamentos.aspx" />
+    <Content Include="Mantenimientos\Empresas.aspx" />
+    <Content Include="Mantenimientos\Estados.aspx" />
+    <Content Include="Mantenimientos\Monedas.aspx" />
+    <Content Include="Mantenimientos\NegocioNivel1.aspx" />
+    <Content Include="Mantenimientos\NegocioNivel2.aspx" />
+    <Content Include="Mantenimientos\PrivilegioCorreo.aspx" />
+    <Content Include="Mantenimientos\TipoEvento.aspx" />
+    <Content Include="Mantenimientos\TipoEvento2.aspx" />
+    <Content Include="Mantenimientos\TipoEvento3.aspx" />
+    <Content Include="Mantenimientos\TitulosEventos.aspx" />
+    <Content Include="Mantenimientos\Usuarios.aspx" />
+    <Content Include="Mantenimientos\Zonas.aspx" />
+    <Content Include="Reportes\ReportDemandasJuiciosEjecución.aspx" />
+    <Content Include="Reportes\ReportDemandasJuiciosEjecuciónCNBS.aspx" />
+    <Content Include="Reportes\ReporteCanalesServiciosDisponiblesCNBS.aspx" />
+    <Content Include="Reportes\ReporteCNBSCiberIncidentes.aspx" />
+    <Content Include="Reportes\ReporteCNBSRecuperacionEP.aspx" />
+    <Content Include="Reportes\ReporteDemandasCerradas.aspx" />
+    <Content Include="Reportes\ReporteDemandasCerradasCNBS.aspx" />
+    <Content Include="Reportes\ReporteGeneralCiberIncidentes.aspx" />
+    <Content Include="Reportes\ReporteGeneralRecuperacionEP.aspx" />
+    <Content Include="Reportes\ReporteCNBS.aspx" />
+    <Content Include="Reportes\ReporteCNBSxUsuario.aspx" />
+    <Content Include="Reportes\ReporteGraficos.aspx" />
+    <Content Include="Reportes\ReportePerdidasNetas.aspx" />
+    <Content Include="Reportes\ReporteSeguimiento.aspx" />
+    <Content Include="Reportes\ReportTransaccionesCanalesServicio.aspx" />
+    <Content Include="Reportes\ReportTransaccionesCanalesServiciosCNBS.aspx" />
+    <Content Include="Reportes\ServiciosDisponibles.aspx" />
+    <Content Include="Styles\Site.css" />
+    <Content Include="Global.asax" />
+    <Content Include="Scripts\jquery-1.4.1-vsdoc.js" />
+    <Content Include="Scripts\jquery-1.4.1.js" />
+    <Content Include="Scripts\jquery-1.4.1.min.js" />
+    <Content Include="Transacciones\CargaMasiva\CargaArchivoREP.aspx" />
+    <Content Include="Transacciones\CargaMasiva\CargaArchivoCiberIncidentes.aspx" />
+    <Content Include="Transacciones\CargaMasiva\CargaArchivoEventosPerdidas.aspx" />
+    <Content Include="Transacciones\CiberIncidentes.aspx" />
+    <Content Include="Transacciones\DetalleCiberIncidentes.aspx" />
+    <Content Include="Transacciones\DetalleRecuperacionEventoPerdida.aspx" />
+    <Content Include="Transacciones\DetalledeRegistros.aspx" />
+    <Content Include="Transacciones\Login.aspx" />
+    <Content Include="Transacciones\RecuperacionEventoPerdida.aspx" />
+    <Content Include="Transacciones\Registros.aspx" />
+    <None Include="Transacciones\Plantillas\PlantillaCiberIncidentes.xlsx" />
+    <None Include="Transacciones\Plantillas\PlantillaDemandasJuiciosEjecucion.xlsx" />
+    <None Include="Transacciones\Plantillas\PlantillaEventosPerdidas.xlsx" />
+    <None Include="Transacciones\Plantillas\PlantillaRecuperacionEventosPerdidas.xlsx" />
+    <None Include="Web References\hn.banpais.wsactivedirectoryde\Reference.map">
+      <Generator>MSDiscoCodeGenerator</Generator>
+      <LastGenOutput>Reference.cs</LastGenOutput>
+    </None>
+    <None Include="Web References\hn.banpais.wsactivedirectoryde\xmlwsAD.disco" />
+    <Content Include="Web.config">
+      <SubType>Designer</SubType>
+    </Content>
+    <Content Include="Web.Debug.config">
+      <DependentUpon>Web.config</DependentUpon>
+    </Content>
+    <Content Include="Web.Release.config">
+      <DependentUpon>Web.config</DependentUpon>
+    </Content>
+    <None Include="Web References\hn.banpais.wsactivedirectoryde\xmlwsAD.wsdl" />
+    <None Include="xReportes.xsc">
+      <DependentUpon>xReportes.xsd</DependentUpon>
+    </None>
+    <None Include="xReportes.xsd">
+      <SubType>Designer</SubType>
+      <Generator>MSDataSetGenerator</Generator>
+      <LastGenOutput>xReportes.Designer.cs</LastGenOutput>
+    </None>
+    <None Include="xReportes.xss">
+      <DependentUpon>xReportes.xsd</DependentUpon>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Clases\SQLSrv.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Compile>
+    <Compile Include="FormIngresoInfo\ActualizacionRegistroATM.aspx.cs">
+      <DependentUpon>ActualizacionRegistroATM.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\ActualizacionRegistroATM.aspx.designer.cs">
+      <DependentUpon>ActualizacionRegistroATM.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\ActualizacionRegistroPOS.aspx.cs">
+      <DependentUpon>ActualizacionRegistroPOS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\ActualizacionRegistroPOS.aspx.designer.cs">
+      <DependentUpon>ActualizacionRegistroPOS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\CargaArchivoDemandasJuiciosEjecucion.aspx.cs">
+      <DependentUpon>CargaArchivoDemandasJuiciosEjecucion.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\CargaArchivoDemandasJuiciosEjecucion.aspx.designer.cs">
+      <DependentUpon>CargaArchivoDemandasJuiciosEjecucion.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\DemandasJuiciosEjecucionBajas.aspx.cs">
+      <DependentUpon>DemandasJuiciosEjecucionBajas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\DemandasJuiciosEjecucionBajas.aspx.designer.cs">
+      <DependentUpon>DemandasJuiciosEjecucionBajas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\DetalleDemandasJuiciosEjecucion.aspx.cs">
+      <DependentUpon>DetalleDemandasJuiciosEjecucion.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\DetalleDemandasJuiciosEjecucion.aspx.designer.cs">
+      <DependentUpon>DetalleDemandasJuiciosEjecucion.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroCanalesServiciosDisponibles%28ATM%29.aspx.cs">
+      <DependentUpon>RegistroCanalesServiciosDisponibles%28ATM%29.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroCanalesServiciosDisponibles%28ATM%29.aspx.designer.cs">
+      <DependentUpon>RegistroCanalesServiciosDisponibles%28ATM%29.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroCanalesServiciosDisponibles%28POS%29.aspx.cs">
+      <DependentUpon>RegistroCanalesServiciosDisponibles%28POS%29.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroCanalesServiciosDisponibles%28POS%29.aspx.designer.cs">
+      <DependentUpon>RegistroCanalesServiciosDisponibles%28POS%29.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroDemandasJuiciosEjecucion.aspx.cs">
+      <DependentUpon>RegistroDemandasJuiciosEjecucion.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroDemandasJuiciosEjecucion.aspx.designer.cs">
+      <DependentUpon>RegistroDemandasJuiciosEjecucion.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroTransaccionesCanalesServiciosPOS.aspx.cs">
+      <DependentUpon>RegistroTransaccionesCanalesServiciosPOS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="FormIngresoInfo\RegistroTransaccionesCanalesServiciosPOS.aspx.designer.cs">
+      <DependentUpon>RegistroTransaccionesCanalesServiciosPOS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Global.asax.cs">
+      <DependentUpon>Global.asax</DependentUpon>
+    </Compile>
+    <Compile Include="Index.aspx.cs">
+      <DependentUpon>Index.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Index.aspx.designer.cs">
+      <DependentUpon>Index.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Areas.aspx.cs">
+      <DependentUpon>Areas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Areas.aspx.designer.cs">
+      <DependentUpon>Areas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Causas.aspx.cs">
+      <DependentUpon>Causas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Causas.aspx.designer.cs">
+      <DependentUpon>Causas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\CierreMensual.aspx.cs">
+      <DependentUpon>CierreMensual.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\CierreMensual.aspx.designer.cs">
+      <DependentUpon>CierreMensual.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigoCierreDemanda.aspx.cs">
+      <DependentUpon>CodigoCierreDemanda.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigoCierreDemanda.aspx.designer.cs">
+      <DependentUpon>CodigoCierreDemanda.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigoResultadoDemanda.aspx.cs">
+      <DependentUpon>CodigoResultadoDemanda.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigoResultadoDemanda.aspx.designer.cs">
+      <DependentUpon>CodigoResultadoDemanda.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigosATM.aspx.cs">
+      <DependentUpon>CodigosATM.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigosATM.aspx.designer.cs">
+      <DependentUpon>CodigosATM.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigosPOS.aspx.cs">
+      <DependentUpon>CodigosPOS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\CodigosPOS.aspx.designer.cs">
+      <DependentUpon>CodigosPOS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\ControlCorreo.aspx.cs">
+      <DependentUpon>ControlCorreo.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\ControlCorreo.aspx.designer.cs">
+      <DependentUpon>ControlCorreo.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\AgrupacionEventos.aspx.cs">
+      <DependentUpon>AgrupacionEventos.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\AgrupacionEventos.aspx.designer.cs">
+      <DependentUpon>AgrupacionEventos.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Ciberincidentes1.aspx.cs">
+      <DependentUpon>Ciberincidentes1.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Ciberincidentes1.aspx.designer.cs">
+      <DependentUpon>Ciberincidentes1.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Ciberincidentes2.aspx.cs">
+      <DependentUpon>Ciberincidentes2.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Ciberincidentes2.aspx.designer.cs">
+      <DependentUpon>Ciberincidentes2.aspx</DependentUpon>
+    </Compile>
+<<<<<<< HEAD
+    <Compile Include="Mantenimientos\ControlCorreoPeriodicidad.aspx.cs">
+      <DependentUpon>ControlCorreoPeriodicidad.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\ControlCorreoPeriodicidad.aspx.designer.cs">
+      <DependentUpon>ControlCorreoPeriodicidad.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ProbabilidadPerdida.aspx.cs">
+      <DependentUpon>ProbabilidadPerdida.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ProbabilidadPerdida.aspx.designer.cs">
+      <DependentUpon>ProbabilidadPerdida.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\DemandaAsociadaRiesgoCredito.aspx.cs">
+      <DependentUpon>DemandaAsociadaRiesgoCredito.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\DemandaAsociadaRiesgoCredito.aspx.designer.cs">
+      <DependentUpon>DemandaAsociadaRiesgoCredito.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoGarantia.aspx.cs">
+      <DependentUpon>TipoGarantia.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoGarantia.aspx.designer.cs">
+      <DependentUpon>TipoGarantia.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ResultadoSegundaInstancia.aspx.cs">
+      <DependentUpon>ResultadoSegundaInstancia.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ResultadoSegundaInstancia.aspx.designer.cs">
+      <DependentUpon>ResultadoSegundaInstancia.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ResultadoPrimeraInstancia.aspx.cs">
+      <DependentUpon>ResultadoPrimeraInstancia.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\ResultadoPrimeraInstancia.aspx.designer.cs">
+      <DependentUpon>ResultadoPrimeraInstancia.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\JuzgadoDemanda.aspx.cs">
+      <DependentUpon>JuzgadoDemanda.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\JuzgadoDemanda.aspx.designer.cs">
+      <DependentUpon>JuzgadoDemanda.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoDemanda.aspx.cs">
+      <DependentUpon>TipoDemanda.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoDemanda.aspx.designer.cs">
+      <DependentUpon>TipoDemanda.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoDemandante.aspx.cs">
+      <DependentUpon>TipoDemandante.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\TipoDemandante.aspx.designer.cs">
+      <DependentUpon>TipoDemandante.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\NaturalezaDemanda.aspx.cs">
+      <DependentUpon>NaturalezaDemanda.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\DemandasYjuiciosEnEjecucion\NaturalezaDemanda.aspx.designer.cs">
+      <DependentUpon>NaturalezaDemanda.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\RegistroTransacciones.aspx.cs">
+      <DependentUpon>RegistroTransacciones.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\RegistroTransacciones.aspx.designer.cs">
+      <DependentUpon>RegistroTransacciones.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\TransaccionesPOS.aspx.cs">
+      <DependentUpon>TransaccionesPOS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\TransaccionesPOS.aspx.designer.cs">
+      <DependentUpon>TransaccionesPOS.aspx</DependentUpon>
+=======
+    <Compile Include="Mantenimientos\EquiCuentContables.aspx.cs">
+      <DependentUpon>EquiCuentContables.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\EquiCuentContables.aspx.designer.cs">
+      <DependentUpon>EquiCuentContables.aspx</DependentUpon>
+>>>>>>> origin/feature/reporteCNBS
+    </Compile>
+    <Compile Include="Mantenimientos\UsuarioAcceso.aspx.cs">
+      <DependentUpon>UsuarioAcceso.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\UsuarioAcceso.aspx.designer.cs">
+      <DependentUpon>UsuarioAcceso.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\RiesgoAsociado.aspx.cs">
+      <DependentUpon>RiesgoAsociado.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\RiesgoAsociado.aspx.designer.cs">
+      <DependentUpon>RiesgoAsociado.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoFraude2.aspx.cs">
+      <DependentUpon>TipoFraude2.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoFraude2.aspx.designer.cs">
+      <DependentUpon>TipoFraude2.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoFraude1.aspx.cs">
+      <DependentUpon>TipoFraude1.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoFraude1.aspx.designer.cs">
+      <DependentUpon>TipoFraude1.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Departamentos.aspx.cs">
+      <DependentUpon>Departamentos.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Departamentos.aspx.designer.cs">
+      <DependentUpon>Departamentos.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Empresas.aspx.cs">
+      <DependentUpon>Empresas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Empresas.aspx.designer.cs">
+      <DependentUpon>Empresas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Estados.aspx.cs">
+      <DependentUpon>Estados.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Estados.aspx.designer.cs">
+      <DependentUpon>Estados.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Monedas.aspx.cs">
+      <DependentUpon>Monedas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Monedas.aspx.designer.cs">
+      <DependentUpon>Monedas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\NegocioNivel1.aspx.cs">
+      <DependentUpon>NegocioNivel1.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\NegocioNivel1.aspx.designer.cs">
+      <DependentUpon>NegocioNivel1.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\NegocioNivel2.aspx.cs">
+      <DependentUpon>NegocioNivel2.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\NegocioNivel2.aspx.designer.cs">
+      <DependentUpon>NegocioNivel2.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\PrivilegioCorreo.aspx.cs">
+      <DependentUpon>PrivilegioCorreo.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\PrivilegioCorreo.aspx.designer.cs">
+      <DependentUpon>PrivilegioCorreo.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoEvento.aspx.cs">
+      <DependentUpon>TipoEvento.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoEvento.aspx.designer.cs">
+      <DependentUpon>TipoEvento.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoEvento2.aspx.cs">
+      <DependentUpon>TipoEvento2.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoEvento2.aspx.designer.cs">
+      <DependentUpon>TipoEvento2.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoEvento3.aspx.cs">
+      <DependentUpon>TipoEvento3.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\TipoEvento3.aspx.designer.cs">
+      <DependentUpon>TipoEvento3.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\TitulosEventos.aspx.cs">
+      <DependentUpon>TitulosEventos.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\TitulosEventos.aspx.designer.cs">
+      <DependentUpon>TitulosEventos.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Usuarios.aspx.cs">
+      <DependentUpon>Usuarios.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Usuarios.aspx.designer.cs">
+      <DependentUpon>Usuarios.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Mantenimientos\Zonas.aspx.cs">
+      <DependentUpon>Zonas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Mantenimientos\Zonas.aspx.designer.cs">
+      <DependentUpon>Zonas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="MasterPageBanpais.Master.cs">
+      <DependentUpon>MasterPageBanpais.Master</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="MasterPageBanpais.Master.designer.cs">
+      <DependentUpon>MasterPageBanpais.Master</DependentUpon>
+    </Compile>
+    <Compile Include="MasterPageBanpaisLogin.Master.cs">
+      <DependentUpon>MasterPageBanpaisLogin.Master</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="MasterPageBanpaisLogin.Master.designer.cs">
+      <DependentUpon>MasterPageBanpaisLogin.Master</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\CanalesServiciosDisponiblesCNBS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\CanalesServiciosDisponiblesCNBS.Designer.cs">
+      <DependentUpon>CanalesServiciosDisponiblesCNBS.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\DemandasCerradasCNBS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\DemandasCerradasCNBS.Designer.cs">
+      <DependentUpon>DemandasCerradasCNBS.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\DemandasCerradas.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\DemandasCerradas.Designer.cs">
+      <DependentUpon>DemandasCerradas.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\DemandasJuiciosEjecuciónCNBS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\DemandasJuiciosEjecuciónCNBS.Designer.cs">
+      <DependentUpon>DemandasJuiciosEjecuciónCNBS.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteDetalleDemandasJuiciosEjecucion.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteDetalleDemandasJuiciosEjecucion.Designer.cs">
+      <DependentUpon>ReporteDetalleDemandasJuiciosEjecucion.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReportDemandasJuiciosEjecución.aspx.cs">
+      <DependentUpon>ReportDemandasJuiciosEjecución.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReportDemandasJuiciosEjecución.aspx.designer.cs">
+      <DependentUpon>ReportDemandasJuiciosEjecución.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReportDemandasJuiciosEjecuciónCNBS.aspx.cs">
+      <DependentUpon>ReportDemandasJuiciosEjecuciónCNBS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReportDemandasJuiciosEjecuciónCNBS.aspx.designer.cs">
+      <DependentUpon>ReportDemandasJuiciosEjecuciónCNBS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteCanalesServiciosDisponiblesCNBS.aspx.cs">
+      <DependentUpon>ReporteCanalesServiciosDisponiblesCNBS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteCanalesServiciosDisponiblesCNBS.aspx.designer.cs">
+      <DependentUpon>ReporteCanalesServiciosDisponiblesCNBS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBSCiberIncidentes.aspx.cs">
+      <DependentUpon>ReporteCNBSCiberIncidentes.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBSCiberIncidentes.aspx.designer.cs">
+      <DependentUpon>ReporteCNBSCiberIncidentes.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteCiberIncidentesCNBS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteCiberIncidentesCNBS.Designer.cs">
+      <DependentUpon>ReporteCiberIncidentesCNBS.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBSRecuperacionEP.aspx.cs">
+      <DependentUpon>ReporteCNBSRecuperacionEP.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBSRecuperacionEP.aspx.designer.cs">
+      <DependentUpon>ReporteCNBSRecuperacionEP.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteDemandasCerradas.aspx.cs">
+      <DependentUpon>ReporteDemandasCerradas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteDemandasCerradas.aspx.designer.cs">
+      <DependentUpon>ReporteDemandasCerradas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteDemandasCerradasCNBS.aspx.cs">
+      <DependentUpon>ReporteDemandasCerradasCNBS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteDemandasCerradasCNBS.aspx.designer.cs">
+      <DependentUpon>ReporteDemandasCerradasCNBS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteDemandasJuicioEjecucion.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteDemandasJuicioEjecucion.Designer.cs">
+      <DependentUpon>ReporteDemandasJuicioEjecucion.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteGeneralCiberIncidentes.aspx.cs">
+      <DependentUpon>ReporteGeneralCiberIncidentes.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteGeneralCiberIncidentes.aspx.designer.cs">
+      <DependentUpon>ReporteGeneralCiberIncidentes.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteGeneralRecuperacionEP.aspx.cs">
+      <DependentUpon>ReporteGeneralRecuperacionEP.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteGeneralRecuperacionEP.aspx.designer.cs">
+      <DependentUpon>ReporteGeneralRecuperacionEP.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteEventosPerdidasCNBS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteEventosPerdidasCNBS.Designer.cs">
+      <DependentUpon>ReporteEventosPerdidasCNBS.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\Report1.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\Report1.Designer.cs">
+      <DependentUpon>Report1.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBS.aspx.cs">
+      <DependentUpon>ReporteCNBS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBS.aspx.designer.cs">
+      <DependentUpon>ReporteCNBS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBSxUsuario.aspx.cs">
+      <DependentUpon>ReporteCNBSxUsuario.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteCNBSxUsuario.aspx.designer.cs">
+      <DependentUpon>ReporteCNBSxUsuario.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteCoberturaRiesgos.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteCoberturaRiesgos.Designer.cs">
+      <DependentUpon>ReporteCoberturaRiesgos.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteGraficos.aspx.cs">
+      <DependentUpon>ReporteGraficos.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteGraficos.aspx.designer.cs">
+      <DependentUpon>ReporteGraficos.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReportePerdidasNetas.aspx.cs">
+      <DependentUpon>ReportePerdidasNetas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReportePerdidasNetas.aspx.designer.cs">
+      <DependentUpon>ReportePerdidasNetas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReportePerdidasNetasAnual.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReportePerdidasNetasAnual.Designer.cs">
+      <DependentUpon>ReportePerdidasNetasAnual.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteRecuperacionEPCNBS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteRecuperacionEPCNBS.Designer.cs">
+      <DependentUpon>ReporteRecuperacionEPCNBS.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteSeguimiento.aspx.cs">
+      <DependentUpon>ReporteSeguimiento.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteSeguimiento.aspx.designer.cs">
+      <DependentUpon>ReporteSeguimiento.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteSeguimientoPlanAccion.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteSeguimientoPlanAccion.Designer.cs">
+      <DependentUpon>ReporteSeguimientoPlanAccion.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReporteServiciosDisponibles.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReporteServiciosDisponibles.Designer.cs">
+      <DependentUpon>ReporteServiciosDisponibles.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReportTransaccionesCanalesServicio.aspx.cs">
+      <DependentUpon>ReportTransaccionesCanalesServicio.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReportTransaccionesCanalesServicio.aspx.designer.cs">
+      <DependentUpon>ReportTransaccionesCanalesServicio.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ReportTransaccionesCanalesServiciosCNBS.aspx.cs">
+      <DependentUpon>ReportTransaccionesCanalesServiciosCNBS.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ReportTransaccionesCanalesServiciosCNBS.aspx.designer.cs">
+      <DependentUpon>ReportTransaccionesCanalesServiciosCNBS.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\ServiciosDisponibles.aspx.cs">
+      <DependentUpon>ServiciosDisponibles.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Reportes\ServiciosDisponibles.aspx.designer.cs">
+      <DependentUpon>ServiciosDisponibles.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\TransaccionesCanalesServicio.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\TransaccionesCanalesServicio.Designer.cs">
+      <DependentUpon>TransaccionesCanalesServicio.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\TransaccionesCanalesServicioCNBS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\TransaccionesCanalesServicioCNBS.Designer.cs">
+      <DependentUpon>TransaccionesCanalesServicioCNBS.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\xtraReportLineaNegocio.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\xtraReportLineaNegocio.Designer.cs">
+      <DependentUpon>xtraReportLineaNegocio.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\XtraReportPerdidasNetas.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\XtraReportPerdidasNetas.Designer.cs">
+      <DependentUpon>XtraReportPerdidasNetas.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\XtraReportTipoEvento.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\XtraReportTipoEvento.Designer.cs">
+      <DependentUpon>XtraReportTipoEvento.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Reportes\XtraReportTituloEvento.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Reportes\XtraReportTituloEvento.Designer.cs">
+      <DependentUpon>XtraReportTituloEvento.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\CargaMasiva\CargaArchivoREP.aspx.cs">
+      <DependentUpon>CargaArchivoREP.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\CargaMasiva\CargaArchivoREP.aspx.designer.cs">
+      <DependentUpon>CargaArchivoREP.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\CargaMasiva\CargaArchivoCiberIncidentes.aspx.cs">
+      <DependentUpon>CargaArchivoCiberIncidentes.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\CargaMasiva\CargaArchivoCiberIncidentes.aspx.designer.cs">
+      <DependentUpon>CargaArchivoCiberIncidentes.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\CargaMasiva\CargaArchivoEventosPerdidas.aspx.cs">
+      <DependentUpon>CargaArchivoEventosPerdidas.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\CargaMasiva\CargaArchivoEventosPerdidas.aspx.designer.cs">
+      <DependentUpon>CargaArchivoEventosPerdidas.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\CiberIncidentes.aspx.cs">
+      <DependentUpon>CiberIncidentes.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\CiberIncidentes.aspx.designer.cs">
+      <DependentUpon>CiberIncidentes.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\DetalleCiberIncidentes.aspx.cs">
+      <DependentUpon>DetalleCiberIncidentes.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\DetalleCiberIncidentes.aspx.designer.cs">
+      <DependentUpon>DetalleCiberIncidentes.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\DetalleRecuperacionEventoPerdida.aspx.cs">
+      <DependentUpon>DetalleRecuperacionEventoPerdida.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\DetalleRecuperacionEventoPerdida.aspx.designer.cs">
+      <DependentUpon>DetalleRecuperacionEventoPerdida.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\DetalledeRegistros.aspx.cs">
+      <DependentUpon>DetalledeRegistros.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\DetalledeRegistros.aspx.designer.cs">
+      <DependentUpon>DetalledeRegistros.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\Login.aspx.cs">
+      <DependentUpon>Login.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\Login.aspx.designer.cs">
+      <DependentUpon>Login.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\RecuperacionEventoPerdida.aspx.cs">
+      <DependentUpon>RecuperacionEventoPerdida.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\RecuperacionEventoPerdida.aspx.designer.cs">
+      <DependentUpon>RecuperacionEventoPerdida.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Transacciones\Registros.aspx.cs">
+      <DependentUpon>Registros.aspx</DependentUpon>
+      <SubType>ASPXCodeBehind</SubType>
+    </Compile>
+    <Compile Include="Transacciones\Registros.aspx.designer.cs">
+      <DependentUpon>Registros.aspx</DependentUpon>
+    </Compile>
+    <Compile Include="Web References\hn.banpais.wsactivedirectoryde\Reference.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Reference.map</DependentUpon>
+    </Compile>
+    <Compile Include="xReportes.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>xReportes.xsd</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="App_Data\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="MasterPageBanpais.Master" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Properties\licenses.licx" />
+    <EmbeddedResource Include="ReportePerdidasCNBS.es-HN.resx" />
+    <EmbeddedResource Include="Reportes\CanalesServiciosDisponiblesCNBS.resx">
+      <DependentUpon>CanalesServiciosDisponiblesCNBS.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\DemandasCerradasCNBS.resx">
+      <DependentUpon>DemandasCerradasCNBS.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\DemandasCerradas.resx">
+      <DependentUpon>DemandasCerradas.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\DemandasJuiciosEjecuciónCNBS.resx">
+      <DependentUpon>DemandasJuiciosEjecuciónCNBS.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteDetalleDemandasJuiciosEjecucion.resx">
+      <DependentUpon>ReporteDetalleDemandasJuiciosEjecucion.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteCiberIncidentesCNBS.resx">
+      <DependentUpon>ReporteCiberIncidentesCNBS.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteDemandasJuicioEjecucion.resx">
+      <DependentUpon>ReporteDemandasJuicioEjecucion.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteEventosPerdidasCNBS.resx">
+      <DependentUpon>ReporteEventosPerdidasCNBS.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\Report1.resx">
+      <DependentUpon>Report1.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteCoberturaRiesgos.resx">
+      <DependentUpon>ReporteCoberturaRiesgos.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReportePerdidasNetasAnual.resx">
+      <DependentUpon>ReportePerdidasNetasAnual.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteRecuperacionEPCNBS.resx">
+      <DependentUpon>ReporteRecuperacionEPCNBS.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteSeguimientoPlanAccion.resx">
+      <DependentUpon>ReporteSeguimientoPlanAccion.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\ReporteServiciosDisponibles.resx">
+      <DependentUpon>ReporteServiciosDisponibles.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\TransaccionesCanalesServicio.resx">
+      <DependentUpon>TransaccionesCanalesServicio.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\TransaccionesCanalesServicioCNBS.resx">
+      <DependentUpon>TransaccionesCanalesServicioCNBS.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\xtraReportLineaNegocio.resx">
+      <DependentUpon>xtraReportLineaNegocio.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\XtraReportPerdidasNetas.resx">
+      <DependentUpon>XtraReportPerdidasNetas.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\XtraReportTipoEvento.resx">
+      <DependentUpon>XtraReportTipoEvento.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Reportes\XtraReportTituloEvento.resx">
+      <DependentUpon>XtraReportTituloEvento.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="MasterPageBanpaisLogin.Master" />
+    <None Include="Properties\Settings.settings">
+      <Generator>PublicSettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+      <SubType>Designer</SubType>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <WCFMetadata Include="Service References\" />
+  </ItemGroup>
+  <ItemGroup>
+    <WebReferences Include="Web References\" />
+  </ItemGroup>
+  <ItemGroup>
+    <WebReferenceUrl Include="https://wsactivedirectoryde.banpais.hn/xmlwsAD.asmx">
+      <UrlBehavior>Dynamic</UrlBehavior>
+      <RelPath>Web References\hn.banpais.wsactivedirectoryde\</RelPath>
+      <UpdateFromURL>https://wsactivedirectoryde.banpais.hn/xmlwsAD.asmx</UpdateFromURL>
+      <ServiceLocationURL>
+      </ServiceLocationURL>
+      <CachedDynamicPropName>
+      </CachedDynamicPropName>
+      <CachedAppSettingsObjectName>Settings</CachedAppSettingsObjectName>
+      <CachedSettingsPropName>BasePerdidasOperativas_hn_banpais_wsactivedirectoryds_xmlwsAD</CachedSettingsPropName>
+    </WebReferenceUrl>
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v10.0\WebApplications\Microsoft.WebApplication.targets" />
+  <ProjectExtensions>
+    <VisualStudio>
+      <FlavorProperties GUID="{349c5851-65df-11da-9384-00065b846f21}">
+        <WebProjectProperties>
+          <UseIIS>False</UseIIS>
+          <AutoAssignPort>True</AutoAssignPort>
+          <DevelopmentServerPort>58184</DevelopmentServerPort>
+          <DevelopmentServerVPath>/</DevelopmentServerVPath>
+          <IISUrl>
+          </IISUrl>
+          <NTLMAuthentication>False</NTLMAuthentication>
+          <UseCustomServer>False</UseCustomServer>
+          <CustomServerUrl>
+          </CustomServerUrl>
+          <SaveServerSettingsInUserFile>False</SaveServerSettingsInUserFile>
+        </WebProjectProperties>
+      </FlavorProperties>
+    </VisualStudio>
+  </ProjectExtensions>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
