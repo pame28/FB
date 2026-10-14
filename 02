@@ -1,59 +1,39 @@
-80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
-$ git config --global core.longpaths true
-
-80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
-$ git fetch --all
-git: 'credential-manager-core' is not a git command. See 'git --help'.
-
-80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
-$ git checkout -b BH-21980_Control-Cambios-Fase2 origin/BH-21980_AdecuaciON_Fase2_Megre_PU
-error: The following untracked working tree files would be overwritten by checkout:
-        BasePerdidasOperativas/.svn/pristine/01/0195d9e880d5d561659ba33f1ba9247904417347.svn-base
-        BasePerdidasOperativas/.svn/pristine/03/0386eab82a9c6ac4670310a0e2d25ff6a62cb931.svn-base
-        BasePerdidasOperativas/.svn/pristine/04/04e113e79e770b05b8926b3619ee036b68e97ae6.svn-base
-        BasePerdidasOperativas/.svn/pristine/05/055d6db6771bdb3156e24c5831e70aa1502f054e.svn-base
-        BasePerdidasOperativas/.svn/pristine/06/0627b6964562d87869740e7bbc85c07e4dcbc66d.svn-base
-        BasePerdidasOperativas/.svn/pristine/07/07d5445763c18bc985f598104001b7a5221ce063.svn-base
-        BasePerdidasOperativas/.svn/pristine/09/096edd100f0ac6b49f4f1094745bb9683bed470c.svn-base
-        BasePerdidasOperativas/.svn/pristine/0a/0a111162b6cc8cb5731c130108c9d936d4df57fa.svn-base
-        BasePerdidasOperativas/.svn/pristine/0a/0a94b736578e7c21de9feed08ff6eb475d658e3f.svn-base
-        BasePerdidasOperativas/.svn/pristine/0a/0ab81d9ef9936ddcd9863f8a824dab091adc8e3b.svn-base
-        BasePerdidasOperativas/.svn/pristine/0b/0b1266ac6c276416a73e3b074fc9227b7968692e.svn-base
-        BasePerdidasOperativas/.svn/pristine/0b/0b92b4fdfde605544133474b384638a7a6478aee.svn-base
-        BasePerdidasOperativas/.svn/pristine/0b/0ba770972f1715c4a9e83ed1b7469d73ed662ba6.svn-base
-        BasePerdidasOperativas/.svn/pristine/0c/0ca2ec56bee7d2f5c5c12b020680e6e148832913.svn-base
-        BasePerdidasOperativas/.svn/pristine/11/11f45c33c2e6b77b3a750ee6ef1d1d2458b60f4d.svn-base
-        BasePerdidasOperativas/.svn/pristine/12/12c25aba75d10d86d474b7104c585cd307ab7f85.svn-base
-        BasePerdidasOperativas/.svn/pristine/13/13c2525c1dc9efac49c008caae70ede29f7d2c43.svn-base
-        BasePerdidasOperativas/.svn/pristine/16/16210833a1b0ed7ddf405344bcd81e79280cdbef.svn-base
-        BasePerdidasOperativas/.svn/pristine/16/16a1b5aa2aa4221111a05a4f44356a40823c6cd8.svn-base
-        BasePerdidasOperativas/.svn/pristine/1a/1a5ce9afa749edd7bd2d3fd17a0005201725d914.svn-base
-        BasePerdidasOperativas/.svn/pristine/1a/1aa5820979ac253d1897c3f508b12e2d1e0b7453.svn-base
-        BasePerdidasOperativas/.svn/pristine/1b/1b3375d3a9bebf4a1cfe8c39e1942b620c6eb132.svn-base
-        BasePerdidasOperativas/.svn/pristine/1c/1c13f49c5a504e11bf7f949f9b7b15f3c12caecf.svn-base
-        BasePerdidasOperativas/.svn/pristine/1d/1d413ce79ee6c6562b034041cfbea230f016ea06.svn-base
-        BasePerdidasOperativas/.svn/pristine/1e/1e2a96d09842682ec481ccedbd3680f6d24e64e9.svn-base
-        BasePerdidasOperativas/.svn/pristine/1e/1ea4dc8fd2536131793d60e3717b795d18281181.svn-base
-        BasePerdidasOperativas/.svn/pristine/1e/1edb7b4a4239496aa0bb29431d39607a323a73b2.svn-base
-        BasePerdidasOperativas/.svn/pristine/21/213b9931e2c62dbda475c50f36cf0c28af4b3500.svn-base
-        BasePerdidasOperativas/.svn/pristine/23/2320550527090704050ebb691bf5bfaadf4135a6.svn-base
-        BasePerdidasOperativas/.svn/pristine/24/24955596fb3eef4ac77f941d939c627cec93c2ff.svn-base
-        BasePerdidasOperativas/.svn/pristine/26/26382422213fbfdf7542eb1c7240828dbe024611.svn-base
-        BasePerdidasOperativas/.svn/pristine/26/265c43a879148f908d2427b14bc2d9baef037ba2.svn-base
-        BasePerdidasOperativas/.svn/pristine/26/268de76582923c86d47fa16c78508e546931d761.svn-base
-        BasePerdidasOperativas/.svn/pristine/26/26af83a5eb288423b96b8c05ff967d76195387b1.svn-base
-        BasePerdidasOperativas/.svn/pristine/26/26d5fe23f4063d3188cfb58ac02cdd105cbba461.svn-base
-        BasePerdidasOperativas/.svn/pristine/27/27087b0677ada3b699c0923c7e741d63a265caff.svn-base
-        BasePerdidasOperativas/.svn/pristine/28/282c47165a81c83dd412ad7ba115532738e05a30.svn-base
-        BasePerdidasOperativas/.svn/pristine/28/286846a27f342f1c57f4dca499bcec6d4203f56f.svn-base
-        BasePerdidasOperativas/.svn/pristine/28/28dd61535e0137690345bebc92b232eb2fc8779f.svn-base
-        BasePerdidasOperativas/.svn/pristine/29/2943e3f681940de97157bdecf9117c00afcd2a11.svn-base
-        BasePerdidasOperativas/.svn/pristine/29/299fb3117ae88df5c939304589b464fdc39fcda9.svn-base
-        BasePerdidasOperativas/.svn/pristine/2a/2aa1ce870dd81cb56fa2fd103d1c4537f4077ca2.svn-base
-        BasePerdidasOperativas/.svn/pristine/2b/2b2645ffbf2c678925d2b5d0997900e171704486.svn-base
-        BasePerdidasOperativas/.svn/pristine/2b/2b90acc9725b75e370b212c6b744054b9cfa5b65.svn-base
+       BasePerdidasOperativas/.svn/pristine/2b/2b90acc9725b75e370b212c6b744054b9cfa5b65.svn-base
         BasePe
 Aborting
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
+$ git ls-files | grep -i "^C
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
+$ git ls-files | grep -i "0195d9e880d5d561659ba33f1ba9247904417347"
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
+$ git ls-tree -r --name-only origin/BH-21980_AdecuaciON_Fase2_Megre_PU | grep -i "0195d9e880d5d561659ba33f1ba9247904417347"
+BasePerdidasOperativas/.svn/pristine/01/0195d9e880d5d561659ba33f1ba9247904417347.svn-base
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
+$ git status --short | head -20
+D  BasePerdidasOperativas/.svn/pristine/01/0195d9e880d5d561659ba33f1ba9247904417347.svn-base
+D  BasePerdidasOperativas/.svn/pristine/03/0386eab82a9c6ac4670310a0e2d25ff6a62cb931.svn-base
+D  BasePerdidasOperativas/.svn/pristine/04/04e113e79e770b05b8926b3619ee036b68e97ae6.svn-base
+D  BasePerdidasOperativas/.svn/pristine/05/055d6db6771bdb3156e24c5831e70aa1502f054e.svn-base
+D  BasePerdidasOperativas/.svn/pristine/06/0627b6964562d87869740e7bbc85c07e4dcbc66d.svn-base
+D  BasePerdidasOperativas/.svn/pristine/07/07d5445763c18bc985f598104001b7a5221ce063.svn-base
+D  BasePerdidasOperativas/.svn/pristine/09/096edd100f0ac6b49f4f1094745bb9683bed470c.svn-base
+D  BasePerdidasOperativas/.svn/pristine/0a/0a111162b6cc8cb5731c130108c9d936d4df57fa.svn-base
+D  BasePerdidasOperativas/.svn/pristine/0a/0a94b736578e7c21de9feed08ff6eb475d658e3f.svn-base
+D  BasePerdidasOperativas/.svn/pristine/0a/0ab81d9ef9936ddcd9863f8a824dab091adc8e3b.svn-base
+D  BasePerdidasOperativas/.svn/pristine/0b/0b1266ac6c276416a73e3b074fc9227b7968692e.svn-base
+D  BasePerdidasOperativas/.svn/pristine/0b/0b92b4fdfde605544133474b384638a7a6478aee.svn-base
+D  BasePerdidasOperativas/.svn/pristine/0b/0ba770972f1715c4a9e83ed1b7469d73ed662ba6.svn-base
+D  BasePerdidasOperativas/.svn/pristine/0c/0ca2ec56bee7d2f5c5c12b020680e6e148832913.svn-base
+D  BasePerdidasOperativas/.svn/pristine/11/11f45c33c2e6b77b3a750ee6ef1d1d2458b60f4d.svn-base
+D  BasePerdidasOperativas/.svn/pristine/12/12c25aba75d10d86d474b7104c585cd307ab7f85.svn-base
+D  BasePerdidasOperativas/.svn/pristine/13/13c2525c1dc9efac49c008caae70ede29f7d2c43.svn-base
+D  BasePerdidasOperativas/.svn/pristine/16/16210833a1b0ed7ddf405344bcd81e79280cdbef.svn-base
+D  BasePerdidasOperativas/.svn/pristine/16/16a1b5aa2aa4221111a05a4f44356a40823c6cd8.svn-base
+D  BasePerdidasOperativas/.svn/pristine/1a/1a5ce9afa749edd7bd2d3fd17a0005201725d914.svn-base
 
 80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
 $
