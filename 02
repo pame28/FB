@@ -1,2 +1,1 @@
-git checkout --ours -- BasePerdidasOperativas/BasePerdidasOperativas/bin/ BasePerdidasOperativas/BasePerdidasOperativas/obj/ BasePerdidasOperativas/BasePerdidasOperativas.suo
-git add BasePerdidasOperativas/BasePerdidasOperativas/bin/ BasePerdidasOperativas/BasePerdidasOperativas/obj/ BasePerdidasOperativas/BasePerdidasOperativas.suo
+git restore -- "Informacion del proyecto"
