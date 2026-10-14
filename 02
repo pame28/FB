@@ -1,22 +1,12 @@
 80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
+$ git config --global core.longpaths true
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
+$ git fetch --all
+git: 'credential-manager-core' is not a git command. See 'git --help'.
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
 $ git checkout -b BH-21980_Control-Cambios-Fase2 origin/BH-21980_AdecuaciON_Fase2_Megre_PU
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.CanalesServiciosDisponiblesCNBS.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.DemandasJuiciosEjecuciónCNBS.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteCiberIncidentesCNBS.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteCoberturaRiesgos.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteDemandasJuicioEjecucion.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteDetalleDemandasJuiciosEjecucion.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteEventosPerdidasCNBS.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReportePerdidasNetasAnual.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteRecuperacionEPCNBS.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteSeguimientoPlanAccion.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.ReporteServiciosDisponibles.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.TransaccionesCanalesServicio.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.TransaccionesCanalesServicioCNBS.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/BasePerdidasOperativas.Reportes.XtraReportPerdidasNetas.resources': Filename too long
-error: cannot stat 'BasePerdidasOperativas/BasePerdidasOperativas/obj/Debug/TempPE/Web References.hn.banpais.wsactivedirectoryde.Reference.cs.dll': Filename too long
-error: cannot stat 'Informacion del proyecto/Correo/rtc-005-requerimiento-a-tecnologia - Sistema de Base de Pérdidas Operativas - Oficial - Trabajando.pdf': Filename too long
-error: cannot stat 'Informacion del proyecto/Documentación técnica/rtc-005-requerimiento-a-tecnologia - Sistema de Base de Pérdidas Operativas - Final.pdf': Filename too long
 error: The following untracked working tree files would be overwritten by checkout:
         BasePerdidasOperativas/.svn/pristine/01/0195d9e880d5d561659ba33f1ba9247904417347.svn-base
         BasePerdidasOperativas/.svn/pristine/03/0386eab82a9c6ac4670310a0e2d25ff6a62cb931.svn-base
@@ -64,3 +54,6 @@ error: The following untracked working tree files would be overwritten by checko
         BasePerdidasOperativas/.svn/pristine/2b/2b90acc9725b75e370b212c6b744054b9cfa5b65.svn-base
         BasePe
 Aborting
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2/Sitio/PerdidasOperativas (master)
+$
