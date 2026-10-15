@@ -1,7 +1,5 @@
-Ayudame a redcatr mejor este item para redactar mi bitacora:
-
-* Investigar sobre las ultimas versiones desplegadas, las bases de datos que se estan usando, los servidores. Las versiones en git. 
-* Realizar merge  de la Adecuaciones Fase 2 con la rama del Mantenieminto express de las cuentas contables
-* Levantar el aplicativo localmente
-* Realizar pruebas locales de los camboos de Adecauciones Fase 2 en conjunto con Cinthia
-* Leer requerimiento de la adecuacion en un 50% 
+* Investigar las últimas versiones desplegadas del aplicativo, las bases de datos y los servidores utilizados, así como las versiones disponibles en Git.
+* Realizar el merge de la rama de Adecuaciones Fase 2 con la rama de Mantenimiento Express de las Cuentas Contables.
+* Configurar y levantar el aplicativo en el entorno local.
+* Ejecutar pruebas locales de los cambios correspondientes a Adecuaciones Fase 2 en conjunto con Cinthia.
+* Revisar el requerimiento de Adecuaciones Fase 2, completando aproximadamente el 50 % de su lectura y análisis.
