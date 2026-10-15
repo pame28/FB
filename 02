@@ -1,5 +1,7 @@
-Error	27	Resource file "obj\Debug\BasePerdidasOperativas.Reportes.CanalesServiciosDisponiblesCNBS.resources" has an invalid name. The item metadata "%(FullPath)" cannot be applied to the path "obj\Debug\BasePerdidasOperativas.Reportes.CanalesServiciosDisponiblesCNBS.resources". C:\Users\80730.HN\Desktop\Projects\2026\BH-21980 Control de Cambio - Adecuación Sistema Riesgo Operativo - Fase 2\Sitio\PerdidasOperativas\BasePerdidasOperativas\BasePerdidasOperativas\obj\Debug\BasePerdidasOperativas.Reportes.CanalesServiciosDisponiblesCNBS.resources	BasePerdidasOperativas
+Ayudame a redcatr mejor este item para redactar mi bitacora:
 
-
-
-Me estoy fijando que tengo este error
+* Investigar sobre las ultimas versiones desplegadas, las bases de datos que se estan usando, los servidores. Las versiones en git. 
+* Realizar merge  de la Adecuaciones Fase 2 con la rama del Mantenieminto express de las cuentas contables
+* Levantar el aplicativo localmente
+* Realizar pruebas locales de los camboos de Adecauciones Fase 2 en conjunto con Cinthia
+* Leer requerimiento de la adecuacion en un 50% 
