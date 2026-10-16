@@ -1,11 +1,57 @@
-[plugin:vite:import-analysis] Failed to resolve import "../pages/LoginPage" from "src/routes/AppRouter.jsx". Does the file exist?
-C:/Users/80730.HN/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/src/routes/AppRouter.jsx:3:26
-18 |  import { Fragment as Fragment2, useState } from "react";
-19 |  import { Navigate, Route, Routes } from "react-router-dom";
-20 |  import { LoginPage } from "../pages/LoginPage";
-   |                             ^
-21 |  import { useAuthStore } from "../hooks/useAuthStore";
-22 |  import { apiFeedbackAuthorized } from "../api/APIS";
+import { Link } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import { NavCard, CardGrid } from "../";
+import styles from "./Pages.module.css";
+
+export const ModulePage = ({ module }) => {
+  const Icon = module.icon;
+
+  return (
+    <>
+      <Link to="/home" className={styles.back}>
+        <ArrowLeft size={16} /> Volver al inicio
+      </Link>
+
+      <header className={styles.header}>
+        <div className={styles.headerIcon}>
+          <Icon size={26} />
+        </div>
+        <div>
+          <span className={styles.eyebrow}>Módulo</span>
+          <h1 className={styles.title}>{module.label}</h1>
+          <p className={styles.subtitle}>{module.description}</p>
+        </div>
+      </header>
+
+      {module.pages.length > 0 ? (
+        <CardGrid>
+          {module.pages.map((p) => (
+            <NavCard
+              key={p.key}
+              to={p.fullPath}
+              icon={p.icon}
+              title={p.label}
+              description={p.description}
+              meta="Abrir"
+            />
+          ))}
+        </CardGrid>
+      ) : (
+        <div className={styles.empty}>Este módulo estará disponible próximamente.</div>
+      )}
+    </>
+  );
+};
+
+
+[plugin:vite:import-analysis] Failed to resolve import "../shared/components" from "src/pages/modules/ModulePage.jsx". Does the file exist?
+C:/Users/80730.HN/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/src/pages/modules/ModulePage.jsx:3:34
+17 |  import { Link } from "react-router-dom";
+18 |  import { ArrowLeft } from "lucide-react";
+19 |  import { NavCard, CardGrid } from "../shared/components";
+   |                                     ^
+20 |  import styles from "./Pages.module.css";
+21 |  export const ModulePage = ({ module }) => {
     at TransformPluginContext._formatLog (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:42846:41)
     at TransformPluginContext.error (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:42843:16)
     at normalizeUrl (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:40820:23)
@@ -21,72 +67,4 @@ You can also disable this overlay by setting server.hmr.overlay to false in vite
 
 
 
-import { Fragment, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
-import { LoginPage } from '../pages/LoginPage/LoginPage'
-
-import { useAuthStore } from '../hooks/useAuthStore'
-import { apiFeedbackAuthorized } from '../api/APIS'
-import { endpointsAPI } from '../api/endpointApi'
-import { messagesFunctions } from '../helpers/messagesFunctions'
-import { useUiStore } from '../hooks/useUiStore'
-import { useIDBStore } from '../hooks/useIDBStore'
-import { ModalConfirmation } from '../components/ModalConfirmation'
-
-import { MainLayout } from '../layout/MainLayout'
-import { HomePage } from '../pages/HomePage'
-import { ModulePage } from '../pages/ModulePage'
-import { MODULES } from './routesConfig'
-
-export const AppRouter = () => {
-    const { status, logout } = useAuthStore();
-    const [modal, setModal] = useState();
-
-    const { getMessage } = messagesFunctions();
-    const { openModalConfirmation, closeModalConfirmation } = useUiStore();
-    const { crearIDB, addData } = useIDBStore();
-
-    //Inicializa el proceso de validación de los tiempos de inactividad
-    const init = () => {
-        window.addEventListener("mousemove", resetTimer, false);
-        window.addEventListener("mousedown", resetTimer, false);
-        window.addEventListener("mousewheel", resetTimer, false);
-        window.addEventListener("touchmove", resetTimer, false);
-        window.addEventListener("touchstart", resetTimer, false);
-        window.addEventListener("MSPointerMove", resetTimer, false);
-        window.addEventListener("keypress", resetTimer, false);
-        window.addEventListener("DOMMouseScroll", resetTimer, false);
-        window.addEventListener("unload", resetTimer, false);
-        startTimer();
-    }
-
-    return (
-        <>
-            {modal}
-            <Routes>
-                {status != "authenticated" //Esto lo tengo solo provisional para que me deje pasar del login
-                    ?
-                    <Route element={<MainLayout />}>
-                        <Route path="/home" element={<HomePage />} />
-
-                        {MODULES.map((module) => (
-                            <Fragment key={module.key}>
-                                <Route path={module.path} element={<ModulePage module={module} />} />
-                                {module.pages.map((page) => (
-                                    <Route key={page.key} path={page.fullPath} element={<page.component />} />
-                                ))}
-                            </Fragment>
-                        ))}
-
-                        <Route path="/*" element={<Navigate to="/home" replace />} />
-                    </Route>
-                    :
-                    <>
-                        <Route path="/login" element={<LoginPage />} />
-                        <Route path="/*" element={<Navigate to="/login" />} />
-                    </>
-                }
-            </Routes>
-        </>
-    )
-}
+No se como colocar ka ruta porque no me sale el directoroo que quiero
