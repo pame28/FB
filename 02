@@ -18,3 +18,75 @@ C:/Users/80730.HN/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeed
     at async viteTransformMiddleware (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:37550:24
 Click outside, press Esc key, or fix the code to dismiss.
 You can also disable this overlay by setting server.hmr.overlay to false in vite.config.js.
+
+
+
+import { Fragment, useState } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { LoginPage } from '../pages/LoginPage/LoginPage'
+
+import { useAuthStore } from '../hooks/useAuthStore'
+import { apiFeedbackAuthorized } from '../api/APIS'
+import { endpointsAPI } from '../api/endpointApi'
+import { messagesFunctions } from '../helpers/messagesFunctions'
+import { useUiStore } from '../hooks/useUiStore'
+import { useIDBStore } from '../hooks/useIDBStore'
+import { ModalConfirmation } from '../components/ModalConfirmation'
+
+import { MainLayout } from '../layout/MainLayout'
+import { HomePage } from '../pages/HomePage'
+import { ModulePage } from '../pages/ModulePage'
+import { MODULES } from './routesConfig'
+
+export const AppRouter = () => {
+    const { status, logout } = useAuthStore();
+    const [modal, setModal] = useState();
+
+    const { getMessage } = messagesFunctions();
+    const { openModalConfirmation, closeModalConfirmation } = useUiStore();
+    const { crearIDB, addData } = useIDBStore();
+
+    //Inicializa el proceso de validación de los tiempos de inactividad
+    const init = () => {
+        window.addEventListener("mousemove", resetTimer, false);
+        window.addEventListener("mousedown", resetTimer, false);
+        window.addEventListener("mousewheel", resetTimer, false);
+        window.addEventListener("touchmove", resetTimer, false);
+        window.addEventListener("touchstart", resetTimer, false);
+        window.addEventListener("MSPointerMove", resetTimer, false);
+        window.addEventListener("keypress", resetTimer, false);
+        window.addEventListener("DOMMouseScroll", resetTimer, false);
+        window.addEventListener("unload", resetTimer, false);
+        startTimer();
+    }
+
+    return (
+        <>
+            {modal}
+            <Routes>
+                {status != "authenticated" //Esto lo tengo solo provisional para que me deje pasar del login
+                    ?
+                    <Route element={<MainLayout />}>
+                        <Route path="/home" element={<HomePage />} />
+
+                        {MODULES.map((module) => (
+                            <Fragment key={module.key}>
+                                <Route path={module.path} element={<ModulePage module={module} />} />
+                                {module.pages.map((page) => (
+                                    <Route key={page.key} path={page.fullPath} element={<page.component />} />
+                                ))}
+                            </Fragment>
+                        ))}
+
+                        <Route path="/*" element={<Navigate to="/home" replace />} />
+                    </Route>
+                    :
+                    <>
+                        <Route path="/login" element={<LoginPage />} />
+                        <Route path="/*" element={<Navigate to="/login" />} />
+                    </>
+                }
+            </Routes>
+        </>
+    )
+}
