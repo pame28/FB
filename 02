@@ -1,25 +1,23 @@
-<!doctype html>
-<html lang="es">
+import { createRoot } from 'react-dom/client'
+import 'bootstrap/dist/css/bootstrap.min.css'
+import './shared/styles/global.css'
+import { App } from './App.jsx'
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/assets/images/icon.png" />
+createRoot(document.getElementById('root')).render(<App />)
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet" />
 
-  <title>eCoaching</title>
-</head>
 
-<body>
-  <div id="root"></div>
-  <script>
-    const fechaActual = new Date().getTime();
-    document.write(`<script src="config/config.js?v=${fechaActual}"><\/script>`);
-  </script>
-  <script type="module" src="/src/main.jsx"></script>
-</body>
 
-</html>
+
+import { BrowserRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { store } from './store/store'
+import { AppRouter } from './routes/AppRouter'
+
+export const App = () => (
+  <Provider store={store}>
+    <BrowserRouter>
+      <AppRouter />
+    </BrowserRouter>
+  </Provider>
+)
