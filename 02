@@ -1,53 +1,17 @@
-import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
-import { Navbar, Sidebar } from "../shared/components";
-import { MODULES, getBreadcrumb } from "../router/routesConfig";
-import { useMediaQuery } from "../hooks/useMediaQuery";
-import { useAuthStore } from "../hooks/useAuthStore";
-import styles from "./MainLayout.module.css";
+.layout {
+  --navbar-h: 80px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f4f6fa;
+}
 
-const STORAGE_KEY = "ecoaching.sidebarCollapsed";
+.body { flex: 1; display: flex; min-height: 0; }
 
-export const MainLayout = () => {
-  const { pathname } = useLocation();
-  const { logout } = useAuthStore();
-  const isMobile = useMediaQuery("(max-width: 860px)");
+.content { flex: 1; min-width: 0; padding: 32px; }
 
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
-  });
+.container { max-width: 1280px; margin: 0 auto; }
 
-  // Recuerda si el usuario dejó el sidebar contraído
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch { /* sin storage */ }
-  }, [collapsed]);
-
-  // En móvil, cierra el menú al navegar o al pasar a escritorio
-  useEffect(() => { setMobileOpen(false); }, [pathname, isMobile]);
-
-  const handleMenuClick = () =>
-    isMobile ? setMobileOpen((v) => !v) : setCollapsed((v) => !v);
-
-  return (
-    <div className={styles.layout}>
-      <Navbar crumbs={getBreadcrumb(pathname)} onMenuClick={handleMenuClick} />
-
-      <div className={styles.body}>
-        <Sidebar
-          modules={MODULES}
-          collapsed={collapsed && !isMobile}
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          onLogout={logout}
-        />
-
-        <main className={styles.content}>
-          <div className={styles.container}>
-            <Outlet />
-          </div>
-        </main>
-      </div>
-    </div>
-  );
-};
+@media (max-width: 860px) {
+  .content { padding: 20px 16px; }
+}
