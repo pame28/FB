@@ -1,23 +1,64 @@
-import { createRoot } from 'react-dom/client'
-import 'bootstrap/dist/css/bootstrap.min.css'
-import './shared/styles/global.css'
-import { App } from './App.jsx'
+/* ============================================================
+   Tokens de marca: única fuente de colores del proyecto
+   ============================================================ */
+:root {
+  /* Azules */
+  --bp-blue-expert: #003964;   /* marca, navbar, sidebar, títulos */
+  --bp-blue: #0C5ABA;
+  --bp-blue-fin: #2D8C9E;      /* acentos secundarios, etiquetas */
+  --bp-blue-digital: #05C0CF;  /* activo, focus, avatares */
+  --bp-cyan: #7DDFDE;
 
-createRoot(document.getElementById('root')).render(<App />)
+  /* Amarillos */
+  --bp-yellow-opt: #FFC000;    /* acción principal */
+  --bp-yellow-light: #FBCE64;  /* pendiente / acentos suaves */
 
+  /* Estados */
+  --bp-red: #A32D2D;
+  --bp-red-light: #FFCFCF;
+  --bp-green: #0F6E56;
+  --bp-warning: #7A4F00;
 
+  /* Neutros */
+  --bp-white: #FFFFFF;
+  --bp-black: #000000;
+  --bp-grey-l: #EEEEEE;
+  --bp-grey-d: #F3F3F5;
+  --bp-grey-neutral: #9EA2A2;  /* texto secundario, inactivo */
+  --bp-grey-dark: #979999;
 
+  /* Tipografía */
+  --font-base: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-brand: "Sora", system-ui, sans-serif;
 
+  /* Forma */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-card: 0 1px 2px rgba(0, 57, 100, 0.06), 0 1px 3px rgba(0, 57, 100, 0.08);
+}
 
-import { BrowserRouter } from 'react-router-dom'
-import { Provider } from 'react-redux'
-import { store } from './store/store'
-import { AppRouter } from './routes/AppRouter'
+/* ============================================================
+   Reset
+   ============================================================ */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-export const App = () => (
-  <Provider store={store}>
-    <BrowserRouter>
-      <AppRouter />
-    </BrowserRouter>
-  </Provider>
-)
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-base);
+  color: var(--bp-black);
+  background: var(--bp-grey-d);
+  -webkit-font-smoothing: antialiased;
+}
