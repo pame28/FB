@@ -1,8 +1,5 @@
-<button
-  type="button"
-  className={`${styles.iconBtn} ${styles.menuBtn}`}
-  onClick={onMenuClick}
-  aria-label="Abrir menú"
->
-  <Menu size={20} />
-</button>
+.menuBtn { display: none; }
+
+@media (max-width: 860px) {
+  .menuBtn { display: inline-flex; }
+}
