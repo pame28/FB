@@ -1,48 +1,451 @@
-function ModuleMenu({ module, collapsed }) {
-  const Icon = module.icon;
+Mira que necesito que terminaemos de hacer el Login, mas que todo la funcionalidad porque el diseño ya lo habian hecho 
 
-  return (
-    <>
-      <Link
-        to="/home"
-        className={cx(styles.link, styles.back)}
-        title={collapsed ? "Volver al inicio" : undefined}
-      >
-        <ArrowLeft size={18} strokeWidth={2.1} />
-        <span className={styles.text}>Volver al inicio</span>
-      </Link>
+Mira el codigo:
+import { endpointsAPI } from "../../api/endpointApi"
+import { apiFeedback } from "../../api/APIS"
+import { NavBar } from "../../components/NavBar"
+import { useForm } from "../../hooks/useForm";
+import { useEffect, useState } from "react";
+import { useAuthStore } from "../../hooks/useAuthStore";
+import { useIDBStore } from "../../hooks/useIDBStore";
+import { useNavigate } from "react-router-dom";
+import { useUiStore } from "../../hooks/useUiStore";
+import { ModalMessages } from "../../components/ModalMessages";
+import { messagesFunctions } from "../../helpers/messagesFunctions";
+import './LoginPage.css';
+import forge from 'node-forge';
+import axios from "axios";
 
-      <NavLink
-        to={module.path}
-        end
-        className={({ isActive }) => cx(styles.moduleHeader, isActive && styles.moduleHeaderActive)}
-        title={collapsed ? module.label : undefined}
-      >
-        <div className={styles.moduleIcon}>
-          <Icon size={18} strokeWidth={2.2} />
-        </div>
-        <div className={styles.moduleInfo}>
-          <span className={styles.moduleEyebrow}>Módulo</span>
-          <span className={styles.moduleName}>{module.label}</span>
-        </div>
-      </NavLink>
-
-      {module.pages.length > 0 && <span className={styles.label}>Opciones</span>}
-
-      {module.pages.map((p) => {
-        const PageIcon = p.icon;
-        return (
-          <NavLink
-            key={p.key}
-            to={p.fullPath}
-            className={linkClass}
-            title={collapsed ? p.label : undefined}
-          >
-            <PageIcon size={18} strokeWidth={2.1} />
-            <span className={styles.text}>{p.label}</span>
-          </NavLink>
-        );
-      })}
-    </>
-  );
+const initialForm = {
+    usuario: "",
+    contraseña: ""
 }
+
+export const LoginPage = () => {
+
+    const { usuario, contraseña, onInputChange, isValid } = useForm(initialForm);
+    const [imgLoad, setImgLoad] = useState();
+    const [messageError, setMessageError] = useState();
+
+    const { login } = useAuthStore();
+    const { addData, crearIDB } = useIDBStore();
+    const navigate = useNavigate();
+    const { openModal } = useUiStore();
+    const [modal, setModal] = useState();
+    const { getMessage } = messagesFunctions();
+
+
+    const loginPortal = async () => {
+
+
+        setImgLoad(<img src="assets/images/loading.gif" className="loading"></img>)
+
+        try {
+
+            // const pubKey = forge.pki.publicKeyFromPem(atob(config.rk));
+
+            // const passwordEncrypted = forge.util.encode64(pubKey.encrypt(contraseña, 'RSA-OAEP', { md: forge.md.sha1.create() })); //Encriptar contraseña utilizando OAEP por cambio en BackEnd para desencriptar
+            // const data = { usuario, contraseña: passwordEncrypted }
+
+            // const result = await apiFeedback.post(endpointsAPI.login, data);
+
+            // if (result.status == 200) {
+            //     const dataResult = result.data.data;
+            //     //Guarda datos en la base de datos Indexada del navegador
+            //     await crearIDB('Authentication');
+            //     await addData(dataResult.accessToken, "Authentication", "token");
+
+            //     const timeMs = dataResult.expiresIn * 60000; //calcular milisegundos de acuerdo a los minutos de duración del token
+            //     const dateLimit = new Date(new Date().getTime() + timeMs);
+
+            //     localStorage.setItem('dateLimit', dateLimit);
+            //     localStorage.setItem('UAD', dataResult.usuarioAD);
+            //     localStorage.setItem('UAS', dataResult.usuarioAS);
+
+
+            login();
+            //     navigate("/home")
+            // }
+        } catch (error) {
+            //     localStorage.setItem("status", "not-authenticated");
+            //     if (error.response?.data) {
+            //         if (error.response.data.errors?.mensaje) {
+            //             setMessageError(error.response.data.message + ": " + error.response.data.errors?.mensaje)
+            //             // showModal(error.response.data.message + ": " + error.response.data.errors?.mensaje);
+            //         } else {
+            //             setMessageError(error.response.data.message)
+            //             // showModal(error.response.data.message);
+            //         }
+            //     }
+            //     else {
+            //         setMessageError(error.message)
+
+            //         // showModal(error.message);
+            //     }
+        }
+        setImgLoad("")
+    }
+
+    const showModal = (content) => {
+        openModal();
+        const message = { ...getMessage("Incorrecto"), content, type: "error" }
+        setModal(<ModalMessages message={message} />)
+    }
+
+    const keyCapture = async (evt) => {
+        if (evt.key == "Enter") {
+            if (isValid && !imgLoad)
+                await loginPortal();
+        }
+    }
+
+    return (
+        <>
+            {modal}
+            <div className="login-page">
+                <div className="login-left">
+                    <div className="brand">
+                        <img className="logo" src="/assets/images/logo_BP_V.png" alt="logo" />
+                        <hr className="hr-yellow" />
+
+                        <h1>eCoaching</h1>
+                        {/* <div className="subtitle">Bienvenido al sistema de feedback</div> */}
+                    </div>
+                </div>
+
+                <div className="login-right">
+                    <div className="login-card">
+                        <div className="title">Bienvenido</div>
+                        <div className="help">Ingresa tus credenciales para acceder al sistema eCoaching</div>
+
+                        {messageError &&
+                            <div className="div-error" >
+                                <label class="label-error">{messageError}</label>
+                            </div>
+                        }
+                        <div className="div">
+                            <label class="login-label">USUARIO</label>
+                        </div>
+                        <div className="login-field">
+                            <img src="/assets/images/user.png" alt="user" />
+                            <input type="text"
+                                autoComplete="off"
+                                name="usuario"
+                                onChange={onInputChange}
+                                value={usuario}
+                                placeholder="Usuario de red"
+                                disabled={imgLoad} />
+                        </div>
+                        <div className="div">
+                            <label class="login-label">CONTRASEÑA</label>
+                        </div>
+                        <div className="login-field">
+                            <img src="/assets/images/password.png" alt="password" />
+                            <input type="password"
+                                autoComplete="off"
+                                name="contraseña"
+                                onChange={onInputChange}
+                                onKeyUpCapture={keyCapture}
+                                value={contraseña}
+                                placeholder="Contraseña de red"
+                                disabled={imgLoad} />
+                        </div>
+
+                        {/* <div className="checkbox-row">
+                            <input type="checkbox" id="cred" defaultChecked />
+                            <label htmlFor="cred">Iniciar sesión con credenciales de red</label>
+                        </div> */}
+
+                        <div>{imgLoad}</div>
+
+                        <div style={{ marginTop: 12 }}>
+                            <button className={isValid && !imgLoad ? "login-btn" : "login-btn disabled"}
+                                onClick={loginPortal}
+                                disabled={!isValid || imgLoad}
+                            >Iniciar sesión</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </>
+    )
+    //     <div className="col-10  offset-1 col-md-4 offset-md-4 col-sm-8 offset-sm-2 mb-2 mt-5 div-login">
+    //         <div className="col-12  mb-2 mt-4 div-align-center" >
+    //             <label className="lbl-title">Bienvenido</label>
+    //             <hr className="hr-mant mt-3"></hr>
+    //         </div>
+
+    //         <div className="row mb-3 mt-3">
+    //             <div className="col-2">
+    //                 <img src="/assets/images/user.png" width={"30px"} />
+    //             </div>
+    //             <div className="col-10">
+    //                 <input type="text"
+    //                     autoComplete="off"
+    //                     className="input-text"
+    //                     name="usuario"
+    //                     onChange={onInputChange}
+    //                     value={usuario}
+    //                     placeholder="Ingrese el usuario"
+    //                     disabled={imgLoad} />
+    //             </div>
+    //         </div>
+
+    //         <div className="row mb-3 mt-3">
+    //             <div className="col-2">
+    //                 <img src="/assets/images/password.png" width={"30px"} />
+    //             </div>
+    //             <div className="col-10">
+    //                 <input type="password"
+    //                     autoComplete="off"
+    //                     className="input-text"
+    //                     name="contraseña"
+    //                     onChange={onInputChange}
+    //                     onKeyUpCapture={keyCapture}
+    //                     value={contraseña}
+    //                     placeholder="Ingrese la contraseña"
+    //                     disabled={imgLoad} />
+    //             </div>
+    //         </div>
+
+
+    //         <div className="col-12 div-align-center">
+    //             {imgLoad}
+    //         </div>
+
+    //         <div className="col-8 offset-2 mb-4 mt-3">
+    //             <button className={isValid && !imgLoad ? "button-yellow-60" : "button-disabled"}
+    //                 onClick={loginPortal}
+    //                 disabled={!isValid || imgLoad}
+    //             >INICIAR</button>
+    //         </div>
+    //     </div>
+
+    // </div>
+    // </>
+    //     )
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ejemplo de consumo desde Postman:
+ES UN POST https://apifeedbackcolaboradoresde.banpais.hn/api/auth/login
+{
+    "userName": "USR_PRUCERT11",
+    "Password": "QErVrc8P/a/wFWQnJhA5+lYkKgk6r6SprxbPtHABas+UkfyLiIIzJht7yBoHCTXXMo1wjt6jTVHTh/qT9flOF7MNQ1p2yaUcHP8EzmLj1r3sFuo5q56QnDytSFjQkyz/XJrUOyZ0IQ+sl9Fez7fe0ASkRMVcDTLmYgBPJaf93UI="
+}
+
+
+
+
+Y responde esto:
+{
+    "code": 200,
+    "message": "OK",
+    "data": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYW1laWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYmYiOjE3OTIxNzQyODcsImV4cCI6MTc5MjE5MjI4NywiaWF0IjoxNzkyMTc0Mjg3LCJpc3MiOiJhcGlmZWVkYmFja2NvbGFib3JhZG9yZXMuYmFucGFpcy5obiIsImF1ZCI6ImZlZWRiYWNrY29sYWJvcmFkb3Jlcy5iYW5wYWlzLmhuIn0.q3rjfuNl8sEvJoIXVBsWzMMIYFmvYz1wrJz-IPz0V-s",
+        "expiresIn": 300,
+        "user": {
+            "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
+            "firstName": "Orlando",
+            "lastName": "Medina",
+            "userName": "usr_prucert11",
+            "email": "orlandom@banpais.hn",
+            "status": false,
+            "tellerCode": null,
+            "companyPositionId": 1,
+            "companyPosition": "Cajero",
+            "companyLocationId": 1,
+            "companyLocation": "Zona 1 Foránea",
+            "companyBranchId": 4,
+            "companyBranch": "AGENCIA TORRE DEL PAIS",
+            "companyDepartmentId": 1,
+            "companyDepartment": "HN - Agencias",
+            "role": {
+                "name": "Super Administrador",
+                "modules": [
+                    {
+                        "name": "Administración",
+                        "pages": [
+                            {
+                                "name": "Asignar roles a usuarios",
+                                "permissions": [
+                                    "crud.users",
+                                    "delete.users",
+                                    "read.usersroles"
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "name": "Mantenimiento",
+                        "pages": [
+                            {
+                                "name": "Editar perfil",
+                                "permissions": [
+                                    "read.loggeduserinfo"
+                                ]
+                            },
+                            {
+                                "name": "Mantenimiento a usuarios",
+                                "permissions": [
+                                    "edit.users",
+                                    "filter.usersroles",
+                                    "read.users",
+                                    "syncas400.users"
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+}
+
+
+
+
+import axios from "axios"
+import { useIDBStore } from "../hooks/useIDBStore"
+const { readData } = useIDBStore();
+
+//Configuración de BaseURL para API Feedback Colaboradores
+const apiFeedback = axios.create({
+    baseURL: atob(config.apiUrl)
+})
+
+//Configuración de BaseURL para API Feedback Colaboradores
+const apiFeedbackAuthorized = axios.create({
+    baseURL: atob(config.apiUrl)
+})
+
+//Configuración de Authorization para API Feedback Colaboradores
+//Esto permite que para todas las peticiones que se realicen se envie siempre el header Authorization con el Bearer Token
+apiFeedbackAuthorized.interceptors.request.use(async (configuration) => {
+    const token = await readData('Authentication', 'token');
+    // const token = localStorage.getItem("token");
+    configuration.headers = {
+        Authorization: 'Bearer ' + token
+    }
+    return configuration;
+})
+
+
+export { apiFeedback, apiFeedbackAuthorized } 
+
+
+
+
+
+
+export const endpointsAPI = {
+    auth: "api/auth",
+    login: "api/login",
+    accessos: "api/get-accesos",
+    maintenances: "api/get-maintenances",
+    createMaintenances: "api/create-maintenance",
+    editMaintenance: "api/edit-maintenance",
+    deleteMaintenance: "api/delete-maintenance",
+    getMaintenances: "api/get-all-maintenance",
+    getCampos: "api/get-campos",
+    createCampo: "api/create-campo",
+    edtiCampo: "api/edit-campo",
+    deleteCampo: "api/remove-campo",
+    getInfoMaintenance: "api/get-maintenance",
+    generateRandomKey: "api/generate-random-key",
+    generateRandomVector: "api/generate-random-vector",
+    generateRandomTag: "api/generate-random-tag",
+    encrypt: "api/encrypt",
+    decrypt: "api/decrypt",
+    generatekeys: "api/generate-keys",
+
+    getFormatos: "api/formatos/get-by-user",
+    getCamposFormatos: "api/formatos/campos-Formato",
+    descargarFormato: "api/formatos/descargar-formato",
+    cargarFormato: "api/formatos/cargar-formato",
+    refreshToken: "api/refresh-token"
+}
+
+
+export const messages = [
+    {
+        id: "Correcto",
+        body: {
+            title: "Correcto",
+            content: "",
+            type: "success",
+            txtBtn1: "Aceptar",
+            btnFunction1: "closeModal"
+        }
+    },
+    {
+        id: "Cargando",
+        body: {
+            title: "Cargando",
+            content: "",
+            type: "success"
+        }
+    },
+    {
+        id: "Incorrecto",
+        body: {
+            title: "Error",
+            content: "",
+            type: "error",
+            txtBtn1: "Aceptar",
+            btnFunction1: "closeModal"
+        }
+    },
+    {
+        id: "EliminarCampo",
+        body: {
+            title: "¿Está seguro que desea eliminar el campo ?",
+            content: "",
+            type: "error",
+            txtBtn1: "Si",
+            txtBtn2: "No",
+            btnFunction1: "eliminarCampo",
+            btnFunction2: "closeModal",
+        }
+    },
+    {
+        id: "EliminarRegistro",
+        body: {
+            title: "¿Está seguro que desea eliminar el registro ?",
+            content: "",
+            type: "error",
+            txtBtn1: "Si",
+            txtBtn2: "No",
+            btnFunction1: "eliminarRegistro",
+            btnFunction2: "closeModal",
+        }
+    },
+    {
+        id: 'errorAPI',
+        body: {
+            title: '¡Error!',
+            content: 'Ha ocurrido un error',
+            type: 'error',
+            txtBtn1: 'Aceptar',
+            btnFunction: 'refreshToken',
+            displayCloseModal: true
+        }
+    },
+]
+
+
+
+
+
+Tampoco se donde se coloca el dns inicial para realizar las consujltas 
