@@ -1,29 +1,48 @@
-.moduleHeader {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 8px 0 6px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  color: inherit;
-  text-decoration: none;
-  white-space: nowrap;
-  overflow: hidden;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-.moduleHeader:hover { background: rgba(255, 255, 255, 0.1); }
-.moduleHeader:focus-visible {
-  outline: 2px solid var(--bp-yellow-opt, #f5b301);
-  outline-offset: -2px;
-}
+function ModuleMenu({ module, collapsed }) {
+  const Icon = module.icon;
 
-/* Activo: cuando estás en la vista general del módulo */
-.moduleHeaderActive {
-  border-color: color-mix(in srgb, var(--bp-yellow-opt, #f5b301) 55%, transparent);
-  background: rgba(255, 255, 255, 0.1);
-}
-.collapsed .moduleHeaderActive .moduleIcon {
-  box-shadow: 0 0 0 2px var(--bp-blue-expert, #0b2545), 0 0 0 4px var(--bp-yellow-opt, #f5b301);
+  return (
+    <>
+      <Link
+        to="/home"
+        className={cx(styles.link, styles.back)}
+        title={collapsed ? "Volver al inicio" : undefined}
+      >
+        <ArrowLeft size={18} strokeWidth={2.1} />
+        <span className={styles.text}>Volver al inicio</span>
+      </Link>
+
+      <NavLink
+        to={module.path}
+        end
+        className={({ isActive }) => cx(styles.moduleHeader, isActive && styles.moduleHeaderActive)}
+        title={collapsed ? module.label : undefined}
+      >
+        <div className={styles.moduleIcon}>
+          <Icon size={18} strokeWidth={2.2} />
+        </div>
+        <div className={styles.moduleInfo}>
+          <span className={styles.moduleEyebrow}>Módulo</span>
+          <span className={styles.moduleName}>{module.label}</span>
+        </div>
+      </NavLink>
+
+      {module.pages.length > 0 && <span className={styles.label}>Opciones</span>}
+
+      {module.pages.map((p) => {
+        const PageIcon = p.icon;
+        return (
+          <NavLink
+            key={p.key}
+            to={p.fullPath}
+            className={linkClass}
+            title={collapsed ? p.label : undefined}
+          >
+            <PageIcon size={18} strokeWidth={2.1} />
+            <span className={styles.text}>{p.label}</span>
+          </NavLink>
+        );
+      })}
+    </>
+  );
 }
