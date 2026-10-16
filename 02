@@ -1,3 +1,6 @@
 Download the React DevTools for a better development experience: https://react.dev/link/react-devtools
 login:1 Access to XMLHttpRequest at 'https://apifeedbackcolaboradoresde.banpais.hn/api/auth/login' from origin 'http://localhost:5173' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
 apifeedbackcolaboradoresde.banpais.hn/api/auth/login:1  Failed to load resource: net::ERR_FAILED
+
+
+En loginpage me esta marcando un error: config is not defines
