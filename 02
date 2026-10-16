@@ -1,5 +1,25 @@
-* Investigar las últimas versiones desplegadas del aplicativo, las bases de datos y los servidores utilizados, así como las versiones disponibles en Git.
-* Realizar el merge de la rama de Adecuaciones Fase 2 con la rama de Mantenimiento Express de las Cuentas Contables.
-* Configurar y levantar el aplicativo en el entorno local.
-* Ejecutar pruebas locales de los cambios correspondientes a Adecuaciones Fase 2 en conjunto con Cinthia.
-* Revisar el requerimiento de Adecuaciones Fase 2, completando aproximadamente el 50 % de su lectura y análisis.
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/assets/images/icon.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet" />
+
+  <title>eCoaching</title>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script>
+    const fechaActual = new Date().getTime();
+    document.write(`<script src="config/config.js?v=${fechaActual}"><\/script>`);
+  </script>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
+</html>
