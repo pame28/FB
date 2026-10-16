@@ -1,11 +1,53 @@
-import {
-  ShieldCheck, Wrench, GraduationCap, ArrowLeftRight, BarChart3,
-  FileText, Search, Award, Users, User, UserCog, KeyRound, Eye,
-} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
+import { Navbar, Sidebar } from "../shared/components";
+import { MODULES, getBreadcrumb } from "../router/routesConfig";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useAuthStore } from "../hooks/useAuthStore";
+import styles from "./MainLayout.module.css";
 
-import { UsuariosRolesPage } from "../pages/administracion/UsuariosRolesPage";
-import { PermisosRolPage } from "../pages/administracion/PermisosRolPage";
-import { VistaUsuarioRolPage } from "../pages/administracion/VistaUsuarioRolPage";
-import { MantenimientoUsuariosPage } from "../pages/mantenimientos/MantenimientoUsuariosPage";
-import { EditarPerfilPage } from "../pages/mantenimientos/EditarPerfilPage";
-import { MantenimientoLiderPage } from "../pages/mantenimientos/MantenimientoLiderPage";
+const STORAGE_KEY = "ecoaching.sidebarCollapsed";
+
+export const MainLayout = () => {
+  const { pathname } = useLocation();
+  const { logout } = useAuthStore();
+  const isMobile = useMediaQuery("(max-width: 860px)");
+
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
+  });
+
+  // Recuerda si el usuario dejó el sidebar contraído
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch { /* sin storage */ }
+  }, [collapsed]);
+
+  // En móvil, cierra el menú al navegar o al pasar a escritorio
+  useEffect(() => { setMobileOpen(false); }, [pathname, isMobile]);
+
+  const handleMenuClick = () =>
+    isMobile ? setMobileOpen((v) => !v) : setCollapsed((v) => !v);
+
+  return (
+    <div className={styles.layout}>
+      <Navbar crumbs={getBreadcrumb(pathname)} onMenuClick={handleMenuClick} />
+
+      <div className={styles.body}>
+        <Sidebar
+          modules={MODULES}
+          collapsed={collapsed && !isMobile}
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          onLogout={logout}
+        />
+
+        <main className={styles.content}>
+          <div className={styles.container}>
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
