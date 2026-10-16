@@ -1,17 +1,20 @@
-.layout {
-  --navbar-h: 80px;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f4f6fa;
-}
-
-.body { flex: 1; display: flex; min-height: 0; }
-
-.content { flex: 1; min-width: 0; padding: 32px; }
-
-.container { max-width: 1280px; margin: 0 auto; }
-
-@media (max-width: 860px) {
-  .content { padding: 20px 16px; }
-}
+[plugin:vite:import-analysis] Failed to resolve import "../pages/LoginPage" from "src/routes/AppRouter.jsx". Does the file exist?
+C:/Users/80730.HN/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/src/routes/AppRouter.jsx:3:26
+18 |  import { Fragment as Fragment2, useState } from "react";
+19 |  import { Navigate, Route, Routes } from "react-router-dom";
+20 |  import { LoginPage } from "../pages/LoginPage";
+   |                             ^
+21 |  import { useAuthStore } from "../hooks/useAuthStore";
+22 |  import { apiFeedbackAuthorized } from "../api/APIS";
+    at TransformPluginContext._formatLog (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:42846:41)
+    at TransformPluginContext.error (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:42843:16)
+    at normalizeUrl (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:40820:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:40939:37
+    at async Promise.all (index 5)
+    at async TransformPluginContext.transform (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:40866:7)
+    at async EnvironmentPluginContainer.transform (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:42641:18)
+    at async loadAndTransform (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:36053:27)
+    at async viteTransformMiddleware (file:///C:/Users/80730.HN/Desktop/Projects/2026/BH-59681%20Sistema%20de%20Feedback/SistemaFeedbackColaboradores/FrontEnd/portal-coaching/node_modules/vite/dist/node/chunks/dep-3O3b9SCF.js:37550:24
+Click outside, press Esc key, or fix the code to dismiss.
+You can also disable this overlay by setting server.hmr.overlay to false in vite.config.js.
