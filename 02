@@ -1,204 +1,45 @@
-import forge from "node-forge";
+import { Fragment } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
 
-// Convierte un valor base64 del appsettings (.NET byte[]) a número grande para forge
-const base64ToBigInt = (b64) =>
-  new forge.jsbn.BigInteger(forge.util.bytesToHex(forge.util.decode64(b64)), 16);
+import { useAuthStore } from '../hooks/useAuthStore'
+import { useAllowedModules } from '../hooks/useAllowedModules'
+import { MainLayout } from '../layout/MainLayout'
+import { LoginPage } from '../pages/LoginPage/LoginPage'
+import { HomePage } from '../pages/HomePage'
+import { ModulePage } from '../pages/modules/ModulePage'
 
-// Encripta con la llave pública (RSA-OAEP + SHA-1), igual que RsaDecryptorService en la API
-export const encryptPassword = (password) => {
-  const publicKey = forge.pki.setRsaPublicKey(
-    base64ToBigInt(config.rsaModulus),
-    base64ToBigInt(config.rsaExponent)
-  );
-  const encrypted = publicKey.encrypt(forge.util.encodeUtf8(password), "RSA-OAEP", {
-    md: forge.md.sha1.create(),
-  });
-  return forge.util.encode64(encrypted);
-};
+export const AppRouter = () => {
+    const { status } = useAuthStore();
+    const modules = useAllowedModules();
 
-
-
-
-
-
-
-
-
-
-import { createSlice } from "@reduxjs/toolkit";
-
-export const SESSION_KEY = "ecoaching.session";
-
-// Al cargar la app, recupera la sesión guardada si no ha vencido
-const loadSession = () => {
-  try {
-    const session = JSON.parse(localStorage.getItem(SESSION_KEY));
-    if (session?.user && new Date(session.expiresAt) > new Date()) {
-      return { status: "authenticated", user: session.user, expiresAt: session.expiresAt };
+    if (status !== "authenticated") {
+        return (
+            <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/*" element={<Navigate to="/login" replace />} />
+            </Routes>
+        );
     }
-  } catch {
-    /* sesión dañada o sin acceso a storage */
-  }
-  return { status: "not-authenticated", user: null, expiresAt: null };
-};
 
-export const authSlice = createSlice({
-  name: "auth",
-  initialState: loadSession(),
-  reducers: {
-    onLogin: (state, { payload }) => {
-      state.status = "authenticated";
-      state.user = payload.user;
-      state.expiresAt = payload.expiresAt;
-    },
-    onLogout: (state) => {
-      state.status = "not-authenticated";
-      state.user = null;
-      state.expiresAt = null;
-    },
-  },
-});
+    return (
+        <Routes>
+            <Route element={<MainLayout />}>
+                <Route path="/home" element={<HomePage />} />
 
-export const { onLogin, onLogout } = authSlice.actions;
+                {modules.map((module) => (
+                    <Fragment key={module.key}>
+                        <Route path={module.path} element={<ModulePage module={module} />} />
+                        {module.pages.map((page) => (
+                            <Route key={page.key} path={page.fullPath} element={<page.component />} />
+                        ))}
+                    </Fragment>
+                ))}
 
-
-
-
-
-
-
-
-
-
-import { configureStore } from "@reduxjs/toolkit";
-import { authSlice } from "./auth/authSlice";
-// ...tus otros imports (uiSlice, etc.)
-
-export const store = configureStore({
-  reducer: {
-    auth: authSlice.reducer,
-    // ui: uiSlice.reducer,  ← los que ya tengas
-  },
-});
-
-
-
-
-
-
-
-
-import { useDispatch, useSelector } from "react-redux";
-import { apiFeedback } from "../api/APIS";
-import { endpointsAPI } from "../api/endpointApi";
-import { encryptPassword } from "../helpers/encryptPassword";
-import { onLogin, onLogout, SESSION_KEY } from "../store/auth/authSlice";
-import { useIDBStore } from "./useIDBStore";
-
-export const useAuthStore = () => {
-  const dispatch = useDispatch();
-  const { status, user, expiresAt } = useSelector((state) => state.auth);
-  const { crearIDB, addData } = useIDBStore();
-
-  // Llama a la API. Si falla, lanza el error para que la pantalla muestre el mensaje.
-  const startLogin = async (userName, password) => {
-    const { data: response } = await apiFeedback.post(endpointsAPI.login, {
-      userName: userName.trim(),
-      Password: encryptPassword(password),
-    });
-
-    const { token, expiresIn, user } = response.data;
-
-    // Token → IndexedDB (lo usa apiFeedbackAuthorized)
-    await crearIDB("Authentication");
-    await addData(token, "Authentication", "token");
-
-    // Usuario y vencimiento → localStorage + Redux (expiresIn viene en minutos)
-    const expiresAt = new Date(Date.now() + expiresIn * 60_000).toISOString();
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ user, expiresAt }));
-    dispatch(onLogin({ user, expiresAt }));
-  };
-
-  const logout = async () => {
-    try {
-      await addData("", "Authentication", "token");
-    } catch {
-      /* si la BD indexada no existe, no hay token que borrar */
-    }
-    localStorage.removeItem(SESSION_KEY);
-    dispatch(onLogout());
-  };
-
-  return {
-    status,
-    user,
-    role: user?.role ?? null,
-    expiresAt,
-    startLogin,
-    logout,
-  };
-};
-
-
-
-
-
-
-
-
-
-
-
-import { useMemo } from "react";
-import { useAuthStore } from "./useAuthStore";
-import { getAllowedModules } from "../routes/routesConfig";
-
-export const useAllowedModules = () => {
-  const { role } = useAuthStore();
-  return useMemo(() => getAllowedModules(role), [role]);
-};
-
-
-
-
-
-
-import { useMemo } from "react";
-import { useAuthStore } from "./useAuthStore";
-
-export const usePermissions = () => {
-  const { role } = useAuthStore();
-
-  const permissions = useMemo(
-    () => new Set(role?.modules?.flatMap((m) => m.pages.flatMap((p) => p.permissions)) ?? []),
-    [role]
-  );
-
-  const can = (permission) => permissions.has(permission);
-  const canAny = (...list) => list.some(can);
-
-  return { can, canAny, permissions };
-};
-
-
-
-
-
-
-
-
-
-
-
-
-import { usePermissions } from "../../../hooks/usePermissions";
-
-/**
- * <Can permission="edit.users"> <button>Editar</button> </Can>
- */
-export function Can({ permission, children, fallback = null }) {
-  const { can } = usePermissions();
-  return can(permission) ? children : fallback;
+                {/* Cualquier ruta sin permiso o inexistente → Home */}
+                <Route path="/*" element={<Navigate to="/home" replace />} />
+            </Route>
+        </Routes>
+    );
 }
 
 
@@ -208,63 +49,108 @@ export function Can({ permission, children, fallback = null }) {
 
 
 
+import { useEffect, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
+import { Navbar, Sidebar } from "../shared/components";
+import { getBreadcrumb } from "../routes/routesConfig";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useAuthStore } from "../hooks/useAuthStore";
+import { useAllowedModules } from "../hooks/useAllowedModules";
+import styles from "./MainLayout.module.css";
 
+const STORAGE_KEY = "ecoaching.sidebarCollapsed";
 
-export { Can } from "./Can";
-
-
-
-
-
-
-
-
-
-
-
-
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useForm } from "../../hooks/useForm";
-import { useAuthStore } from "../../hooks/useAuthStore";
-import "./LoginPage.css";
-
-const initialForm = { usuario: "", contraseña: "" };
-
-// Convierte cualquier error en un mensaje entendible para el usuario
-const getErrorMessage = (error) => {
-    const data = error.response?.data;
-    if (data?.message) {
-        return data.errors?.mensaje ? `${data.message}: ${data.errors.mensaje}` : data.message;
-    }
-    if (error.response?.status === 401) return "Usuario o contraseña incorrectos.";
-    if (error.code === "ERR_NETWORK") return "No se pudo conectar con el servidor. Verifica tu conexión.";
-    return "Ocurrió un error inesperado. Intenta de nuevo.";
+// Convierte el usuario del login al formato que usa el Navbar
+const toNavbarUser = (user) => {
+  if (!user) return undefined;
+  const first = user.firstName ?? "";
+  const last = user.lastName ?? "";
+  return {
+    name: `${first} ${last}`.trim(),
+    role: user.role?.name ?? "",
+    initials: `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase(),
+  };
 };
 
-export const LoginPage = () => {
-    const { usuario, contraseña, onInputChange, isValid } = useForm(initialForm);
-    const [loading, setLoading] = useState(false);
-    const [messageError, setMessageError] = useState("");
+export const MainLayout = () => {
+  const { pathname } = useLocation();
+  const { user, expiresAt, logout } = useAuthStore();
+  const modules = useAllowedModules();
+  const isMobile = useMediaQuery("(max-width: 860px)");
 
-    const { startLogin } = useAuthStore();
-    const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
+  });
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!isValid || loading) return;
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch { /* sin storage */ }
+  }, [collapsed]);
 
-        setLoading(true);
-        setMessageError("");
+  useEffect(() => { setMobileOpen(false); }, [pathname, isMobile]);
 
-        try {
-            await startLogin(usuario, contraseña);
-            navigate("/home", { replace: true });
-        } catch (error) {
-            setMessageError(getErrorMessage(error));
-        } finally {
-            setLoading(false);
-        }
-    };
+  // Cierra la sesión automáticamente cuando vence el token
+  useEffect(() => {
+    if (!expiresAt) return;
+    const msLeft = new Date(expiresAt).getTime() - Date.now();
+    if (msLeft <= 0) { logout(); return; }
+    const timer = setTimeout(logout, msLeft);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expiresAt]);
+
+  return (
+    <div className={styles.layout}>
+      <Navbar
+        user={toNavbarUser(user)}
+        crumbs={getBreadcrumb(pathname)}
+        onMenuClick={() => setMobileOpen((v) => !v)}
+      />
+
+      <div className={styles.body}>
+        <Sidebar
+          modules={modules}
+          collapsed={collapsed && !isMobile}
+          open={mobileOpen}
+          onClose={() => setMobileOpen(false)}
+          onLogout={logout}
+          onToggleCollapse={isMobile ? undefined : () => setCollapsed((v) => !v)}
+        />
+
+        <main className={styles.content}>
+          <div className={styles.container}>
+            <Outlet />
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+// quita:   import { MODULES } from "../routes/routesConfig";
+// agrega:
+import { useAllowedModules } from "../hooks/useAllowedModules";
+
+export const HomePage = () => {
+  const modules = useAllowedModules();
+
+  // ...y en el JSX cambia MODULES.map por modules.map
+
+
+
+
+
+
+
+
 
 
