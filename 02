@@ -1,165 +1,152 @@
-import {
-  ShieldCheck, Wrench, GraduationCap, ArrowLeftRight, BarChart3,
-  FileText, Search, Award, Users, User, UserCog, KeyRound, Eye,
-} from "lucide-react";
+Ok, me habias mencionado algo sobre guardar la respuesta del backend en redux local storage o algo asi. Dime que debo hacer paso a paso
 
-// Módulo de Administración
-import { UsuariosRolesPage } from "../pages/modules/administration/UsuariosRolesPage";
-import { PermisosRolPage } from "../pages/modules/administration/PermisosRolPage";
-import { VistaUsuarioRolPage } from "../pages/modules/administration/VistaUsuarioRolPage";
 
-// Módulo de Mantenimientos
-import { MantenimientoUsuariosPage } from "../pages/modules/management/MantenimientoUsuariosPage";
-import { EditarPerfilPage } from "../pages/modules/management/EditarPerfilPage";
-import { MantenimientoLiderPage } from "../pages/modules/management/MantenimientoLiderPage";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import forge from "node-forge";
+import { apiFeedback } from "../../api/APIS";
+import { endpointsAPI } from "../../api/endpointApi";
+import { useForm } from "../../hooks/useForm";
+import { useAuthStore } from "../../hooks/useAuthStore";
+import { useIDBStore } from "../../hooks/useIDBStore";
+import "./LoginPage.css";
 
-/**
- * ÚNICA fuente de verdad de la navegación.
- *
- * - moduleId / pageId: Id de la tabla Modules / Pages de la BD.
- *   El acceso se decide con el pageId que viene en el login (user.role.modules[].pages[].pageId).
- * - Página SIN pageId: aún no existe en el backend. Se ve solo en desarrollo.
- * - Módulo con pages: []: se muestra como "Próximamente".
- */
-const RAW_MODULES = [
-  {
-    key: "administracion",
-    moduleId: 2,
-    label: "Administración",
-    description: "Roles, permisos y accesos de los usuarios del sistema.",
-    icon: ShieldCheck,
-    path: "/administracion",
-    pages: [
-      {
-        key: "usuarios-roles",
-        pageId: 2,
-        label: "Usuarios y roles",
-        description: "Asigna roles a los usuarios del sistema.",
-        icon: Users,
-        path: "usuarios-roles",
-        component: UsuariosRolesPage,
-      },
-      {
-        key: "permisos-rol",
-        pageId: null, // Pendiente: aún no existe en la BD
-        label: "Permisos por rol",
-        description: "Define qué puede hacer cada rol.",
-        icon: KeyRound,
-        path: "permisos-rol",
-        component: PermisosRolPage,
-      },
-      {
-        key: "vista-roles",
-        pageId: null, // Pendiente: aún no existe en la BD
-        label: "Vista de roles",
-        description: "Consulta los usuarios agrupados por rol.",
-        icon: Eye,
-        path: "vista-roles",
-        component: VistaUsuarioRolPage,
-      },
-    ],
-  },
-  {
-    key: "mantenimientos",
-    moduleId: 3,
-    label: "Mantenimientos",
-    description: "Gestión de usuarios, perfiles y líderes.",
-    icon: Wrench,
-    path: "/mantenimientos",
-    pages: [
-      {
-        key: "usuarios",
-        pageId: 3,
-        label: "Mantenimiento de Usuarios",
-        description: "Crea, edita y desactiva usuarios.",
-        icon: Users,
-        path: "usuarios",
-        component: MantenimientoUsuariosPage,
-      },
-      {
-        key: "editar-perfil",
-        pageId: 4,
-        label: "Editar Perfil",
-        description: "Actualiza la información de tu perfil.",
-        icon: User,
-        path: "editar-perfil",
-        component: EditarPerfilPage,
-      },
-      {
-        key: "lider",
-        pageId: 5,
-        label: "Mantenimiento de Líder",
-        description: "Administra los líderes y sus equipos.",
-        icon: UserCog,
-        path: "lider",
-        component: MantenimientoLiderPage,
-      },
-    ],
-  },
+const initialForm = { usuario: "", contraseña: "" };
 
-  // Módulos futuros: cuando existan en la BD, se les agrega moduleId y sus páginas
-  { key: "coach", moduleId: null, label: "Coach", description: "Sesiones y seguimiento de coaching.", icon: GraduationCap, path: "/coach", pages: [] },
-  { key: "traslados", moduleId: null, label: "Traslados", description: "Movimientos de personal entre equipos.", icon: ArrowLeftRight, path: "/traslados", pages: [] },
-  { key: "indicadores", moduleId: null, label: "Indicadores", description: "Métricas y resultados de desempeño.", icon: BarChart3, path: "/indicadores", pages: [] },
-  { key: "plantillas", moduleId: null, label: "Plantillas", description: "Formatos y plantillas de evaluación.", icon: FileText, path: "/plantillas", pages: [] },
-  { key: "consulta", moduleId: null, label: "Consulta", description: "Búsqueda y consulta de información.", icon: Search, path: "/consulta", pages: [] },
-  { key: "certificaciones", moduleId: null, label: "Certificaciones", description: "Gestión de certificaciones del personal.", icon: Award, path: "/certificaciones", pages: [] },
-];
 
-// Agrega a cada página su ruta completa, ej: "/mantenimientos/usuarios"
-export const MODULES = RAW_MODULES.map((m) => ({
-  ...m,
-  pages: m.pages.map((p) => ({ ...p, fullPath: `${m.path}/${p.path}` })),
-}));
+const base64ToBigInt = (b64) =>
+    new forge.jsbn.BigInteger(forge.util.bytesToHex(forge.util.decode64(b64)), 16);
 
-/* ============================================================
-   Accesos
-   ============================================================ */
-
-// Páginas sin pageId: visibles en desarrollo (npm run dev), ocultas en producción
-const SHOW_PENDING_PAGES = import.meta.env.DEV;
-
-// Módulos "Próximamente": cambia a false si prefieres ocultarlos
-const SHOW_COMING_SOON = true;
-
-/**
- * Devuelve solo los módulos y páginas que el rol puede ver.
- * Se usa en Home, Sidebar y AppRouter.
- */
-export const getAllowedModules = (role) => {
-  const allowedPageIds = new Set(
-    role?.modules?.flatMap((m) => m.pages.map((p) => p.pageId)) ?? []
-  );
-
-  const canSeePage = (page) =>
-    page.pageId == null ? SHOW_PENDING_PAGES : allowedPageIds.has(page.pageId);
-
-  return MODULES.flatMap((m) => {
-    if (m.pages.length === 0) return SHOW_COMING_SOON ? [m] : [];
-
-    const pages = m.pages.filter(canSeePage);
-    return pages.length > 0 ? [{ ...m, pages }] : []; // sin páginas permitidas, el módulo no aparece
-  });
+// Encripta con la llave pública (RSA-OAEP + SHA-1)
+const encryptPassword = (password) => {
+    const publicKey = forge.pki.setRsaPublicKey(
+        base64ToBigInt(config.rsaModulus),
+        base64ToBigInt(config.rsaExponent)
+    );
+    const encrypted = publicKey.encrypt(forge.util.encodeUtf8(password), "RSA-OAEP", {
+        md: forge.md.sha1.create(),
+    });
+    return forge.util.encode64(encrypted);
 };
 
-/**
- * Junta todos los permisos del rol en un Set, ej: "edit.users", "read.users"...
- * Lo usa usePermissions() para mostrar u ocultar botones.
- */
-export const getPermissions = (role) =>
-  new Set(
-    role?.modules?.flatMap((m) => m.pages.flatMap((p) => p.permissions)) ?? []
-  );
+// Convierte cualquier error en un mensaje entendible para el usuario
+const getErrorMessage = (error) => {
+    const data = error.response?.data;
+    if (data?.message) {
+        return data.errors?.mensaje ? `${data.message}: ${data.errors.mensaje}` : data.message;
+    }
+    if (error.response?.status === 401) return "Usuario o contraseña incorrectos.";
+    if (error.code === "ERR_NETWORK") return "No se pudo conectar con el servidor. Verifica tu conexión.";
+    return "Ocurrió un error inesperado. Intenta de nuevo.";
+};
 
-/* ============================================================
-   Breadcrumb del navbar
-   ============================================================ */
-export const getBreadcrumb = (pathname) => {
-  const module = MODULES.find((m) => pathname === m.path || pathname.startsWith(`${m.path}/`));
-  if (!module) return [];
+export const LoginPage = () => {
+    const { usuario, contraseña, onInputChange, isValid } = useForm(initialForm);
+    const [loading, setLoading] = useState(false);
+    const [messageError, setMessageError] = useState("");
 
-  const crumbs = [{ label: module.label, to: module.path }];
-  const page = module.pages.find((p) => pathname.startsWith(p.fullPath));
-  if (page) crumbs.push({ label: page.label, to: page.fullPath });
-  return crumbs;
+    const { login } = useAuthStore();
+    const { crearIDB, addData } = useIDBStore();
+    const navigate = useNavigate();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!isValid || loading) return;
+
+        setLoading(true);
+        setMessageError("");
+
+        try {
+            const body = {
+                userName: usuario.trim(),
+                Password: encryptPassword(contraseña),
+               //Password: "QErVrc8P/a/wFWQnJhA5+lYkKgk6r6SprxbPtHABas+UkfyLiIIzJht7yBoHCTXXMo1wjt6jTVHTh/qT9flOF7MNQ1p2yaUcHP8EzmLj1r3sFuo5q56QnDytSFjQkyz/XJrUOyZ0IQ+sl9Fez7fe0ASkRMVcDTLmYgBPJaf93UI="
+            };
+
+            const { data: response } = await apiFeedback.post(endpointsAPI.login, body);
+            const { token, expiresIn, user } = response.data;
+
+            // Token en la base de datos indexada (lo usa apiFeedbackAuthorized)
+            await crearIDB("Authentication");
+            await addData(token, "Authentication", "token");
+
+            // expiresIn viene en minutos
+            const dateLimit = new Date(Date.now() + expiresIn * 60_000);
+            localStorage.setItem("dateLimit", dateLimit.toISOString());
+            localStorage.setItem("user", JSON.stringify(user));
+
+            login(user);
+            navigate("/home", { replace: true });
+        } catch (error) {
+            localStorage.setItem("status", "not-authenticated");
+            setMessageError(getErrorMessage(error));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="login-page">
+            <div className="login-left">
+                <div className="brand">
+                    <img className="logo" src="/assets/images/logo_BP_V.png" alt="Banpaís" />
+                    <hr className="hr-yellow" />
+                    <h1>eCoaching</h1>
+                </div>
+            </div>
+
+            <div className="login-right">
+                <form className="login-card" onSubmit={handleSubmit} noValidate>
+                    <div className="title">Bienvenido</div>
+                    <div className="help">Ingresa tus credenciales para acceder al sistema eCoaching</div>
+
+                    {messageError && (
+                        <div className="div-error" role="alert">
+                            <span className="label-error">{messageError}</span>
+                        </div>
+                    )}
+
+                    <label className="login-label" htmlFor="usuario">USUARIO</label>
+                    <div className="login-field">
+                        <img src="/assets/images/user.png" alt="" />
+                        <input
+                            id="usuario"
+                            type="text"
+                            name="usuario"
+                            autoComplete="off"
+                            placeholder="Usuario de red"
+                            value={usuario}
+                            onChange={onInputChange}
+                            disabled={loading}
+                        />
+                    </div>
+
+                    <label className="login-label" htmlFor="contrasena">CONTRASEÑA</label>
+                    <div className="login-field">
+                        <img src="/assets/images/password.png" alt="" />
+                        <input
+                            id="contrasena"
+                            type="password"
+                            name="contraseña"
+                            autoComplete="off"
+                            placeholder="Contraseña de red"
+                            value={contraseña}
+                            onChange={onInputChange}
+                            disabled={loading}
+                        />
+                    </div>
+
+                    {loading && <img src="/assets/images/loading.gif" className="loading" alt="Cargando" />}
+
+                    <button
+                        type="submit"
+                        className={isValid && !loading ? "login-btn" : "login-btn disabled"}
+                        disabled={!isValid || loading}
+                    >
+                        {loading ? "Validando..." : "Iniciar sesión"}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
 };
