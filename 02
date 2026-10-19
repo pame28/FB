@@ -1,106 +1,36 @@
-Mira, a nivel de BD lo tiene asi:
+namespace ApiFeedbackColaboradores.Dtos.Roles
+{
+    public class RoleDto
+    {
+        public int Id { get; set; }
+        public string RoleName { get; set; } = null!;
+        public string? RoleDescription { get; set; }
+        public List<RoleCatalogModuleDto> Modules { get; set; } = [];
+    }
 
-SELECT TOP (1000) [Id]
-      ,[Name]
-      ,[Description]
-  FROM [Coaching].[dbo].[Modules]
+    public class RoleCatalogModuleDto
+    {
+        public int Id { get; set; }
+        public string ModuleName { get; set; } = null!;
+        public string? ModuleDescription { get; set; }
+        public List<RoleCatalogPageDto> Pages { get; set; } = [];
+    }
 
-Id	Name	Description
-1	Inicio de Sesión	NULL
-2	Administración	NULL
-3	Mantenimiento	NULL
+    public class RoleCatalogPageDto
+    {
+        public int Id { get; set; }
+        public string? PageName { get; set; }
+        public string? PageDescription { get; set; }
+        public List<RoleCatalogPermissionDto> Permissions { get; set; } = [];
+    }
 
-
----------------------------------
-
-SELECT TOP (1000) [Id]
-      ,[Name]
-      ,[Description]
-      ,[ModuleId]
-  FROM [Coaching].[dbo].[Pages]
-
-
-Id	Name	Description	ModuleId
-1	Login	Pagina de inicio de sesión	1
-2	Asignar roles a usuarios	NULL	2
-3	Mantenimiento a usuarios	NULL	3
-4	Editar perfil	NULL	3
-5	Mantenimiento de líder	NULL	3
-
-
-----------------------------------
-
-SELECT TOP (1000) [Id]
-      ,[Name]
-      ,[Description]
-  FROM [Coaching].[dbo].[Roles]
+    public class RoleCatalogPermissionDto
+    {
+        public int Id { get; set; }
+        public string PermissionName { get; set; } = null!;
+        public string? PermissionDescription { get; set; }
+    }
+}
 
 
-
-Id	Name	Description
-1	Super Administrador	NULL
-2	Administrador operativo	NULL
-3	Coach	NULL
-4	Colaborador	NULL
-5	Mantenimiento	NULL
-7	Traslados	NULL
-8	Indicadores	NULL
-9	Reporteria	NULL
-10	Consulta	NULL
-11	Certificación	NULL
-
-
---- estos son todos los roles que solicitó el usuario
-
-
------------------------------------
-
-SELECT TOP (1000) [Id]
-      ,[Name]
-      ,[Description]
-      ,[PageId]
-  FROM [Coaching].[dbo].[Permissions]
-
-
-
-
-Id	Name	Description	PageId
-1	crud.users	Asignar roles a usuarios	2
-2	delete.users	Eliminar roles de usuarios	2
-3	read.usersroles	Permiso para remover un rol a un usuario	2
-4	filter.usersroles	Buscar y filtrar usuarios del sistema	3
-5	edit.users	Editar datos de usuarios(zona, correo, agencia, estatus)	3
-6	read.users	Cargar todos los usuarios del sistema	3
-7	syncas400.users	Sincronizar información con AS400	3
-8	read.loggeduserinfo	Ver mi propio perfil	4
-9	edit.loggeduserinfo	Editar mis datos	4
-10	filter.users	Buscar y filtrar líderes	5
-11	Roles.Read	Ver roles	2
-
-
-
-
-
-------------------------------------------
-
-
-SELECT TOP (1000) [RoleId]
-      ,[PermissionId]
-  FROM [Coaching].[dbo].[RolesPermissions]
-
-RoleId	PermissionId
-1	1
-1	2
-1	3
-1	4
-1	5
-1	6
-1	7
-1	8
-1	11
-
-
-
-Asi está, no se si algo de esto nos sirva. Yo podria hacer las modificaciones en el backend, pero no me gustaria que impactara demasiado
-
-
+Mira, ya estaba asi
