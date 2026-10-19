@@ -1,15 +1,74 @@
-// Convierte un valor base64 del appsettings (.NET byte[]) a número grande para forge
-const base64ToBigInt = (b64) =>
-    new forge.jsbn.BigInteger(forge.util.bytesToHex(forge.util.decode64(b64)), 16);
+Mira, hay una cosa que me está preocupando y es.. como vamos a manejar nosotros el tema de los accesos..
+Te voy a mostrar del lado del backend como funciona ... 
 
-// Encripta con la llave pública (RSA-OAEP + SHA-1), igual que RsaDecryptorService en la API
-const encryptPassword = (password) => {
-    const publicKey = forge.pki.setRsaPublicKey(
-        base64ToBigInt(config.rsaModulus),
-        base64ToBigInt(config.rsaExponent)
-    );
-    const encrypted = publicKey.encrypt(forge.util.encodeUtf8(password), "RSA-OAEP", {
-        md: forge.md.sha1.create(),
-    });
-    return forge.util.encode64(encrypted);
-};
+Primero se hace login ... y te devuelve esto:
+
+{
+  "code": 200,
+  "message": "OK",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYW1laWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYmYiOjE3OTI0NDYyNTcsImV4cCI6MTc5MjQ2NDI1NywiaWF0IjoxNzkyNDQ2MjU3LCJpc3MiOiJhcGlmZWVkYmFja2NvbGFib3JhZG9yZXMuYmFucGFpcy5obiIsImF1ZCI6ImZlZWRiYWNrY29sYWJvcmFkb3Jlcy5iYW5wYWlzLmhuIn0.ayzkVg8KLek_u0ahHiqKCV3Uy0oXY46Wuxw-5ykNJx8",
+    "expiresIn": 300,
+    "user": {
+      "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
+      "firstName": "Orlando",
+      "lastName": "Medina",
+      "userName": "usr_prucert11",
+      "email": "orlandom@banpais.hn",
+      "status": false,
+      "tellerCode": null,
+      "companyPositionId": 1,
+      "companyPosition": "Cajero",
+      "companyLocationId": 1,
+      "companyLocation": "Zona 1 Foránea",
+      "companyBranchId": 4,
+      "companyBranch": "AGENCIA TORRE DEL PAIS",
+      "companyDepartmentId": 1,
+      "companyDepartment": "HN - Agencias",
+      "role": {
+        "name": "Super Administrador",
+        "modules": [
+          {
+            "name": "Administración",
+            "pages": [
+              {
+                "name": "Asignar roles a usuarios",
+                "permissions": [
+                  "crud.users",
+                  "delete.users",
+                  "read.usersroles",
+                  "Roles.Read"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Mantenimiento",
+            "pages": [
+              {
+                "name": "Editar perfil",
+                "permissions": [
+                  "read.loggeduserinfo"
+                ]
+              },
+              {
+                "name": "Mantenimiento a usuarios",
+                "permissions": [
+                  "edit.users",
+                  "filter.usersroles",
+                  "read.users",
+                  "syncas400.users"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+
+
+
+
+Aqui sale exactamente el rol que tiene asignado los modulos y las paginas a las que tiene permiso. quiero hacer todo muy dinamico y que se entienda muy facil ... que sea muy ordenado. Yo no se como podemos hacer, me planteas algunas ideas por favor
