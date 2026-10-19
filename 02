@@ -1,47 +1,73 @@
-        private static LoginResponseDto BuildLoginResponse(User user, JwtResult jwtResult)
-        {
-            return new LoginResponseDto
-            {
-                Token = jwtResult.Token,
-                ExpiresIn = jwtResult.ExpiresIn,
-                User = new UserDataDto
-                {
-                    Id = user.Id,
-                    FirstName = user.FirstName,
-                    LastName = user.LastName,
-                    UserName = user.UserName,
-                    Email = user.Email,
-                    TellerCode = user.TellerCode,
-                    CompanyPositionId = user.CompanyPositionId ?? 0,
-                    CompanyPosition = user.CompanyPosition?.Name ?? string.Empty,
-                    CompanyLocationId = user.CompanyLocationId ?? 0,
-                    CompanyLocation = user.CompanyLocation?.Name ?? string.Empty,
-                    CompanyBranchId = user.CompanyBranchId,
-                    CompanyBranch = user.CompanyBranch?.Name ?? string.Empty,
-                    CompanyDepartmentId = user.CompanyAreaId ?? 0,
-                    CompanyDepartment = user.CompanyArea?.Name ?? string.Empty,
-                    Role = new UserRoleDto
-                    {
-                        Name = user.Role.Name,
-                    Modules = [.. user.Role.Permissions
-                        .GroupBy(p => new { p.Page.ModuleId, ModuleName = p.Page.Module.Name })
-                        .Select(moduleGroup => new RoleModuleDto
-                        {
-                            Name = moduleGroup.Key.ModuleName,
-                            Pages = [.. moduleGroup
-                                .GroupBy(p => new { p.PageId, PageName = p.Page.Name })
-                                .Select(pageGroup => new RolePageDto
-                                {
-                                    Name = pageGroup.Key.PageName ?? "",
-                                    Permissions = [.. pageGroup
-                                        .Select(p => p.Name)
-                                        .Distinct()
-                                        .OrderBy(permissionName => permissionName)]
-                                })
-                                .OrderBy(page => page.Name)]
-                        })
-                        .OrderBy(module => module.Name)]
-                    }
-                }
-            };
-        }
+{
+  "code": 200,
+  "message": "OK",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYW1laWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYmYiOjE3OTI0NDg3NzAsImV4cCI6MTc5MjQ2Njc3MCwiaWF0IjoxNzkyNDQ4NzcwLCJpc3MiOiJhcGlmZWVkYmFja2NvbGFib3JhZG9yZXMuYmFucGFpcy5obiIsImF1ZCI6ImZlZWRiYWNrY29sYWJvcmFkb3Jlcy5iYW5wYWlzLmhuIn0.WHg5QCaX4O1WR3eEgfLkKmsi4K-TfZQPUpUo9sbtV_4",
+    "expiresIn": 300,
+    "user": {
+      "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
+      "firstName": "Orlando",
+      "lastName": "Medina",
+      "userName": "usr_prucert11",
+      "email": "orlandom@banpais.hn",
+      "status": false,
+      "tellerCode": null,
+      "companyPositionId": 1,
+      "companyPosition": "Cajero",
+      "companyLocationId": 1,
+      "companyLocation": "Zona 1 Foránea",
+      "companyBranchId": 4,
+      "companyBranch": "AGENCIA TORRE DEL PAIS",
+      "companyDepartmentId": 1,
+      "companyDepartment": "HN - Agencias",
+      "role": {
+        "name": "Super Administrador",
+        "modules": [
+          {
+            "moduleId": 2,
+            "name": "Administración",
+            "pages": [
+              {
+                "pageId": 2,
+                "name": "Asignar roles a usuarios",
+                "permissions": [
+                  "crud.users",
+                  "delete.users",
+                  "read.usersroles",
+                  "Roles.Read"
+                ]
+              }
+            ]
+          },
+          {
+            "moduleId": 3,
+            "name": "Mantenimiento",
+            "pages": [
+              {
+                "pageId": 4,
+                "name": "Editar perfil",
+                "permissions": [
+                  "read.loggeduserinfo"
+                ]
+              },
+              {
+                "pageId": 3,
+                "name": "Mantenimiento a usuarios",
+                "permissions": [
+                  "edit.users",
+                  "filter.usersroles",
+                  "read.users",
+                  "syncas400.users"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
+
+
+
+Ya me responde asi mira
