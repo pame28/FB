@@ -3,26 +3,28 @@ import {
   FileText, Search, Award, Users, User, UserCog, KeyRound, Eye,
 } from "lucide-react";
 
-//Módulo de Administración
+// Módulo de Administración
 import { UsuariosRolesPage } from "../pages/modules/administration/UsuariosRolesPage";
 import { PermisosRolPage } from "../pages/modules/administration/PermisosRolPage";
 import { VistaUsuarioRolPage } from "../pages/modules/administration/VistaUsuarioRolPage";
 
-//Módulo de Administración
+// Módulo de Mantenimientos
 import { MantenimientoUsuariosPage } from "../pages/modules/management/MantenimientoUsuariosPage";
 import { EditarPerfilPage } from "../pages/modules/management/EditarPerfilPage";
 import { MantenimientoLiderPage } from "../pages/modules/management/MantenimientoLiderPage";
 
 /**
  * ÚNICA fuente de verdad de la navegación.
- * - Cada módulo genera: una card en Home, un ítem en el sidebar y su página de módulo.
- * - Cada página dentro de "pages" genera: una card en su módulo, un subítem en el sidebar y su ruta.
- * - Un módulo con pages: [] aparece como "Próximamente".
+ *
+ * - moduleId / pageId: Id de la tabla Modules / Pages de la BD.
+ *   El acceso se decide con el pageId que viene en el login (user.role.modules[].pages[].pageId).
+ * - Página SIN pageId: aún no existe en el backend. Se ve solo en desarrollo.
+ * - Módulo con pages: []: se muestra como "Próximamente".
  */
 const RAW_MODULES = [
   {
     key: "administracion",
-    moduleId:2,
+    moduleId: 2,
     label: "Administración",
     description: "Roles, permisos y accesos de los usuarios del sistema.",
     icon: ShieldCheck,
@@ -39,6 +41,7 @@ const RAW_MODULES = [
       },
       {
         key: "permisos-rol",
+        pageId: null, // Pendiente: aún no existe en la BD
         label: "Permisos por rol",
         description: "Define qué puede hacer cada rol.",
         icon: KeyRound,
@@ -47,6 +50,7 @@ const RAW_MODULES = [
       },
       {
         key: "vista-roles",
+        pageId: null, // Pendiente: aún no existe en la BD
         label: "Vista de roles",
         description: "Consulta los usuarios agrupados por rol.",
         icon: Eye,
@@ -92,12 +96,14 @@ const RAW_MODULES = [
       },
     ],
   },
-  { key: "coach", label: "Coach", description: "Sesiones y seguimiento de coaching.", icon: GraduationCap, path: "/coach", pages: [] },
-  { key: "traslados", label: "Traslados", description: "Movimientos de personal entre equipos.", icon: ArrowLeftRight, path: "/traslados", pages: [] },
-  { key: "indicadores", label: "Indicadores", description: "Métricas y resultados de desempeño.", icon: BarChart3, path: "/indicadores", pages: [] },
-  { key: "plantillas", label: "Plantillas", description: "Formatos y plantillas de evaluación.", icon: FileText, path: "/plantillas", pages: [] },
-  { key: "consulta", label: "Consulta", description: "Búsqueda y consulta de información.", icon: Search, path: "/consulta", pages: [] },
-  { key: "certificaciones", label: "Certificaciones", description: "Gestión de certificaciones del personal.", icon: Award, path: "/certificaciones", pages: [] },
+
+  // Módulos futuros: cuando existan en la BD, se les agrega moduleId y sus páginas
+  { key: "coach", moduleId: null, label: "Coach", description: "Sesiones y seguimiento de coaching.", icon: GraduationCap, path: "/coach", pages: [] },
+  { key: "traslados", moduleId: null, label: "Traslados", description: "Movimientos de personal entre equipos.", icon: ArrowLeftRight, path: "/traslados", pages: [] },
+  { key: "indicadores", moduleId: null, label: "Indicadores", description: "Métricas y resultados de desempeño.", icon: BarChart3, path: "/indicadores", pages: [] },
+  { key: "plantillas", moduleId: null, label: "Plantillas", description: "Formatos y plantillas de evaluación.", icon: FileText, path: "/plantillas", pages: [] },
+  { key: "consulta", moduleId: null, label: "Consulta", description: "Búsqueda y consulta de información.", icon: Search, path: "/consulta", pages: [] },
+  { key: "certificaciones", moduleId: null, label: "Certificaciones", description: "Gestión de certificaciones del personal.", icon: Award, path: "/certificaciones", pages: [] },
 ];
 
 // Agrega a cada página su ruta completa, ej: "/mantenimientos/usuarios"
@@ -106,7 +112,48 @@ export const MODULES = RAW_MODULES.map((m) => ({
   pages: m.pages.map((p) => ({ ...p, fullPath: `${m.path}/${p.path}` })),
 }));
 
-// Genera el breadcrumb del navbar a partir de la URL actual
+/* ============================================================
+   Accesos
+   ============================================================ */
+
+// Páginas sin pageId: visibles en desarrollo (npm run dev), ocultas en producción
+const SHOW_PENDING_PAGES = import.meta.env.DEV;
+
+// Módulos "Próximamente": cambia a false si prefieres ocultarlos
+const SHOW_COMING_SOON = true;
+
+/**
+ * Devuelve solo los módulos y páginas que el rol puede ver.
+ * Se usa en Home, Sidebar y AppRouter.
+ */
+export const getAllowedModules = (role) => {
+  const allowedPageIds = new Set(
+    role?.modules?.flatMap((m) => m.pages.map((p) => p.pageId)) ?? []
+  );
+
+  const canSeePage = (page) =>
+    page.pageId == null ? SHOW_PENDING_PAGES : allowedPageIds.has(page.pageId);
+
+  return MODULES.flatMap((m) => {
+    if (m.pages.length === 0) return SHOW_COMING_SOON ? [m] : [];
+
+    const pages = m.pages.filter(canSeePage);
+    return pages.length > 0 ? [{ ...m, pages }] : []; // sin páginas permitidas, el módulo no aparece
+  });
+};
+
+/**
+ * Junta todos los permisos del rol en un Set, ej: "edit.users", "read.users"...
+ * Lo usa usePermissions() para mostrar u ocultar botones.
+ */
+export const getPermissions = (role) =>
+  new Set(
+    role?.modules?.flatMap((m) => m.pages.flatMap((p) => p.permissions)) ?? []
+  );
+
+/* ============================================================
+   Breadcrumb del navbar
+   ============================================================ */
 export const getBreadcrumb = (pathname) => {
   const module = MODULES.find((m) => pathname === m.path || pathname.startsWith(`${m.path}/`));
   if (!module) return [];
@@ -116,8 +163,3 @@ export const getBreadcrumb = (pathname) => {
   if (page) crumbs.push({ label: page.label, to: page.fullPath });
   return crumbs;
 };
-
-
-que me falta agregar aqui?
-
-COn las otras dos paginas que me mencionaste que no estaban .. creo que aun no las tienen por eso no las han agregado en el backend
