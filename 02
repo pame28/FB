@@ -1,74 +1,106 @@
-Mira, hay una cosa que me está preocupando y es.. como vamos a manejar nosotros el tema de los accesos..
-Te voy a mostrar del lado del backend como funciona ... 
+Mira, a nivel de BD lo tiene asi:
 
-Primero se hace login ... y te devuelve esto:
+SELECT TOP (1000) [Id]
+      ,[Name]
+      ,[Description]
+  FROM [Coaching].[dbo].[Modules]
 
-{
-  "code": 200,
-  "message": "OK",
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYW1laWQiOiIwM2JmZWNjMS0xMTI5LTQ5ZjItYjk0OC01OTkzNGM3YTc4ZjciLCJuYmYiOjE3OTI0NDYyNTcsImV4cCI6MTc5MjQ2NDI1NywiaWF0IjoxNzkyNDQ2MjU3LCJpc3MiOiJhcGlmZWVkYmFja2NvbGFib3JhZG9yZXMuYmFucGFpcy5obiIsImF1ZCI6ImZlZWRiYWNrY29sYWJvcmFkb3Jlcy5iYW5wYWlzLmhuIn0.ayzkVg8KLek_u0ahHiqKCV3Uy0oXY46Wuxw-5ykNJx8",
-    "expiresIn": 300,
-    "user": {
-      "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
-      "firstName": "Orlando",
-      "lastName": "Medina",
-      "userName": "usr_prucert11",
-      "email": "orlandom@banpais.hn",
-      "status": false,
-      "tellerCode": null,
-      "companyPositionId": 1,
-      "companyPosition": "Cajero",
-      "companyLocationId": 1,
-      "companyLocation": "Zona 1 Foránea",
-      "companyBranchId": 4,
-      "companyBranch": "AGENCIA TORRE DEL PAIS",
-      "companyDepartmentId": 1,
-      "companyDepartment": "HN - Agencias",
-      "role": {
-        "name": "Super Administrador",
-        "modules": [
-          {
-            "name": "Administración",
-            "pages": [
-              {
-                "name": "Asignar roles a usuarios",
-                "permissions": [
-                  "crud.users",
-                  "delete.users",
-                  "read.usersroles",
-                  "Roles.Read"
-                ]
-              }
-            ]
-          },
-          {
-            "name": "Mantenimiento",
-            "pages": [
-              {
-                "name": "Editar perfil",
-                "permissions": [
-                  "read.loggeduserinfo"
-                ]
-              },
-              {
-                "name": "Mantenimiento a usuarios",
-                "permissions": [
-                  "edit.users",
-                  "filter.usersroles",
-                  "read.users",
-                  "syncas400.users"
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    }
-  }
-}
+Id	Name	Description
+1	Inicio de Sesión	NULL
+2	Administración	NULL
+3	Mantenimiento	NULL
+
+
+---------------------------------
+
+SELECT TOP (1000) [Id]
+      ,[Name]
+      ,[Description]
+      ,[ModuleId]
+  FROM [Coaching].[dbo].[Pages]
+
+
+Id	Name	Description	ModuleId
+1	Login	Pagina de inicio de sesión	1
+2	Asignar roles a usuarios	NULL	2
+3	Mantenimiento a usuarios	NULL	3
+4	Editar perfil	NULL	3
+5	Mantenimiento de líder	NULL	3
+
+
+----------------------------------
+
+SELECT TOP (1000) [Id]
+      ,[Name]
+      ,[Description]
+  FROM [Coaching].[dbo].[Roles]
+
+
+
+Id	Name	Description
+1	Super Administrador	NULL
+2	Administrador operativo	NULL
+3	Coach	NULL
+4	Colaborador	NULL
+5	Mantenimiento	NULL
+7	Traslados	NULL
+8	Indicadores	NULL
+9	Reporteria	NULL
+10	Consulta	NULL
+11	Certificación	NULL
+
+
+--- estos son todos los roles que solicitó el usuario
+
+
+-----------------------------------
+
+SELECT TOP (1000) [Id]
+      ,[Name]
+      ,[Description]
+      ,[PageId]
+  FROM [Coaching].[dbo].[Permissions]
 
 
 
 
-Aqui sale exactamente el rol que tiene asignado los modulos y las paginas a las que tiene permiso. quiero hacer todo muy dinamico y que se entienda muy facil ... que sea muy ordenado. Yo no se como podemos hacer, me planteas algunas ideas por favor
+Id	Name	Description	PageId
+1	crud.users	Asignar roles a usuarios	2
+2	delete.users	Eliminar roles de usuarios	2
+3	read.usersroles	Permiso para remover un rol a un usuario	2
+4	filter.usersroles	Buscar y filtrar usuarios del sistema	3
+5	edit.users	Editar datos de usuarios(zona, correo, agencia, estatus)	3
+6	read.users	Cargar todos los usuarios del sistema	3
+7	syncas400.users	Sincronizar información con AS400	3
+8	read.loggeduserinfo	Ver mi propio perfil	4
+9	edit.loggeduserinfo	Editar mis datos	4
+10	filter.users	Buscar y filtrar líderes	5
+11	Roles.Read	Ver roles	2
+
+
+
+
+
+------------------------------------------
+
+
+SELECT TOP (1000) [RoleId]
+      ,[PermissionId]
+  FROM [Coaching].[dbo].[RolesPermissions]
+
+RoleId	PermissionId
+1	1
+1	2
+1	3
+1	4
+1	5
+1	6
+1	7
+1	8
+1	11
+
+
+
+Asi está, no se si algo de esto nos sirva. Yo podria hacer las modificaciones en el backend, pero no me gustaria que impactara demasiado
+
+
