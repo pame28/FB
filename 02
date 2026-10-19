@@ -1,33 +1,235 @@
-Ok, me habias mencionado algo sobre guardar la respuesta del backend en redux local storage o algo asi. Dime que debo hacer paso a paso
+import forge from "node-forge";
+
+// Convierte un valor base64 del appsettings (.NET byte[]) a número grande para forge
+const base64ToBigInt = (b64) =>
+  new forge.jsbn.BigInteger(forge.util.bytesToHex(forge.util.decode64(b64)), 16);
+
+// Encripta con la llave pública (RSA-OAEP + SHA-1), igual que RsaDecryptorService en la API
+export const encryptPassword = (password) => {
+  const publicKey = forge.pki.setRsaPublicKey(
+    base64ToBigInt(config.rsaModulus),
+    base64ToBigInt(config.rsaExponent)
+  );
+  const encrypted = publicKey.encrypt(forge.util.encodeUtf8(password), "RSA-OAEP", {
+    md: forge.md.sha1.create(),
+  });
+  return forge.util.encode64(encrypted);
+};
+
+
+
+
+
+
+
+
+
+
+import { createSlice } from "@reduxjs/toolkit";
+
+export const SESSION_KEY = "ecoaching.session";
+
+// Al cargar la app, recupera la sesión guardada si no ha vencido
+const loadSession = () => {
+  try {
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY));
+    if (session?.user && new Date(session.expiresAt) > new Date()) {
+      return { status: "authenticated", user: session.user, expiresAt: session.expiresAt };
+    }
+  } catch {
+    /* sesión dañada o sin acceso a storage */
+  }
+  return { status: "not-authenticated", user: null, expiresAt: null };
+};
+
+export const authSlice = createSlice({
+  name: "auth",
+  initialState: loadSession(),
+  reducers: {
+    onLogin: (state, { payload }) => {
+      state.status = "authenticated";
+      state.user = payload.user;
+      state.expiresAt = payload.expiresAt;
+    },
+    onLogout: (state) => {
+      state.status = "not-authenticated";
+      state.user = null;
+      state.expiresAt = null;
+    },
+  },
+});
+
+export const { onLogin, onLogout } = authSlice.actions;
+
+
+
+
+
+
+
+
+
+
+import { configureStore } from "@reduxjs/toolkit";
+import { authSlice } from "./auth/authSlice";
+// ...tus otros imports (uiSlice, etc.)
+
+export const store = configureStore({
+  reducer: {
+    auth: authSlice.reducer,
+    // ui: uiSlice.reducer,  ← los que ya tengas
+  },
+});
+
+
+
+
+
+
+
+
+import { useDispatch, useSelector } from "react-redux";
+import { apiFeedback } from "../api/APIS";
+import { endpointsAPI } from "../api/endpointApi";
+import { encryptPassword } from "../helpers/encryptPassword";
+import { onLogin, onLogout, SESSION_KEY } from "../store/auth/authSlice";
+import { useIDBStore } from "./useIDBStore";
+
+export const useAuthStore = () => {
+  const dispatch = useDispatch();
+  const { status, user, expiresAt } = useSelector((state) => state.auth);
+  const { crearIDB, addData } = useIDBStore();
+
+  // Llama a la API. Si falla, lanza el error para que la pantalla muestre el mensaje.
+  const startLogin = async (userName, password) => {
+    const { data: response } = await apiFeedback.post(endpointsAPI.login, {
+      userName: userName.trim(),
+      Password: encryptPassword(password),
+    });
+
+    const { token, expiresIn, user } = response.data;
+
+    // Token → IndexedDB (lo usa apiFeedbackAuthorized)
+    await crearIDB("Authentication");
+    await addData(token, "Authentication", "token");
+
+    // Usuario y vencimiento → localStorage + Redux (expiresIn viene en minutos)
+    const expiresAt = new Date(Date.now() + expiresIn * 60_000).toISOString();
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ user, expiresAt }));
+    dispatch(onLogin({ user, expiresAt }));
+  };
+
+  const logout = async () => {
+    try {
+      await addData("", "Authentication", "token");
+    } catch {
+      /* si la BD indexada no existe, no hay token que borrar */
+    }
+    localStorage.removeItem(SESSION_KEY);
+    dispatch(onLogout());
+  };
+
+  return {
+    status,
+    user,
+    role: user?.role ?? null,
+    expiresAt,
+    startLogin,
+    logout,
+  };
+};
+
+
+
+
+
+
+
+
+
+
+
+import { useMemo } from "react";
+import { useAuthStore } from "./useAuthStore";
+import { getAllowedModules } from "../routes/routesConfig";
+
+export const useAllowedModules = () => {
+  const { role } = useAuthStore();
+  return useMemo(() => getAllowedModules(role), [role]);
+};
+
+
+
+
+
+
+import { useMemo } from "react";
+import { useAuthStore } from "./useAuthStore";
+
+export const usePermissions = () => {
+  const { role } = useAuthStore();
+
+  const permissions = useMemo(
+    () => new Set(role?.modules?.flatMap((m) => m.pages.flatMap((p) => p.permissions)) ?? []),
+    [role]
+  );
+
+  const can = (permission) => permissions.has(permission);
+  const canAny = (...list) => list.some(can);
+
+  return { can, canAny, permissions };
+};
+
+
+
+
+
+
+
+
+
+
+
+
+import { usePermissions } from "../../../hooks/usePermissions";
+
+/**
+ * <Can permission="edit.users"> <button>Editar</button> </Can>
+ */
+export function Can({ permission, children, fallback = null }) {
+  const { can } = usePermissions();
+  return can(permission) ? children : fallback;
+}
+
+
+
+
+
+
+
+
+
+
+export { Can } from "./Can";
+
+
+
+
+
+
+
+
+
+
 
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import forge from "node-forge";
-import { apiFeedback } from "../../api/APIS";
-import { endpointsAPI } from "../../api/endpointApi";
 import { useForm } from "../../hooks/useForm";
 import { useAuthStore } from "../../hooks/useAuthStore";
-import { useIDBStore } from "../../hooks/useIDBStore";
 import "./LoginPage.css";
 
 const initialForm = { usuario: "", contraseña: "" };
-
-
-const base64ToBigInt = (b64) =>
-    new forge.jsbn.BigInteger(forge.util.bytesToHex(forge.util.decode64(b64)), 16);
-
-// Encripta con la llave pública (RSA-OAEP + SHA-1)
-const encryptPassword = (password) => {
-    const publicKey = forge.pki.setRsaPublicKey(
-        base64ToBigInt(config.rsaModulus),
-        base64ToBigInt(config.rsaExponent)
-    );
-    const encrypted = publicKey.encrypt(forge.util.encodeUtf8(password), "RSA-OAEP", {
-        md: forge.md.sha1.create(),
-    });
-    return forge.util.encode64(encrypted);
-};
 
 // Convierte cualquier error en un mensaje entendible para el usuario
 const getErrorMessage = (error) => {
@@ -45,8 +247,7 @@ export const LoginPage = () => {
     const [loading, setLoading] = useState(false);
     const [messageError, setMessageError] = useState("");
 
-    const { login } = useAuthStore();
-    const { crearIDB, addData } = useIDBStore();
+    const { startLogin } = useAuthStore();
     const navigate = useNavigate();
 
     const handleSubmit = async (e) => {
@@ -57,96 +258,13 @@ export const LoginPage = () => {
         setMessageError("");
 
         try {
-            const body = {
-                userName: usuario.trim(),
-                Password: encryptPassword(contraseña),
-               //Password: "QErVrc8P/a/wFWQnJhA5+lYkKgk6r6SprxbPtHABas+UkfyLiIIzJht7yBoHCTXXMo1wjt6jTVHTh/qT9flOF7MNQ1p2yaUcHP8EzmLj1r3sFuo5q56QnDytSFjQkyz/XJrUOyZ0IQ+sl9Fez7fe0ASkRMVcDTLmYgBPJaf93UI="
-            };
-
-            const { data: response } = await apiFeedback.post(endpointsAPI.login, body);
-            const { token, expiresIn, user } = response.data;
-
-            // Token en la base de datos indexada (lo usa apiFeedbackAuthorized)
-            await crearIDB("Authentication");
-            await addData(token, "Authentication", "token");
-
-            // expiresIn viene en minutos
-            const dateLimit = new Date(Date.now() + expiresIn * 60_000);
-            localStorage.setItem("dateLimit", dateLimit.toISOString());
-            localStorage.setItem("user", JSON.stringify(user));
-
-            login(user);
+            await startLogin(usuario, contraseña);
             navigate("/home", { replace: true });
         } catch (error) {
-            localStorage.setItem("status", "not-authenticated");
             setMessageError(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
     };
 
-    return (
-        <div className="login-page">
-            <div className="login-left">
-                <div className="brand">
-                    <img className="logo" src="/assets/images/logo_BP_V.png" alt="Banpaís" />
-                    <hr className="hr-yellow" />
-                    <h1>eCoaching</h1>
-                </div>
-            </div>
 
-            <div className="login-right">
-                <form className="login-card" onSubmit={handleSubmit} noValidate>
-                    <div className="title">Bienvenido</div>
-                    <div className="help">Ingresa tus credenciales para acceder al sistema eCoaching</div>
-
-                    {messageError && (
-                        <div className="div-error" role="alert">
-                            <span className="label-error">{messageError}</span>
-                        </div>
-                    )}
-
-                    <label className="login-label" htmlFor="usuario">USUARIO</label>
-                    <div className="login-field">
-                        <img src="/assets/images/user.png" alt="" />
-                        <input
-                            id="usuario"
-                            type="text"
-                            name="usuario"
-                            autoComplete="off"
-                            placeholder="Usuario de red"
-                            value={usuario}
-                            onChange={onInputChange}
-                            disabled={loading}
-                        />
-                    </div>
-
-                    <label className="login-label" htmlFor="contrasena">CONTRASEÑA</label>
-                    <div className="login-field">
-                        <img src="/assets/images/password.png" alt="" />
-                        <input
-                            id="contrasena"
-                            type="password"
-                            name="contraseña"
-                            autoComplete="off"
-                            placeholder="Contraseña de red"
-                            value={contraseña}
-                            onChange={onInputChange}
-                            disabled={loading}
-                        />
-                    </div>
-
-                    {loading && <img src="/assets/images/loading.gif" className="loading" alt="Cargando" />}
-
-                    <button
-                        type="submit"
-                        className={isValid && !loading ? "login-btn" : "login-btn disabled"}
-                        disabled={!isValid || loading}
-                    >
-                        {loading ? "Validando..." : "Iniciar sesión"}
-                    </button>
-                </form>
-            </div>
-        </div>
-    );
-};
