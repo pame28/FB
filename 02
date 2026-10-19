@@ -1,35 +1,370 @@
-2026-10-19 15:12:50.718 [Information] [ApiFeedbackColaboradores.Middlewares.LoggingMiddleware] [40000340-0000-b600-b63f-84710c7967bb] Path: "/api/auth/login", Method: "POST"
-2026-10-19 15:12:54.746 [Error] [ApiFeedbackColaboradores.Endpoints.AuthEndpoints] [40000340-0000-b600-b63f-84710c7967bb] LoginError
-Microsoft.Data.SqlClient.SqlException (0x80131904): Login failed for user 'HN\DES-APLICAFE01$'.
-   at Microsoft.Data.SqlClient.SqlInternalConnection.OnError(SqlException exception, Boolean breakConnection, Action`1 wrapCloseInAction)
-   at Microsoft.Data.SqlClient.TdsParser.ThrowExceptionAndWarning(TdsParserStateObject stateObj, SqlCommand command, Boolean callerHasConnectionLock, Boolean asyncClose)
-   at Microsoft.Data.SqlClient.TdsParser.TryRun(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj, Boolean& dataReady)
-   at Microsoft.Data.SqlClient.TdsParser.Run(RunBehavior runBehavior, SqlCommand cmdHandler, SqlDataReader dataStream, BulkCopySimpleResultSet bulkCopyHandler, TdsParserStateObject stateObj)
-   at Microsoft.Data.SqlClient.SqlInternalConnectionTds.CompleteLogin(Boolean enlistOK)
-   at Microsoft.Data.SqlClient.SqlInternalConnectionTds.AttemptOneLogin(ServerInfo serverInfo, String newPassword, SecureString newSecurePassword, TimeoutTimer timeout, Boolean withFailover)
-   at Microsoft.Data.SqlClient.SqlInternalConnectionTds.LoginNoFailover(ServerInfo serverInfo, String newPassword, SecureString newSecurePassword, Boolean redirectedUserInstance, SqlConnectionString connectionOptions, SqlCredential credential, TimeoutTimer timeout)
-   at Microsoft.Data.SqlClient.SqlInternalConnectionTds.OpenLoginEnlist(TimeoutTimer timeout, SqlConnectionString connectionOptions, SqlCredential credential, String newPassword, SecureString newSecurePassword, Boolean redirectedUserInstance)
-   at Microsoft.Data.SqlClient.SqlInternalConnectionTds..ctor(DbConnectionPoolIdentity identity, SqlConnectionString connectionOptions, SqlCredential credential, Object providerInfo, String newPassword, SecureString newSecurePassword, Boolean redirectedUserInstance, SqlConnectionString userConnectionOptions, SessionData reconnectSessionData, Boolean applyTransientFaultHandling, String accessToken, IDbConnectionPool pool, Func`3 accessTokenCallback)
-   at Microsoft.Data.SqlClient.SqlConnectionFactory.CreateConnection(DbConnectionOptions options, DbConnectionPoolKey poolKey, DbConnectionPoolGroupProviderInfo poolGroupProviderInfo, IDbConnectionPool pool, DbConnection owningConnection, DbConnectionOptions userOptions)
-   at Microsoft.Data.ProviderBase.DbConnectionFactory.CreatePooledConnection(IDbConnectionPool pool, DbConnection owningObject, DbConnectionOptions options, DbConnectionPoolKey poolKey, DbConnectionOptions userOptions)
-   at Microsoft.Data.SqlClient.ConnectionPool.WaitHandleDbConnectionPool.CreateObject(DbConnection owningObject, DbConnectionOptions userOptions, DbConnectionInternal oldConnection)
-   at Microsoft.Data.SqlClient.ConnectionPool.WaitHandleDbConnectionPool.UserCreateRequest(DbConnection owningObject, DbConnectionOptions userOptions, DbConnectionInternal oldConnection)
-   at Microsoft.Data.SqlClient.ConnectionPool.WaitHandleDbConnectionPool.TryGetConnection(DbConnection owningObject, UInt32 waitForMultipleObjectsTimeout, Boolean allowCreate, Boolean onlyOneCheckConnection, DbConnectionOptions userOptions, DbConnectionInternal& connection)
-   at Microsoft.Data.SqlClient.ConnectionPool.WaitHandleDbConnectionPool.WaitForPendingOpen()
---- End of stack trace from previous location ---
-   at Microsoft.EntityFrameworkCore.Storage.RelationalConnection.OpenInternalAsync(Boolean errorsExpected, CancellationToken cancellationToken)
-   at Microsoft.EntityFrameworkCore.Storage.RelationalConnection.OpenInternalAsync(Boolean errorsExpected, CancellationToken cancellationToken)
-   at Microsoft.EntityFrameworkCore.Storage.RelationalConnection.OpenAsync(CancellationToken cancellationToken, Boolean errorsExpected)
-   at Microsoft.EntityFrameworkCore.Storage.RelationalCommand.ExecuteReaderAsync(RelationalCommandParameterObject parameterObject, CancellationToken cancellationToken)
-   at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.InitializeReaderAsync(AsyncEnumerator enumerator, CancellationToken cancellationToken)
-   at Microsoft.EntityFrameworkCore.SqlServer.Storage.Internal.SqlServerExecutionStrategy.ExecuteAsync[TState,TResult](TState state, Func`4 operation, Func`4 verifySucceeded, CancellationToken cancellationToken)
-   at Microsoft.EntityFrameworkCore.Query.Internal.SingleQueryingEnumerable`1.AsyncEnumerator.MoveNextAsync()
-   at Microsoft.EntityFrameworkCore.Query.ShapedQueryCompilingExpressionVisitor.SingleOrDefaultAsync[TSource](IAsyncEnumerable`1 asyncEnumerable, CancellationToken cancellationToken)
-   at Microsoft.EntityFrameworkCore.Query.ShapedQueryCompilingExpressionVisitor.SingleOrDefaultAsync[TSource](IAsyncEnumerable`1 asyncEnumerable, CancellationToken cancellationToken)
-   at ApiFeedbackColaboradores.Repositories.UsersRepository.GetByUserNameWithRoleAndPermissions(String userName) in C:\Orlando\pro\SistemaFeedbackColaboradores\Backend\ApiFeedbackColaboradores\Repositories\UsersRepository.cs:line 30
-   at ApiFeedbackColaboradores.Endpoints.AuthEndpoints.Login(LoginRequestDto loginRequest, ILoggerFactory loggerFactory, IServiceProvider serviceProvider, IValidator`1 validator) in C:\Orlando\pro\SistemaFeedbackColaboradores\Backend\ApiFeedbackColaboradores\Endpoints\AuthEndpoints.cs:line 94
-ClientConnectionId:4f0d1f09-8d24-4dcd-a444-439244675090
-Error Number:18456,State:1,Class:14
+recuerdas que me mencionaste que. no sabias cual era la llave que se utilizaba para enviar encriptada la contraseña? se que la tiene en appsettings, pero no se cual es 
 
 
-Pero yo puedo abrir el swagger desde mi navegador
+using ApiFeedbackColaboradores.Configuration;
+using ApiFeedbackColaboradores.Dtos;
+using ApiFeedbackColaboradores.Dtos.Auth;
+using ApiFeedbackColaboradores.Dtos.Security;
+using ApiFeedbackColaboradores.Dtos.Services;
+using ApiFeedbackColaboradores.Models;
+using ApiFeedbackColaboradores.Repositories.Interfaces;
+using ApiFeedbackColaboradores.Services.Interfaces;
+using FluentValidation;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+
+namespace ApiFeedbackColaboradores.Endpoints
+{
+    public static class AuthEndpoints
+    {
+        public static void MapSecurityEndpoints(this IEndpointRouteBuilder app)
+        {
+            var authGroup = app.MapGroup("/api/auth")
+                .WithTags("Auth");
+
+            authGroup.MapPost("/login", Login)
+                .WithName("Login")
+                .WithSummary("Autenticación de usuario con su contraseña encriptada con RSA.")
+                .Produces<ResponseObject<LoginResponseDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            authGroup.MapPost("/refresh-token", RefreshToken)
+                .WithName("RefreshToken")
+                .WithSummary("Renueva el token JWT actual usando su contenido y firma válidos.")
+                .Produces<ResponseObject<LoginResponseDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+
+        }
+
+
+        private static async Task<IResult> Login(
+            LoginRequestDto loginRequest,
+            ILoggerFactory loggerFactory,
+            IServiceProvider serviceProvider,
+            IValidator<LoginRequestDto> validator)
+        {
+            var errorResponse = new ResponseObjectError();
+            var logger = loggerFactory.CreateLogger(typeof(AuthEndpoints));
+            var loginLogsRepository = serviceProvider.GetRequiredService<ILoginLogsRepository>();
+
+            var loginLog = new LoginLog
+            {
+                LoginAttemptOn = DateTime.Now,
+                Successful = false,
+                UserName = loginRequest.UserName
+            };
+
+            try
+            {
+
+                var validationResult = await validator.ValidateAsync(loginRequest);
+
+                if (!validationResult.IsValid)
+                {
+                    errorResponse.Code = 400;
+                    errorResponse.Message = "Error en la validación del request.";
+                    errorResponse.Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage);
+
+                    return Results.Json(
+                        errorResponse,
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                
+                var rsaDecryptorService = serviceProvider.GetRequiredService<IRsaDecryptorService>();
+
+                byte[] encryptedPassword = Convert.FromBase64String(loginRequest.Password);
+
+                var decryptedPassword = await rsaDecryptorService.Decrypt(encryptedPassword);
+
+                if (string.IsNullOrWhiteSpace(decryptedPassword))
+                {
+                    errorResponse.Code = 400;
+                    errorResponse.Message = "No se pudo desencriptar la contraseña.";
+                    return Results.Json(errorResponse, statusCode: StatusCodes.Status400BadRequest);
+                }
+                var usersRepository = serviceProvider.GetRequiredService<IUsersRepository>();
+
+
+                var user = await usersRepository.GetByUserNameWithRoleAndPermissions(loginRequest.UserName);
+
+                if (user == null)
+                {
+                    errorResponse.Code = 401;
+                    errorResponse.Message = "Usuario no se encuentra registrado en la aplicación.";
+                    loginLog.Message = errorResponse.Message;
+                    await loginLogsRepository.CreateLog(loginLog);
+                    return Results.Json(errorResponse, statusCode: 401);
+                }
+
+                if (user.Status == Status.Inactivo)
+                {
+                    errorResponse.Code = 401;
+                    errorResponse.Message = "Usuario no se encuentra con estado activo en la aplicación.";
+                    loginLog.Message = errorResponse.Message;
+                    await loginLogsRepository.CreateLog(loginLog);
+                    return Results.Json(errorResponse, statusCode: 401);
+                }
+
+                var authService = serviceProvider.GetRequiredService<IWsBpAuthService>();
+
+                var authResult = await authService.Login(loginRequest.UserName, decryptedPassword);
+
+                if (!authResult.Success)
+                {
+                    errorResponse.Code = 401;
+                    errorResponse.Message = "Usuario o contraseña incorrectos";
+                    loginLog.Message = errorResponse.Message;
+                    await loginLogsRepository.CreateLog(loginLog);
+                    return Results.Json(errorResponse, statusCode: 401);
+                }
+
+                var jwtGeneratorService = serviceProvider.GetRequiredService<IJwtGeneratorService>();
+
+                var jwtResult = jwtGeneratorService.GenerateJwt(new Dictionary<string, string>
+                {
+                    { "userId", user.Id },
+                    { ClaimTypes.NameIdentifier, user.Id }
+                });
+
+                var loginResponse = BuildLoginResponse(user, jwtResult);
+
+                loginLog.Successful = true;
+                await loginLogsRepository.CreateLog(loginLog);
+
+                var response = new ResponseObject<LoginResponseDto>
+                {
+                    Data = loginResponse,
+                    Message = "OK",
+                    Code = 200,
+                    
+                };
+                return Results.Ok(response);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "LoginError");
+                errorResponse.Code = 500;
+                errorResponse.Message = "Ha ocurrido un error interno al realizar la solicitud.";
+                loginLog.Message = errorResponse.Message;
+                await loginLogsRepository.CreateLog(loginLog);
+                return Results.Json(errorResponse, statusCode: 500);
+            }
+        }
+
+
+        private static async Task<IResult> RefreshToken(
+            RefreshTokenRequestDto refreshTokenRequest,
+            IUsersRepository authRepository,
+            AppSettings appSettings,
+            IServiceProvider serviceProvider,
+            ILoggerFactory loggerFactory)
+        {
+            var errorResponse = new ResponseObjectError();
+            var logger = loggerFactory.CreateLogger(typeof(AuthEndpoints));
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(refreshTokenRequest.Token))
+                {
+                    errorResponse.Code = 400;
+                    errorResponse.Message = "El token es requerido para renovar la sesión.";
+                    return Results.Json(errorResponse, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var principal = ValidateJwtToken(refreshTokenRequest.Token, appSettings);
+                var userId = principal.FindFirstValue("userId");
+
+                if (string.IsNullOrWhiteSpace(userId))
+                {
+                    errorResponse.Code = 401;
+                    errorResponse.Message = "El token enviado no contiene la identidad requerida.";
+                    return Results.Json(errorResponse, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var user = await authRepository.GetByIdWithRoleAndPermissions(userId);
+
+                if (user == null)
+                {
+                    errorResponse.Code = 401;
+                    errorResponse.Message = "Usuario no se encuentra registrado en la aplicación.";
+                    return Results.Json(errorResponse, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                if (user.Status == Status.Inactivo)
+                {
+                    errorResponse.Code = 401;
+                    errorResponse.Message = "Usuario no se encuentra con estado activo en la aplicación.";
+                    return Results.Json(errorResponse, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var jwtGeneratorService = serviceProvider.GetRequiredService<IJwtGeneratorService>();
+                var jwtResult = jwtGeneratorService.GenerateJwt(new Dictionary<string, string>
+                {
+                    { "userId", user.Id },
+                    { ClaimTypes.NameIdentifier, user.Id }
+                });
+
+                var refreshResponse = BuildLoginResponse(user, jwtResult);
+                var response = new ResponseObject<LoginResponseDto>
+                {
+                    Data = refreshResponse,
+                    Message = "OK",
+                    Code = 200,
+                };
+
+                logger.LogInformation(JsonSerializer.Serialize(response));
+                return Results.Ok(response);
+            }
+            catch (SecurityTokenException ex)
+            {
+                logger.LogWarning(ex, "RefreshTokenValidationError");
+                errorResponse.Code = 401;
+                errorResponse.Message = "El token enviado no es válido o no puede renovarse.";
+                return Results.Json(errorResponse, statusCode: StatusCodes.Status401Unauthorized);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "RefreshTokenError");
+                errorResponse.Code = 500;
+                errorResponse.Message = "Ha ocurrido un error interno al realizar la solicitud.";
+                return Results.Json(errorResponse, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        private static LoginResponseDto BuildLoginResponse(User user, JwtResult jwtResult)
+        {
+            return new LoginResponseDto
+            {
+                Token = jwtResult.Token,
+                ExpiresIn = jwtResult.ExpiresIn,
+                User = new UserDataDto
+                {
+                    Id = user.Id,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    UserName = user.UserName,
+                    Email = user.Email,
+                    TellerCode = user.TellerCode,
+                    CompanyPositionId = user.CompanyPositionId ?? 0,
+                    CompanyPosition = user.CompanyPosition?.Name ?? string.Empty,
+                    CompanyLocationId = user.CompanyLocationId ?? 0,
+                    CompanyLocation = user.CompanyLocation?.Name ?? string.Empty,
+                    CompanyBranchId = user.CompanyBranchId,
+                    CompanyBranch = user.CompanyBranch?.Name ?? string.Empty,
+                    CompanyDepartmentId = user.CompanyAreaId ?? 0,
+                    CompanyDepartment = user.CompanyArea?.Name ?? string.Empty,
+                    Role = new UserRoleDto
+                    {
+                        Name = user.Role.Name,
+                    Modules = [.. user.Role.Permissions
+                        .GroupBy(p => new { p.Page.ModuleId, ModuleName = p.Page.Module.Name })
+                        .Select(moduleGroup => new RoleModuleDto
+                        {
+                            Name = moduleGroup.Key.ModuleName,
+                            Pages = [.. moduleGroup
+                                .GroupBy(p => new { p.PageId, PageName = p.Page.Name })
+                                .Select(pageGroup => new RolePageDto
+                                {
+                                    Name = pageGroup.Key.PageName ?? "",
+                                    Permissions = [.. pageGroup
+                                        .Select(p => p.Name)
+                                        .Distinct()
+                                        .OrderBy(permissionName => permissionName)]
+                                })
+                                .OrderBy(page => page.Name)]
+                        })
+                        .OrderBy(module => module.Name)]
+                    }
+                }
+            };
+        }
+
+        private static ClaimsPrincipal ValidateJwtToken(string token, AppSettings appSettings)
+        {
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.ASCII.GetBytes(appSettings.Jwt.SecretKey);
+
+            var validationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(key),
+                ValidateIssuer = true,
+                ValidIssuer = appSettings.Jwt.Issuer,
+                ValidateAudience = true,
+                ValidAudience = appSettings.Jwt.Audience,
+                ValidateLifetime = false,
+                ClockSkew = TimeSpan.Zero
+            };
+
+            var principal = tokenHandler.ValidateToken(token, validationParameters, out var validatedToken);
+
+            if (validatedToken is not JwtSecurityToken)
+            {
+                throw new SecurityTokenException("Invalid token algorithm.");
+            }
+
+            return principal;
+        }
+    }
+}
+
+
+
+using ApiFeedbackColaboradores.Configuration;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace ApiFeedbackColaboradores.Services.Interfaces
+{
+    public class RsaDecryptorService(
+        ILogger<RsaDecryptorService> logger,
+        AppSettings appSettings
+    ) : IRsaDecryptorService
+    {
+        private readonly ILogger<RsaDecryptorService> logger = logger;
+
+        private readonly RSAParameters rsaParameters = new()
+        {
+            Modulus = appSettings.RsaParameters.Modulus,
+            D = appSettings.RsaParameters.D,
+            DP = appSettings.RsaParameters.DP,
+            DQ = appSettings.RsaParameters.DQ,
+            Exponent = appSettings.RsaParameters.Exponent,
+            InverseQ = appSettings.RsaParameters.InverseQ,
+            P = appSettings.RsaParameters.P,
+            Q = appSettings.RsaParameters.Q
+        };
+
+        public async Task<string?> Decrypt(byte[] dataToDecrypt)
+        {
+            try
+            {
+                byte[] decryptedData;
+
+                using (RSACryptoServiceProvider rsa = new(2048))
+                {
+                    rsa.ImportParameters(rsaParameters);
+                    decryptedData = rsa.Decrypt(dataToDecrypt, true);
+                }
+
+                return await Task.FromResult(Encoding.UTF8.GetString(decryptedData));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error");
+                return null;
+            }
+        }
+    }
+}
+
+
