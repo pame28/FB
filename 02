@@ -1,36 +1,47 @@
-namespace ApiFeedbackColaboradores.Dtos.Roles
-{
-    public class RoleDto
-    {
-        public int Id { get; set; }
-        public string RoleName { get; set; } = null!;
-        public string? RoleDescription { get; set; }
-        public List<RoleCatalogModuleDto> Modules { get; set; } = [];
-    }
-
-    public class RoleCatalogModuleDto
-    {
-        public int Id { get; set; }
-        public string ModuleName { get; set; } = null!;
-        public string? ModuleDescription { get; set; }
-        public List<RoleCatalogPageDto> Pages { get; set; } = [];
-    }
-
-    public class RoleCatalogPageDto
-    {
-        public int Id { get; set; }
-        public string? PageName { get; set; }
-        public string? PageDescription { get; set; }
-        public List<RoleCatalogPermissionDto> Permissions { get; set; } = [];
-    }
-
-    public class RoleCatalogPermissionDto
-    {
-        public int Id { get; set; }
-        public string PermissionName { get; set; } = null!;
-        public string? PermissionDescription { get; set; }
-    }
-}
-
-
-Mira, ya estaba asi
+        private static LoginResponseDto BuildLoginResponse(User user, JwtResult jwtResult)
+        {
+            return new LoginResponseDto
+            {
+                Token = jwtResult.Token,
+                ExpiresIn = jwtResult.ExpiresIn,
+                User = new UserDataDto
+                {
+                    Id = user.Id,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    UserName = user.UserName,
+                    Email = user.Email,
+                    TellerCode = user.TellerCode,
+                    CompanyPositionId = user.CompanyPositionId ?? 0,
+                    CompanyPosition = user.CompanyPosition?.Name ?? string.Empty,
+                    CompanyLocationId = user.CompanyLocationId ?? 0,
+                    CompanyLocation = user.CompanyLocation?.Name ?? string.Empty,
+                    CompanyBranchId = user.CompanyBranchId,
+                    CompanyBranch = user.CompanyBranch?.Name ?? string.Empty,
+                    CompanyDepartmentId = user.CompanyAreaId ?? 0,
+                    CompanyDepartment = user.CompanyArea?.Name ?? string.Empty,
+                    Role = new UserRoleDto
+                    {
+                        Name = user.Role.Name,
+                    Modules = [.. user.Role.Permissions
+                        .GroupBy(p => new { p.Page.ModuleId, ModuleName = p.Page.Module.Name })
+                        .Select(moduleGroup => new RoleModuleDto
+                        {
+                            Name = moduleGroup.Key.ModuleName,
+                            Pages = [.. moduleGroup
+                                .GroupBy(p => new { p.PageId, PageName = p.Page.Name })
+                                .Select(pageGroup => new RolePageDto
+                                {
+                                    Name = pageGroup.Key.PageName ?? "",
+                                    Permissions = [.. pageGroup
+                                        .Select(p => p.Name)
+                                        .Distinct()
+                                        .OrderBy(permissionName => permissionName)]
+                                })
+                                .OrderBy(page => page.Name)]
+                        })
+                        .OrderBy(module => module.Name)]
+                    }
+                }
+            };
+        }
