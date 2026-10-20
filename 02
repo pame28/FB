@@ -1,3 +1,14 @@
+Respecto a los catalogos:
+
+roles ya esta creado en el backend
+Areas aun no lo crean
+positions aun no los crean
+
+
+
+
+
+
 Olvidé mencionarte que, para cada request se debe enviar el token, en postman yo lo envio como Autorization Bearer Token 
 
 {
