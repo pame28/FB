@@ -1,208 +1,84 @@
-Ok, ayudame con e diseño de esta página...
+import { apiFeedbackAuthorized } from "./APIS";
+import { endpointsAPI } from "./endpointApi";
 
-Actualmente está asi:
+// Enum Status del backend. Al crear con status 0 respondió "Inactivo", por eso Inactivo = 0.
+// ⚠️ Confirma con backend que Activo = 1.
+export const USER_STATUS = { INACTIVO: 0, ACTIVO: 1 };
 
-import { useState, useEffect } from "react";
-import { NavBar } from "../../../components/NavBar";
-import { SideMenu } from "../../../components/SideMenu";
-import { Table } from "../../../components/Table";
+// Quita filtros vacíos para que el backend no los interprete como filtro
+const cleanFilters = (filters = {}) =>
+  Object.fromEntries(
+    Object.entries(filters).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+  );
 
-export const UsuariosRolesPage = () => {
-    const [usuarios, setUsuarios] = useState([]);
-    const [filtros, setFiltros] = useState({
-        rol: "Todos los roles",
-        area: "Todas las áreas",
-        puesto: "Todos los puestos",
-        estado: "Todos los estados"
-    });
+export const usersService = {
+  filter: async (filters) => {
+    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.usersFilter, cleanFilters(filters));
+    return data.data; // { items, pageNumber, pageSize, totalCount, totalPages }
+  },
 
-    // Datos de ejemplo
-    const usuariosData = [
-        {
-            nombre: "Carlos Méndez",
-            usuarioRed: "cmendez",
-            puesto: "Gerente de operaciones",
-            area: "Corporativo",
-            rolAsignado: "Administrador operativo",
-            agencia: "TeGuacalpa Central",
-            codigoCajero: "",
-            estado: "Activo"
-        },
-        {
-            nombre: "Ana Rodríguez",
-            usuarioRed: "arodriguez",
-            puesto: "Coach senior",
-            area: "Recursos Humanos",
-            rolAsignado: "Coach",
-            agencia: "SPS Norte",
-            codigoCajero: "",
-            estado: "Activo"
-        },
-        {
-            nombre: "Jorge Flores",
-            usuarioRed: "jflores",
-            puesto: "Cajero",
-            area: "Agencias",
-            rolAsignado: "Colaborador",
-            agencia: "La Ceiba",
-            codigoCajero: "CAJ-0011",
-            estado: "Activo"
-        },
-        {
-            nombre: "María López",
-            usuarioRed: "mlopez",
-            puesto: "Analista",
-            area: "Tecnología",
-            rolAsignado: "Reportería",
-            agencia: "Tegucigalpa Sur",
-            codigoCajero: "",
-            estado: "Activo"
-        }
-    ];
+  create: async (user) => {
+    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.users, user);
+    return data.data;
+  },
 
-    useEffect(() => {
-        setUsuarios(usuariosData);
-    }, []);
+  // Sin pageNumber/pageSize → exporta todo lo filtrado
+  exportExcel: (filters) =>
+    apiFeedbackAuthorized.post(endpointsAPI.usersExportExcel, cleanFilters(filters), { responseType: "blob" }),
 
-    const handleExportExcel = () => {
-        console.log("Exportar a Excel");
-        // Implementar lógica de exportación
-    };
-
-    const handleExportPDF = () => {
-        console.log("Exportar a PDF");
-        // Implementar lógica de exportación
-    };
-
-    const handleNuevoUsuario = () => {
-        console.log("Crear nuevo usuario");
-        // Implementar lógica para crear nuevo usuario
-    };
-
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        setFiltros(prev => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    const headers = ["nombre", "usuarioRed", "puesto", "area", "rolAsignado", "agencia",
-        "codigoCajero", "estado", "acciones",
-    ]
-
-    const headersMostrar = ["NOMBRE", "USUARIO DE RED", "PUESTO", "ÁREA", "ROL ASIGNADO", "AGENCIA / ZONA",
-        "CÓD. CAJERO", "ESTADO", "ACCIONES",
-    ]
-
-    const editUsuario = () => {
-    }
-
-    const deleteUsuario = () => {
-    }
+  exportPdf: (filters) =>
+    apiFeedbackAuthorized.post(endpointsAPI.usersExportPdf, cleanFilters(filters), { responseType: "blob" }),
+};
 
 
-    return (
-        <div className="usuarios-roles-page">
-
-            <div className="main-container">
-
-                <div className="content-area row">
-                    <div className="page-header col-6">
-                        <h1 className="page-title">Usuarios del sistema</h1>
-
-                    </div>
-                    <div className="header-actions col-6">
-                        <button className="btn btn-excel" onClick={handleExportExcel}>
-                            📊 Exportar Excel
-                        </button>
-                        <button className="btn btn-pdf" onClick={handleExportPDF}>
-                            📄 Exportar PDF
-                        </button>
-                        <button className="btn btn-new" onClick={handleNuevoUsuario}>
-                            ➕ Nuevo usuario
-                        </button>
-                    </div>
-                    <div className="row">
-                        <p className="page-subtitle">
-                            Gestiona el acceso y el rol asignado. Cada usuario tiene un unico rol.
-                        </p>
-                    </div>
 
 
-                    <div className="stats-container row">
-                        <div className="stat-card col-4">
-                            <div className="stat-value">12</div>
-                            <div className="stat-label">Usuarios totales</div>
-                        </div>
-                        <div className="stat-card col-4">
-                            <div className="stat-value">11</div>
-                            <div className="stat-label">Activos</div>
-                        </div>
-                        <div className="stat-card col-4">
-                            <div className="stat-value">3</div>
-                            <div className="stat-label">De agencias</div>
-                        </div>
-                    </div>
 
-                    <div className="info-banner">
-                        <span className="info-icon">ℹ️</span>
-                        <span className="info-text">
-                            Los permisos se heredan del <strong>rol asignado</strong>. Para cambiar los permisos de un grupo de usuarios, modifica el rol en <strong>Permisos por Rol</strong>.
-                        </span>
-                    </div>
 
-                    <div className="filters-container">
-                        <div className="search-box">
-                            <input
-                                type="text"
-                                placeholder="Buscar por nombre o usuario"
-                                className="search-input"
-                            />
-                        </div>
-                        <select name="rol" value={filtros.rol} onChange={handleFilterChange} className="filter-select">
-                            <option>Todos los roles</option>
-                            <option>Administrador operativo</option>
-                            <option>Coach</option>
-                            <option>Colaborador</option>
-                            <option>Reportería</option>
-                        </select>
-                        <select name="area" value={filtros.area} onChange={handleFilterChange} className="filter-select">
-                            <option>Todas las áreas</option>
-                            <option>Corporativo</option>
-                            <option>Recursos Humanos</option>
-                            <option>Agencias</option>
-                            <option>Tecnología</option>
-                        </select>
-                        <select name="puesto" value={filtros.puesto} onChange={handleFilterChange} className="filter-select">
-                            <option>Todos los puestos</option>
-                            <option>Gerente de operaciones</option>
-                            <option>Coach senior</option>
-                            <option>Cajero</option>
-                            <option>Analista</option>
-                        </select>
-                        <select name="estado" value={filtros.estado} onChange={handleFilterChange} className="filter-select">
-                            <option>Todos los estados</option>
-                            <option>Activo</option>
-                            <option>Inactivo</option>
-                        </select>
-                        <span className="record-count">{usuarios.length} usuarios</span>
-                    </div>
 
-                    <div className="table-container">
-                        <Table
-                            headers={headers}
-                            headersMostrar={headersMostrar}
-                            rows={usuarios}
-                            btnBuscar={false}
-                            fnEdit={editUsuario}
-                            fnDelete={deleteUsuario}
-                        />
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+
+
+export const toTitleCase = (text = "") =>
+  text.toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+
+
+
+
+
+
+
+export const downloadBlob = (response, fallbackName) => {
+  const disposition = response.headers?.["content-disposition"] ?? "";
+  const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
+  const fileName = match ? decodeURIComponent(match[1]) : fallbackName;
+
+  const url = URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+
+
+
+
+
+
+import { useEffect, useState } from "react";
+
+export const useDebounce = (value, delay = 400) => {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
 };
 
 
@@ -215,163 +91,150 @@ export const UsuariosRolesPage = () => {
 
 
 
+import { useEffect, useState } from "react";
+import { apiFeedbackAuthorized } from "../api/APIS";
+import { endpointsAPI } from "../api/endpointApi";
+
+const fetchList = async (endpoint, mapItem) => {
+  try {
+    const { data } = await apiFeedbackAuthorized.get(endpoint);
+    return (data.data ?? []).map(mapItem);
+  } catch {
+    return [];
+  }
+};
+
+export const useCatalogs = () => {
+  const [catalogs, setCatalogs] = useState({ roles: [], areas: [], positions: [] });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([
+      // Roles: campos de RoleDto (id, roleName, roleDescription)
+      fetchList(endpointsAPI.roles, (r) => ({ value: r.id, label: r.roleName, description: r.roleDescription })),
+      // ⚠️ Áreas y puestos: ajusta los nombres de campos a lo que devuelva la API
+      fetchList(endpointsAPI.companyAreas, (a) => ({ value: a.id, label: a.name, description: a.description })),
+      fetchList(endpointsAPI.companyPositions, (p) => ({ value: p.id, label: p.name })),
+    ]).then(([roles, areas, positions]) => {
+      if (!cancelled) setCatalogs({ roles, areas, positions });
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  return catalogs;
+};
 
 
 
 
 
 
-Preferiria que creemos un componente nuevo para la Table en nuestra carpeta Sahred asi mas ordenado. Para estos creamos un .css llamada administracion .. pero me gustaria qu utilizaramos Pages.module.css 
-Pienso yo que eso seria lo mas ordenado ... te adjunté una imagen de referencia de prototipo que nos colocó el usuario. 
 
 
-Desde el Backend tenemos esto:
 
 
-GET    /api/users
-Obtiene el listado de usuarios con filtros opcionales por estado y liderazgo.
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import styles from "./DataTable.module.css";
 
-RESPONSE:
+/**
+ * <DataTable
+ *   columns={[{ key, header, render?: (row) => node, align?: "left" | "center" | "right", width? }]}
+ *   rows={[...]}
+ *   rowKey="id"
+ *   loading={false}
+ *   pagination={{ page, pageSize, totalCount, totalPages, onPageChange }}
+ * />
+ */
+export function DataTable({
+  columns,
+  rows = [],
+  rowKey = "id",
+  loading = false,
+  emptyMessage = "No hay registros para mostrar.",
+  pagination,
+}) {
+  const getKey = (row, i) => (typeof rowKey === "function" ? rowKey(row) : row[rowKey]) ?? i;
 
-{
-    "code": 200,
-    "message": "OK",
-    "data": [
-        {
-            "id": "36385795-b28e-4f3a-83f9-2697fb2def29",
-            "firstName": "ADA NOHEMI",
-            "lastName": "BAUTISTA REYES",
-            "userName": "ADAB",
-            "email": null,
-            "userEnabled": false,
-            "status": "Inactivo",
-            "isLeader": true,
-            "employeeBranchUbication": null,
-            "tellerCode": "30366",
-            "companyPositionId": null,
-            "companyPosition": "",
-            "companyLocationId": null,
-            "companyLocation": "",
-            "companyBranchId": 4,
-            "companyBranch": "AGENCIA TORRE DEL PAIS",
-            "companyAreaId": null,
-            "companyArea": "",
-            "roleId": null,
-            "roleName": ""
-        },
-        {
-            "id": "2a20b948-6545-4809-8276-7df01af6d55b",
-            "firstName": "ANA CAROLINA",
-            "lastName": "PADILLA ARTEAGA",
-            "userName": "ANACP",
-            "email": null,
-            "userEnabled": false,
-            "status": "Inactivo",
-            "isLeader": false,
-            "employeeBranchUbication": null,
-            "tellerCode": "30043",
-            "companyPositionId": null,
-            "companyPosition": "",
-            "companyLocationId": null,
-            "companyLocation": "",
-            "companyBranchId": 4,
-            "companyBranch": "AGENCIA TORRE DEL PAIS",
-            "companyAreaId": null,
-            "companyArea": "",
-            "roleId": null,
-            "roleName": ""
-        },
-        {
-            "id": "efa678a4-d68f-40ad-8ce7-4861475342e3",
-            "firstName": "ANA J",
-            "lastName": "LOPEZ",
-            "userName": "ANAL",
-            "email": null,
-            "userEnabled": false,
-            "status": "Inactivo",
-            "isLeader": false,
-            "employeeBranchUbication": null,
-            "tellerCode": "30000",
-            "companyPositionId": null,
-            "companyPosition": "",
-            "companyLocationId": null,
-            "companyLocation": "",
-            "companyBranchId": 4,
-            "companyBranch": "AGENCIA TORRE DEL PAIS",
-            "companyAreaId": null,
-            "companyArea": "",
-            "roleId": null,
-            "roleName": ""
-        },
-        {
-            "id": "840ad1df-2f14-4c04-8e29-e5f872e9432e",
-            "firstName": "ANA JOSEFINA",
-            "lastName": "PACHECO TORRES",
-            "userName": "ANAJP",
-            "email": null,
-            "userEnabled": false,
-            "status": "Inactivo",
-            "isLeader": false,
-            "employeeBranchUbication": null,
-            "tellerCode": "30702",
-            "companyPositionId": null,
-            "companyPosition": "",
-            "companyLocationId": null,
-            "companyLocation": "",
-            "companyBranchId": 4,
-            "companyBranch": "AGENCIA TORRE DEL PAIS",
-            "companyAreaId": null,
-            "companyArea": "",
-            "roleId": null,
-            "roleName": ""
-        },
-        {
-            "id": "393a4971-401e-4616-be90-985f5e575432",
-            "firstName": "ANA LOURDES",
-            "lastName": "CALIX",
-            "userName": "ANAC",
-            "email": null,
-            "userEnabled": false,
-            "status": "Inactivo",
-            "isLeader": false,
-            "employeeBranchUbication": null,
-            "tellerCode": "30275",
-            "companyPositionId": null,
-            "companyPosition": "",
-            "companyLocationId": null,
-            "companyLocation": "",
-            "companyBranchId": 4,
-            "companyBranch": "AGENCIA TORRE DEL PAIS",
-            "companyAreaId": null,
-            "companyArea": "",
-            "roleId": null,
-            "roleName": ""
-        },
-      
-        {
-            "id": "2cbe74f3-5660-4b44-aa14-0e492b9d0adf",
-            "firstName": "KENNY WITHSEL",
-            "lastName": "MEDINA",
-            "userName": "HN40432",
-            "email": null,
-            "userEnabled": false,
-            "status": "Inactivo",
-            "isLeader": false,
-            "employeeBranchUbication": null,
-            "tellerCode": "30045",
-            "companyPositionId": null,
-            "companyPosition": "",
-            "companyLocationId": null,
-            "companyLocation": "",
-            "companyBranchId": 4,
-            "companyBranch": "AGENCIA TORRE DEL PAIS",
-            "companyAreaId": null,
-            "companyArea": "",
-            "roleId": null,
-            "roleName": ""
-        },
+  return (
+    <div className={styles.wrapper}>
+      <div className={styles.scroll}>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col.key} style={{ width: col.width, textAlign: col.align }}>
+                  {col.header}
+                </th>
+              ))}
+            </tr>
+          </thead>
 
-    ]
+          <tbody>
+            {loading ? (
+              Array.from({ length: 5 }, (_, i) => (
+                <tr key={`skeleton-${i}`}>
+                  {columns.map((col) => (
+                    <td key={col.key}><span className={styles.skeleton} /></td>
+                  ))}
+                </tr>
+              ))
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className={styles.empty}>{emptyMessage}</td>
+              </tr>
+            ) : (
+              rows.map((row, i) => (
+                <tr key={getKey(row, i)}>
+                  {columns.map((col) => (
+                    <td key={col.key} style={{ textAlign: col.align }}>
+                      {col.render ? col.render(row) : row[col.key] ?? "—"}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {pagination && pagination.totalCount > 0 && <Pagination {...pagination} />}
+    </div>
+  );
+}
+
+function Pagination({ page, pageSize, totalCount, totalPages, onPageChange }) {
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, totalCount);
+
+  return (
+    <div className={styles.pagination}>
+      <span>Mostrando {from}–{to} de {totalCount}</span>
+
+      <div className={styles.pager}>
+        <button
+          type="button"
+          className={styles.pageBtn}
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          aria-label="Página anterior"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span className={styles.pageInfo}>Página {page} de {Math.max(totalPages, 1)}</span>
+        <button
+          type="button"
+          className={styles.pageBtn}
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          aria-label="Página siguiente"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 
@@ -380,167 +243,1283 @@ RESPONSE:
 
 
 
-POST
-/api/users/filter
-Filtra usuarios por uno o varios criterios en un único objeto de filtros.
+.wrapper { width: 100%; }
 
+.scroll { overflow-x: auto; }
 
-Request:
+.table {
+  width: 100%;
+  min-width: 960px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
 
-{
-  "search": "",
-  "status": 0,
-  "employeeBranchUbication": 0,
-  "companyPositionId": 0,
-  "companyLocationId": 0,
-  "companyAreaId": 0,
-  "companyBranchId": 0,
-  "roleId": 1,
-  "pageNumber": 0,
-  "pageSize": 0
+.table th {
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e6ebf1;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  color: #8592a3;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef1f5;
+  color: #3d4b5f;
+  vertical-align: middle;
+}
+
+.table tbody tr { transition: background 0.12s ease; }
+.table tbody tr:hover { background: #f8fafc; }
+.table tbody tr:last-child td { border-bottom: none; }
+
+.table td.empty {
+  padding: 48px 16px;
+  text-align: center;
+  color: #8592a3;
+  font-weight: 600;
+}
+
+.skeleton {
+  display: block;
+  width: 70%;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eef1f5 25%, #f6f8fb 50%, #eef1f5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #eef1f5;
+  font-size: 13px;
+  color: #6b7a8f;
+}
+
+.pager { display: flex; align-items: center; gap: 8px; }
+
+.pageBtn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d9e0ea;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--bp-blue-expert);
+  cursor: pointer;
+}
+.pageBtn:hover:not(:disabled) { background: #f2f5f9; }
+.pageBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pageInfo { font-weight: 700; color: var(--bp-blue-expert); }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
 }
 
 
 
-Response:
 
-{
-    "code": 200,
-    "message": "OK",
-    "data": {
-        "items": [],
-        "pageNumber": 1,
-        "pageSize": 10,
-        "totalCount": 0,
-        "totalPages": 0
+
+
+
+
+
+export { DataTable } from "./DataTable";
+
+
+
+
+
+
+
+
+
+
+
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import styles from "./Modal.module.css";
+
+/**
+ * <Modal open title="..." onClose={fn} footer={<botones/>} size="sm | md | lg">
+ *   contenido
+ * </Modal>
+ */
+export function Modal({ open, title, onClose, children, footer, size = "md" }) {
+  // Cerrar con Esc y bloquear el scroll del fondo
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && onClose?.();
+    const previousOverflow = document.body.style.overflow;
+
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className={styles.overlay}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}
+    >
+      <div className={`${styles.modal} ${styles[size]}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <header className={styles.header}>
+          <h2 id="modal-title" className={styles.title}>{title}</h2>
+          <button type="button" className={styles.close} onClick={onClose} aria-label="Cerrar">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className={styles.body}>{children}</div>
+
+        {footer && <footer className={styles.footer}>{footer}</footer>}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+
+
+
+
+
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: rgba(0, 25, 45, 0.55);
+  backdrop-filter: blur(2px);
+  animation: fade 0.15s ease;
+}
+
+.modal {
+  width: 100%;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 30, 60, 0.3);
+  animation: pop 0.18s ease;
+}
+.sm { max-width: 420px; }
+.md { max-width: 680px; }
+.lg { max-width: 900px; }
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px 4px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--bp-blue-expert);
+}
+
+.close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #8592a3;
+  cursor: pointer;
+}
+.close:hover { background: #f2f5f9; color: var(--bp-blue-expert); }
+
+.body { padding: 18px 24px 24px; overflow-y: auto; }
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid #eef1f5;
+}
+
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+
+/* En celular sale desde abajo */
+@media (max-width: 600px) {
+  .overlay { padding: 0; place-items: end center; }
+  .modal { max-height: 92vh; border-radius: 16px 16px 0 0; }
+  .footer > * { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .modal { animation: none; }
+}
+
+
+
+
+
+
+export { Modal } from "./Modal";
+
+
+
+
+
+
+
+
+
+
+
+
+
+export { DataTable } from "./DataTable";
+export { Modal } from "./Modal";
+
+
+
+
+
+
+/* =========================================================
+   Estilos compartidos de páginas
+   ========================================================= */
+
+/* ---- Encabezados ---- */
+.header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+
+.pageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 24px;
+}
+
+.headerIcon {
+  width: 56px; height: 56px; flex-shrink: 0; border-radius: 14px;
+  display: grid; place-items: center;
+  background: var(--bp-blue-expert);
+  color: var(--bp-yellow-opt);
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8592a3;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--bp-blue-expert);
+}
+
+.subtitle { margin-top: 6px; font-size: 14.5px; color: #5b6b80; }
+
+.back {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-bottom: 18px;
+  font-size: 13.5px; font-weight: 600;
+  color: #5b6b80; text-decoration: none;
+}
+.back:hover { color: var(--bp-blue-expert); }
+
+.empty {
+  padding: 48px 24px;
+  text-align: center;
+  border: 1px dashed #cfd7e2;
+  border-radius: 14px;
+  background: #fff;
+  color: #6b7a8f;
+  font-weight: 600;
+}
+
+/* ---- Botones ---- */
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--bp-blue-digital) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.btnPrimary {
+  background: var(--bp-yellow-opt);
+  color: var(--bp-blue-expert);
+  box-shadow: 0 2px 6px rgba(255, 192, 0, 0.35);
+}
+.btnPrimary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(255, 192, 0, 0.4);
+}
+
+.btnOutline { background: #fff; border-color: #d9e0ea; color: var(--bp-blue-expert); }
+.btnOutline:hover:not(:disabled) { background: #f6f8fb; border-color: #c3ccd9; }
+
+.btnExcel { color: #1d7a46; }
+.btnPdf { color: var(--bp-red); }
+
+.linkBtn {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--bp-blue);
+  cursor: pointer;
+}
+.linkBtn:hover { text-decoration: underline; }
+
+.iconBtn {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #e1e6ee;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--bp-blue-expert);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.iconBtn:hover { background: #f2f5f9; }
+.iconBtnDanger { color: var(--bp-red); }
+.iconBtnDanger:hover { background: #fdf0f0; border-color: #f3c9c9; }
+
+.rowActions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Tarjetas de resumen ---- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  position: relative;
+  padding: 18px 20px 18px 24px;
+  border: 1px solid #e6ebf1;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.statCard::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--stat-color, var(--bp-blue-expert));
+}
+.statTeal { --stat-color: var(--bp-blue-fin); }
+.statYellow { --stat-color: var(--bp-yellow-opt); }
+.statBlue { --stat-color: var(--bp-blue-expert); }
+
+.statValue {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--bp-blue-expert);
+  font-variant-numeric: tabular-nums;
+}
+.statLabel { margin-top: 4px; font-size: 13px; font-weight: 600; color: #6b7a8f; }
+
+/* ---- Avisos ---- */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--bp-blue-digital) 30%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bp-blue-digital) 8%, white);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--bp-blue-expert);
+}
+.banner svg { flex-shrink: 0; margin-top: 2px; color: var(--bp-blue-fin); }
+
+.bannerSuccess { border-color: #bfe3d4; background: #eef8f4; color: var(--bp-green); }
+.bannerSuccess svg { color: var(--bp-green); }
+
+.bannerError { border-color: #f3caca; background: #fdf1f1; color: var(--bp-red); }
+.bannerError svg { color: var(--bp-red); }
+
+/* ---- Panel con filtros + tabla ---- */
+.panel {
+  border: 1px solid #e6ebf1;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.search { position: relative; flex: 1 1 240px; max-width: 320px; }
+.search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8592a3;
+  pointer-events: none;
+}
+
+.count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8592a3;
+  white-space: nowrap;
+}
+
+/* ---- Campos ---- */
+.input,
+.select {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  background-color: #fff;
+  font: inherit;
+  font-size: 14px;
+  color: var(--bp-blue-expert);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input::placeholder { color: #a3adbb; }
+
+.search .input { padding-left: 38px; }
+
+.select {
+  appearance: none;
+  padding-right: 36px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23003964' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.toolbar .select { width: auto; min-width: 160px; }
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--bp-blue-digital);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue-digital) 20%, transparent);
+}
+
+.input.invalid,
+.select.invalid { border-color: var(--bp-red); }
+
+/* ---- Celdas y etiquetas ---- */
+.cellMain { font-weight: 700; color: var(--bp-blue-expert); white-space: nowrap; }
+.cellSub { display: block; font-size: 12px; color: #8592a3; }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 13px; color: #3d4b5f; }
+.muted { color: #a3adbb; }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tagBlue { background: #e8f1fb; border-color: #cfe1f7; color: #0c5aba; }
+.tagPurple { background: #f1edfb; border-color: #e0d8f6; color: #5b3fb0; }
+.tagPink { background: #fdeef2; border-color: #f8d5df; color: #b3264e; }
+.tagAmber { background: #fff6dc; border-color: #fbe6a8; color: #8a5a00; }
+.tagTeal { background: #e3f7f6; border-color: #c4ecea; color: #0d6f6c; }
+.tagNeutral { background: #f1f4f8; border-color: #e3e8ef; color: #6b7a8f; }
+.tagRole {
+  background: color-mix(in srgb, var(--bp-blue-expert) 7%, white);
+  border-color: color-mix(in srgb, var(--bp-blue-expert) 15%, white);
+  color: var(--bp-blue-expert);
+}
+
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.statusActive { color: var(--bp-green); }
+.statusInactive { color: #9aa5b4; }
+
+/* ---- Formularios ---- */
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 20px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fieldFull { grid-column: 1 / -1; }
+.fieldAside { padding-top: 22px; }
+
+.label {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6b80;
+}
+.required { margin-left: 3px; color: var(--bp-red); }
+
+.hint { font-size: 12px; color: #8592a3; }
+.fieldError { font-size: 12px; font-weight: 600; color: var(--bp-red); }
+
+.infoBox {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--bp-blue-digital) 25%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bp-blue-digital) 7%, white);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bp-blue-expert);
+}
+
+.switchRow {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e6ebf1;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  appearance: none;
+  border-radius: 999px;
+  background: #d4dbe5;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+}
+.switch:checked { background: var(--bp-blue-expert); }
+.switch:checked::after { transform: translateX(18px); }
+.switch:focus-visible { outline: 3px solid color-mix(in srgb, var(--bp-blue-digital) 55%, transparent); outline-offset: 2px; }
+
+.switchLabel { font-size: 14px; font-weight: 600; color: var(--bp-blue-expert); }
+
+.optional {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff3cc;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a5a00;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .title { font-size: 22px; }
+  .headerIcon { width: 46px; height: 46px; }
+
+  .actions { width: 100%; }
+  .actions .btn { flex: 1 1 auto; }
+
+  .search { max-width: none; flex-basis: 100%; }
+  .toolbar .select { flex: 1 1 140px; min-width: 0; }
+  .count { width: 100%; margin-left: 0; }
+
+  .form { grid-template-columns: 1fr; }
+  .fieldAside { padding-top: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin { animation: none; }
+}
+
+
+
+
+
+
+
+
+
+
+
+import { useEffect, useState } from "react";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { Modal } from "../../../../shared/components";
+import { usersService, USER_STATUS } from "../../../../api/usersService";
+import styles from "../../../Pages.module.css";
+
+const FORM_ID = "user-form";
+
+const INITIAL_VALUES = {
+  firstName: "",
+  lastName: "",
+  userName: "",
+  email: "",
+  companyPosition: "",
+  status: String(USER_STATUS.ACTIVO),
+  companyBranch: "",
+  companyLocation: "",
+  companyAreaId: "",
+  roleId: "",
+  isAgencyUser: false,
+  tellerCode: "",
+};
+
+const validate = (v) => {
+  const e = {};
+  if (!v.firstName.trim()) e.firstName = "El nombre es obligatorio.";
+  if (!v.lastName.trim()) e.lastName = "El apellido es obligatorio.";
+  if (!v.userName.trim()) e.userName = "El usuario de red es obligatorio.";
+  if (!v.email.trim()) e.email = "El correo es obligatorio.";
+  else if (!/^\S+@\S+\.\S+$/.test(v.email)) e.email = "El correo no es válido.";
+  if (!v.companyAreaId) e.companyAreaId = "Selecciona un área.";
+  if (!v.roleId) e.roleId = "Selecciona un rol.";
+  if (v.isAgencyUser && !v.tellerCode.trim()) e.tellerCode = "Ingresa el código de cajero.";
+  return e;
+};
+
+// "CompanyAreaId" (backend) → "companyAreaId" (formulario)
+const mapApiErrors = (errors = {}) =>
+  Object.fromEntries(
+    Object.entries(errors).map(([key, msg]) => [key.charAt(0).toLowerCase() + key.slice(1), msg])
+  );
+
+function Field({ label, name, required, error, hint, full, children }) {
+  return (
+    <div className={`${styles.field} ${full ? styles.fieldFull : ""}`}>
+      <label className={styles.label} htmlFor={name}>
+        {label}
+        {required && <span className={styles.required}>*</span>}
+      </label>
+      {children}
+      {error ? <span className={styles.fieldError}>{error}</span> : hint && <span className={styles.hint}>{hint}</span>}
+    </div>
+  );
+}
+
+export const UserFormModal = ({ open, onClose, onCreated, catalogs }) => {
+  const [values, setValues] = useState(INITIAL_VALUES);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  // Limpia el formulario cada vez que se abre
+  useEffect(() => {
+    if (open) {
+      setValues(INITIAL_VALUES);
+      setErrors({});
+      setSubmitError("");
     }
-}
+  }, [open]);
 
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setValues((v) => ({ ...v, [name]: type === "checkbox" ? checked : value }));
+    setErrors((err) => ({ ...err, [name]: undefined }));
+  };
 
+  const inputClass = (name, base = styles.input) => `${base} ${errors[name] ? styles.invalid : ""}`;
 
-Tambien hay que hacer esto:
+  const selectedArea = catalogs.areas.find((a) => String(a.value) === values.companyAreaId);
+  const selectedRole = catalogs.roles.find((r) => String(r.value) === values.roleId);
 
-POST
-/api/users
-Crea un nuevo usuario.
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const found = validate(values);
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
 
+    setSaving(true);
+    setSubmitError("");
 
-Request:
-{
-  "firstName": "Pamela",
-  "lastName": "Nicole",
-  "userName": "usr_prucert10",
-  "email": "pamelas@banpais.hn",
-  "userEnabled": true,
-  "status": 0,
-  "employeeBranchUbication": 0,
-  "tellerCode": "string",
-  "companyPosition": "1",
-  "companyLocation": "1",
-  "companyBranch": "4",
-  "companyAreaId": 1,
-  "roleId": 1
-}
-
-
-
-FResponse exitoso:
-
-
-
-
-{
-    "code": 201,
-    "message": "Usuario creado correctamente.",
-    "data": {
-        "id": "c61079e5-fde5-475b-8dc5-322a46403880",
-        "firstName": "Pamela",
-        "lastName": "Nicole",
-        "userName": "usr_prucert10",
-        "email": "pamelas@banpais.hn",
-        "userEnabled": false,
-        "status": "Inactivo",
-        "isLeader": false,
-        "employeeBranchUbication": 0,
-        "tellerCode": "string",
-        "companyPositionId": 1005,
-        "companyPosition": "1",
-        "companyLocationId": 7,
-        "companyLocation": "1",
-        "companyBranchId": 5,
-        "companyBranch": "4",
-        "companyAreaId": 1,
-        "companyArea": "HN - Agencias",
-        "roleId": 1,
-        "roleName": "Super Administrador"
+    try {
+      const status = Number(values.status);
+      const created = await usersService.create({
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        userName: values.userName.trim(),
+        email: values.email.trim(),
+        status,
+        userEnabled: status === USER_STATUS.ACTIVO,
+        employeeBranchUbication: 0, // ⚠️ confirmar con backend qué significa este campo
+        tellerCode: values.isAgencyUser ? values.tellerCode.trim() : null,
+        companyPosition: values.companyPosition.trim(),
+        companyBranch: values.companyBranch.trim(),
+        companyLocation: values.companyLocation.trim(),
+        companyAreaId: Number(values.companyAreaId),
+        roleId: Number(values.roleId),
+      });
+      onCreated(created);
+    } catch (error) {
+      const data = error.response?.data;
+      if (data?.errors) setErrors(mapApiErrors(data.errors));
+      setSubmitError(data?.message ?? "No se pudo guardar el usuario. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleClose = () => { if (!saving) onClose(); };
+
+  return (
+    <Modal
+      open={open}
+      title="Nuevo usuario"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving}>
+            {saving && <Loader2 size={18} className={styles.spin} />}
+            {saving ? "Guardando..." : "Guardar usuario"}
+          </button>
+        </>
+      }
+    >
+      <form id={FORM_ID} className={styles.form} onSubmit={handleSubmit} noValidate>
+        {submitError && (
+          <div className={`${styles.banner} ${styles.bannerError} ${styles.fieldFull}`} role="alert" style={{ marginBottom: 0 }}>
+            <AlertCircle size={18} />
+            <p>{submitError}</p>
+          </div>
+        )}
+
+        <Field label="Nombre" name="firstName" required error={errors.firstName}>
+          <input id="firstName" name="firstName" className={inputClass("firstName")} placeholder="Ej. María"
+            value={values.firstName} onChange={handleChange} aria-invalid={!!errors.firstName} />
+        </Field>
+
+        <Field label="Apellido" name="lastName" required error={errors.lastName}>
+          <input id="lastName" name="lastName" className={inputClass("lastName")} placeholder="Ej. López"
+            value={values.lastName} onChange={handleChange} aria-invalid={!!errors.lastName} />
+        </Field>
+
+        <Field label="Usuario de red" name="userName" required error={errors.userName} hint="Credencial AD o AS400">
+          <input id="userName" name="userName" className={inputClass("userName")} placeholder="Ej. mlopez"
+            autoComplete="off" value={values.userName} onChange={handleChange} aria-invalid={!!errors.userName} />
+        </Field>
+
+        <Field label="Correo electrónico" name="email" required error={errors.email}>
+          <input id="email" name="email" type="email" className={inputClass("email")} placeholder="mlopez@banpais.hn"
+            value={values.email} onChange={handleChange} aria-invalid={!!errors.email} />
+        </Field>
+
+        <Field label="Puesto" name="companyPosition" error={errors.companyPosition}>
+          <input id="companyPosition" name="companyPosition" className={inputClass("companyPosition")}
+            placeholder="Ej. Oficial de crédito" value={values.companyPosition} onChange={handleChange} />
+        </Field>
+
+        <Field label="Estado" name="status" error={errors.status}>
+          <select id="status" name="status" className={inputClass("status", styles.select)} value={values.status} onChange={handleChange}>
+            <option value={USER_STATUS.ACTIVO}>Activo</option>
+            <option value={USER_STATUS.INACTIVO}>Inactivo</option>
+          </select>
+        </Field>
+
+        <Field label="Agencia" name="companyBranch" error={errors.companyBranch}>
+          <input id="companyBranch" name="companyBranch" className={inputClass("companyBranch")}
+            placeholder="Ej. Agencia Torre del País" value={values.companyBranch} onChange={handleChange} />
+        </Field>
+
+        <Field label="Zona" name="companyLocation" error={errors.companyLocation}>
+          <input id="companyLocation" name="companyLocation" className={inputClass("companyLocation")}
+            placeholder="Ej. SPS Norte" value={values.companyLocation} onChange={handleChange} />
+        </Field>
+
+        <Field label="Área" name="companyAreaId" required error={errors.companyAreaId}
+          hint="Define la visibilidad y alcance del usuario en el sistema">
+          <select id="companyAreaId" name="companyAreaId" className={inputClass("companyAreaId", styles.select)}
+            value={values.companyAreaId} onChange={handleChange} aria-invalid={!!errors.companyAreaId}>
+            <option value="">— Selecciona un área —</option>
+            {catalogs.areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+        </Field>
+
+        <div className={`${styles.field} ${styles.fieldAside}`}>
+          <div className={styles.infoBox}>
+            {selectedArea
+              ? selectedArea.description || "Esta área no tiene descripción."
+              : "Selecciona un área para ver su descripción."}
+          </div>
+        </div>
+
+        <Field label="Rol asignado" name="roleId" required error={errors.roleId}>
+          <select id="roleId" name="roleId" className={inputClass("roleId", styles.select)}
+            value={values.roleId} onChange={handleChange} aria-invalid={!!errors.roleId}>
+            <option value="">— Selecciona un rol —</option>
+            {catalogs.roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </Field>
+
+        <div className={`${styles.field} ${styles.fieldAside}`}>
+          <div className={styles.infoBox}>
+            {selectedRole
+              ? selectedRole.description || "Este rol no tiene descripción."
+              : "Selecciona un rol para ver qué puede hacer."}
+          </div>
+        </div>
+
+        <label className={styles.switchRow} htmlFor="isAgencyUser">
+          <input id="isAgencyUser" name="isAgencyUser" type="checkbox" role="switch" className={styles.switch}
+            checked={values.isAgencyUser} onChange={handleChange} />
+          <span className={styles.switchLabel}>
+            ¿Usuario de agencia con código de cajero?
+            <span className={styles.optional}>Opcional</span>
+          </span>
+        </label>
+
+        {values.isAgencyUser && (
+          <Field label="Código de cajero" name="tellerCode" required error={errors.tellerCode} full>
+            <input id="tellerCode" name="tellerCode" className={inputClass("tellerCode")} placeholder="Ej. 30366"
+              value={values.tellerCode} onChange={handleChange} aria-invalid={!!errors.tellerCode} />
+          </Field>
+        )}
+      </form>
+    </Modal>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle, CheckCircle2, FileSpreadsheet, FileText, Info,
+  Loader2, Pencil, Plus, Search, Trash2,
+} from "lucide-react";
+import { Can, DataTable } from "../../../shared/components";
+import { usersService, USER_STATUS } from "../../../api/usersService";
+import { useCatalogs } from "../../../hooks/useCatalogs";
+import { useDebounce } from "../../../hooks/useDebounce";
+import { downloadBlob } from "../../../helpers/downloadFile";
+import { toTitleCase } from "../../../helpers/format";
+import { UserFormModal } from "./components/UserFormModal";
+import styles from "../../Pages.module.css";
+
+const PAGE_SIZE = 10;
+const EMPTY_FILTERS = { search: "", roleId: "", companyAreaId: "", companyPositionId: "", status: "" };
+
+// Cada área recibe siempre el mismo color, calculado a partir de su nombre
+const AREA_TONES = [styles.tagBlue, styles.tagPurple, styles.tagPink, styles.tagAmber, styles.tagTeal];
+const toneFor = (text) => AREA_TONES[[...text].reduce((sum, c) => sum + c.charCodeAt(0), 0) % AREA_TONES.length];
+
+const toNumber = (value) => (value === "" ? undefined : Number(value));
+const dash = <span className={styles.muted}>—</span>;
+
+function StatCard({ value, label, tone }) {
+  return (
+    <div className={`${styles.statCard} ${tone}`}>
+      <div className={styles.statValue}>{value ?? "—"}</div>
+      <div className={styles.statLabel}>{label}</div>
+    </div>
+  );
 }
 
+export const UsuariosRolesPage = () => {
+  const catalogs = useCatalogs();
 
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const search = useDebounce(filters.search, 400);
+  const [page, setPage] = useState(1);
 
-response con error:
-{
-    "code": 400,
-    "message": "Error en la validación del request.",
-    "errors": {
-        "CompanyAreaId": "El área es obligatorio."
+  const [result, setResult] = useState({ items: [], totalCount: 0, totalPages: 0, pageSize: PAGE_SIZE });
+  const [stats, setStats] = useState({ total: null, active: null, inactive: null });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [exporting, setExporting] = useState(null); // "excel" | "pdf" | null
+  const [modalOpen, setModalOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Filtros en el formato que espera la API
+  const request = useMemo(() => ({
+    search: search.trim() || undefined,
+    roleId: toNumber(filters.roleId),
+    companyAreaId: toNumber(filters.companyAreaId),
+    companyPositionId: toNumber(filters.companyPositionId),
+    status: toNumber(filters.status),
+  }), [search, filters.roleId, filters.companyAreaId, filters.companyPositionId, filters.status]);
+
+  const hasFilters = Object.values(filters).some((v) => v !== "");
+
+  // Lista de usuarios (se recarga al cambiar filtros o página)
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    usersService
+      .filter({ ...request, pageNumber: page, pageSize: PAGE_SIZE })
+      .then((data) => { if (!cancelled) setResult(data); })
+      .catch(() => { if (!cancelled) setError("No se pudo cargar la lista de usuarios. Intenta de nuevo."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [request, page, reloadKey]);
+
+  // Tarjetas de resumen: piden solo el totalCount de cada consulta (pageSize 1)
+  useEffect(() => {
+    const count = (extra) =>
+      usersService.filter({ ...extra, pageNumber: 1, pageSize: 1 }).then((d) => d.totalCount).catch(() => null);
+
+    Promise.all([
+      count({}),
+      count({ status: USER_STATUS.ACTIVO }),
+      count({ status: USER_STATUS.INACTIVO }),
+    ]).then(([total, active, inactive]) => setStats({ total, active, inactive }));
+  }, [reloadKey]);
+
+  // El aviso de éxito desaparece solo
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((f) => ({ ...f, [name]: value }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
+  };
+
+  const handleExport = async (type) => {
+    setExporting(type);
+    setError("");
+    try {
+      const response = type === "excel"
+        ? await usersService.exportExcel(request)
+        : await usersService.exportPdf(request);
+      downloadBlob(response, type === "excel" ? "usuarios.xlsx" : "usuarios.pdf");
+    } catch {
+      setError("No se pudo generar el archivo. Intenta de nuevo.");
+    } finally {
+      setExporting(null);
     }
-}
+  };
+
+  const handleCreated = (user) => {
+    setModalOpen(false);
+    setNotice(`Usuario ${toTitleCase(`${user.firstName} ${user.lastName}`)} creado correctamente.`);
+    setReloadKey((k) => k + 1);
+  };
+
+  // Pendientes: faltan los endpoints de editar y eliminar
+  const handleEdit = (user) => console.log("Editar", user);
+  const handleDelete = (user) => console.log("Eliminar", user);
+
+  const columns = [
+    {
+      key: "name",
+      header: "Nombre",
+      render: (u) => <span className={styles.cellMain}>{toTitleCase(`${u.firstName} ${u.lastName}`)}</span>,
+    },
+    {
+      key: "userName",
+      header: "Usuario de red",
+      render: (u) => <span className={styles.mono}>{u.userName}</span>,
+    },
+    {
+      key: "companyPosition",
+      header: "Puesto",
+      render: (u) => u.companyPosition || dash,
+    },
+    {
+      key: "companyArea",
+      header: "Área",
+      render: (u) => u.companyArea
+        ? <span className={`${styles.tag} ${toneFor(u.companyArea)}`}>{u.companyArea}</span>
+        : dash,
+    },
+    {
+      key: "roleName",
+      header: "Rol asignado",
+      render: (u) => u.roleName
+        ? <span className={`${styles.tag} ${styles.tagRole}`}>{u.roleName}</span>
+        : <span className={`${styles.tag} ${styles.tagNeutral}`}>Sin rol</span>,
+    },
+    {
+      key: "branch",
+      header: "Agencia / Zona",
+      render: (u) => (
+        <>
+          {u.companyBranch ? toTitleCase(u.companyBranch) : dash}
+          {u.companyLocation && <span className={styles.cellSub}>{u.companyLocation}</span>}
+        </>
+      ),
+    },
+    {
+      key: "tellerCode",
+      header: "Cód. cajero",
+      render: (u) => u.tellerCode
+        ? <span className={`${styles.tag} ${styles.tagAmber}`}>{u.tellerCode}</span>
+        : dash,
+    },
+    {
+      key: "status",
+      header: "Estado",
+      render: (u) => (
+        <span className={`${styles.status} ${u.status === "Activo" ? styles.statusActive : styles.statusInactive}`}>
+          {u.status}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "right",
+      render: (u) => (
+        <div className={styles.rowActions}>
+          <Can permission="edit.users">
+            <button type="button" className={styles.iconBtn} title="Editar"
+              aria-label={`Editar a ${u.firstName}`} onClick={() => handleEdit(u)}>
+              <Pencil size={16} />
+            </button>
+          </Can>
+          <Can permission="delete.users">
+            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
+              aria-label={`Eliminar a ${u.firstName}`} onClick={() => handleDelete(u)}>
+              <Trash2 size={16} />
+            </button>
+          </Can>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Administración</span>
+          <h1 className={styles.title}>Usuarios del sistema</h1>
+          <p className={styles.subtitle}>Gestiona el acceso y el rol asignado. Cada usuario tiene un único rol.</p>
+        </div>
+
+        <div className={styles.actions}>
+          <button type="button" className={`${styles.btn} ${styles.btnOutline} ${styles.btnExcel}`}
+            onClick={() => handleExport("excel")} disabled={exporting !== null}>
+            {exporting === "excel" ? <Loader2 size={18} className={styles.spin} /> : <FileSpreadsheet size={18} />}
+            Exportar Excel
+          </button>
+
+          <button type="button" className={`${styles.btn} ${styles.btnOutline} ${styles.btnPdf}`}
+            onClick={() => handleExport("pdf")} disabled={exporting !== null}>
+            {exporting === "pdf" ? <Loader2 size={18} className={styles.spin} /> : <FileText size={18} />}
+            Exportar PDF
+          </button>
+
+          <Can permission="crud.users">
+            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setModalOpen(true)}>
+              <Plus size={18} /> Nuevo usuario
+            </button>
+          </Can>
+        </div>
+      </header>
+
+      <section className={styles.stats} aria-label="Resumen de usuarios">
+        <StatCard value={stats.total} label="Usuarios totales" tone={styles.statTeal} />
+        <StatCard value={stats.active} label="Activos" tone={styles.statYellow} />
+        <StatCard value={stats.inactive} label="Inactivos" tone={styles.statBlue} />
+      </section>
+
+      <div className={styles.banner}>
+        <Info size={18} />
+        <p>
+          Los permisos se heredan del <strong>rol asignado</strong>. Para cambiar los permisos de un grupo
+          de usuarios, modifica el rol en <strong>Permisos por rol</strong>.
+        </p>
+      </div>
+
+      {notice && (
+        <div className={`${styles.banner} ${styles.bannerSuccess}`} role="status">
+          <CheckCircle2 size={18} />
+          <p>{notice}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>{error}</p>
+        </div>
+      )}
+
+      <section className={styles.panel}>
+        <div className={styles.toolbar}>
+          <label className={styles.search}>
+            <Search size={16} />
+            <input name="search" className={styles.input} placeholder="Buscar por nombre o usuario"
+              value={filters.search} onChange={handleFilterChange} aria-label="Buscar usuarios" />
+          </label>
+
+          <select name="roleId" className={styles.select} value={filters.roleId}
+            onChange={handleFilterChange} aria-label="Filtrar por rol">
+            <option value="">Todos los roles</option>
+            {catalogs.roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+
+          <select name="companyAreaId" className={styles.select} value={filters.companyAreaId}
+            onChange={handleFilterChange} aria-label="Filtrar por área">
+            <option value="">Todas las áreas</option>
+            {catalogs.areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+
+          {catalogs.positions.length > 0 && (
+            <select name="companyPositionId" className={styles.select} value={filters.companyPositionId}
+              onChange={handleFilterChange} aria-label="Filtrar por puesto">
+              <option value="">Todos los puestos</option>
+              {catalogs.positions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          )}
+
+          <select name="status" className={styles.select} value={filters.status}
+            onChange={handleFilterChange} aria-label="Filtrar por estado">
+            <option value="">Todos los estados</option>
+            <option value={USER_STATUS.ACTIVO}>Activo</option>
+            <option value={USER_STATUS.INACTIVO}>Inactivo</option>
+          </select>
+
+          {hasFilters && (
+            <button type="button" className={styles.linkBtn} onClick={clearFilters}>Limpiar filtros</button>
+          )}
+
+          <span className={styles.count}>{result.totalCount} usuarios</span>
+        </div>
+
+        <DataTable
+          columns={columns}
+          rows={result.items}
+          loading={loading}
+          emptyMessage={hasFilters ? "Ningún usuario coincide con los filtros." : "Aún no hay usuarios registrados."}
+          pagination={{
+            page,
+            pageSize: result.pageSize || PAGE_SIZE,
+            totalCount: result.totalCount,
+            totalPages: result.totalPages,
+            onPageChange: setPage,
+          }}
+        />
+      </section>
+
+      <UserFormModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onCreated={handleCreated}
+        catalogs={catalogs}
+      />
+    </>
+  );
+};
 
 
 
 
 
-----------------------------
 
 
 
 
-Lo de la exportación de archivos:
-
-POST
-/api/users/filter/export/excel
-Exporta a Excel los usuarios filtrados con la misma entrada del endpoint de filtro.
-
-Request:
-
-{
-  "search": "string",
-  "status": 0,
-  "employeeBranchUbication": 0,
-  "companyPositionId": 0,
-  "companyLocationId": 0,
-  "companyAreaId": 0,
-  "companyBranchId": 0,
-  "roleId": 1,
-  "pageNumber": 0,
-  "pageSize": 0
-}
 
 
-
-
-POST
-/api/users/filter/export/pdf
-Exporta a PDF los usuarios filtrados con la misma entrada del endpoint de filtro.
-
-
-Request:
-
-{
-  "search": "string",
-  "status": 0,
-  "employeeBranchUbication": 0,
-  "companyPositionId": 0,
-  "companyLocationId": 0,
-  "companyAreaId": 0,
-  "companyBranchId": 0,
-  "roleId": 0,
-  "pageNumber": 0,
-  "pageSize": 0
-}
-
-
-
-
-Dime paso a paso que debo hacer
