@@ -1,1 +1,546 @@
-INSERT INTO RolesPermissions (RoleId, PermissionId) VALUES (1, 9), (1, 10);
+Ok, ayudame con e diseño de esta página...
+
+Actualmente está asi:
+
+import { useState, useEffect } from "react";
+import { NavBar } from "../../../components/NavBar";
+import { SideMenu } from "../../../components/SideMenu";
+import { Table } from "../../../components/Table";
+
+export const UsuariosRolesPage = () => {
+    const [usuarios, setUsuarios] = useState([]);
+    const [filtros, setFiltros] = useState({
+        rol: "Todos los roles",
+        area: "Todas las áreas",
+        puesto: "Todos los puestos",
+        estado: "Todos los estados"
+    });
+
+    // Datos de ejemplo
+    const usuariosData = [
+        {
+            nombre: "Carlos Méndez",
+            usuarioRed: "cmendez",
+            puesto: "Gerente de operaciones",
+            area: "Corporativo",
+            rolAsignado: "Administrador operativo",
+            agencia: "TeGuacalpa Central",
+            codigoCajero: "",
+            estado: "Activo"
+        },
+        {
+            nombre: "Ana Rodríguez",
+            usuarioRed: "arodriguez",
+            puesto: "Coach senior",
+            area: "Recursos Humanos",
+            rolAsignado: "Coach",
+            agencia: "SPS Norte",
+            codigoCajero: "",
+            estado: "Activo"
+        },
+        {
+            nombre: "Jorge Flores",
+            usuarioRed: "jflores",
+            puesto: "Cajero",
+            area: "Agencias",
+            rolAsignado: "Colaborador",
+            agencia: "La Ceiba",
+            codigoCajero: "CAJ-0011",
+            estado: "Activo"
+        },
+        {
+            nombre: "María López",
+            usuarioRed: "mlopez",
+            puesto: "Analista",
+            area: "Tecnología",
+            rolAsignado: "Reportería",
+            agencia: "Tegucigalpa Sur",
+            codigoCajero: "",
+            estado: "Activo"
+        }
+    ];
+
+    useEffect(() => {
+        setUsuarios(usuariosData);
+    }, []);
+
+    const handleExportExcel = () => {
+        console.log("Exportar a Excel");
+        // Implementar lógica de exportación
+    };
+
+    const handleExportPDF = () => {
+        console.log("Exportar a PDF");
+        // Implementar lógica de exportación
+    };
+
+    const handleNuevoUsuario = () => {
+        console.log("Crear nuevo usuario");
+        // Implementar lógica para crear nuevo usuario
+    };
+
+    const handleFilterChange = (e) => {
+        const { name, value } = e.target;
+        setFiltros(prev => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const headers = ["nombre", "usuarioRed", "puesto", "area", "rolAsignado", "agencia",
+        "codigoCajero", "estado", "acciones",
+    ]
+
+    const headersMostrar = ["NOMBRE", "USUARIO DE RED", "PUESTO", "ÁREA", "ROL ASIGNADO", "AGENCIA / ZONA",
+        "CÓD. CAJERO", "ESTADO", "ACCIONES",
+    ]
+
+    const editUsuario = () => {
+    }
+
+    const deleteUsuario = () => {
+    }
+
+
+    return (
+        <div className="usuarios-roles-page">
+
+            <div className="main-container">
+
+                <div className="content-area row">
+                    <div className="page-header col-6">
+                        <h1 className="page-title">Usuarios del sistema</h1>
+
+                    </div>
+                    <div className="header-actions col-6">
+                        <button className="btn btn-excel" onClick={handleExportExcel}>
+                            📊 Exportar Excel
+                        </button>
+                        <button className="btn btn-pdf" onClick={handleExportPDF}>
+                            📄 Exportar PDF
+                        </button>
+                        <button className="btn btn-new" onClick={handleNuevoUsuario}>
+                            ➕ Nuevo usuario
+                        </button>
+                    </div>
+                    <div className="row">
+                        <p className="page-subtitle">
+                            Gestiona el acceso y el rol asignado. Cada usuario tiene un unico rol.
+                        </p>
+                    </div>
+
+
+                    <div className="stats-container row">
+                        <div className="stat-card col-4">
+                            <div className="stat-value">12</div>
+                            <div className="stat-label">Usuarios totales</div>
+                        </div>
+                        <div className="stat-card col-4">
+                            <div className="stat-value">11</div>
+                            <div className="stat-label">Activos</div>
+                        </div>
+                        <div className="stat-card col-4">
+                            <div className="stat-value">3</div>
+                            <div className="stat-label">De agencias</div>
+                        </div>
+                    </div>
+
+                    <div className="info-banner">
+                        <span className="info-icon">ℹ️</span>
+                        <span className="info-text">
+                            Los permisos se heredan del <strong>rol asignado</strong>. Para cambiar los permisos de un grupo de usuarios, modifica el rol en <strong>Permisos por Rol</strong>.
+                        </span>
+                    </div>
+
+                    <div className="filters-container">
+                        <div className="search-box">
+                            <input
+                                type="text"
+                                placeholder="Buscar por nombre o usuario"
+                                className="search-input"
+                            />
+                        </div>
+                        <select name="rol" value={filtros.rol} onChange={handleFilterChange} className="filter-select">
+                            <option>Todos los roles</option>
+                            <option>Administrador operativo</option>
+                            <option>Coach</option>
+                            <option>Colaborador</option>
+                            <option>Reportería</option>
+                        </select>
+                        <select name="area" value={filtros.area} onChange={handleFilterChange} className="filter-select">
+                            <option>Todas las áreas</option>
+                            <option>Corporativo</option>
+                            <option>Recursos Humanos</option>
+                            <option>Agencias</option>
+                            <option>Tecnología</option>
+                        </select>
+                        <select name="puesto" value={filtros.puesto} onChange={handleFilterChange} className="filter-select">
+                            <option>Todos los puestos</option>
+                            <option>Gerente de operaciones</option>
+                            <option>Coach senior</option>
+                            <option>Cajero</option>
+                            <option>Analista</option>
+                        </select>
+                        <select name="estado" value={filtros.estado} onChange={handleFilterChange} className="filter-select">
+                            <option>Todos los estados</option>
+                            <option>Activo</option>
+                            <option>Inactivo</option>
+                        </select>
+                        <span className="record-count">{usuarios.length} usuarios</span>
+                    </div>
+
+                    <div className="table-container">
+                        <Table
+                            headers={headers}
+                            headersMostrar={headersMostrar}
+                            rows={usuarios}
+                            btnBuscar={false}
+                            fnEdit={editUsuario}
+                            fnDelete={deleteUsuario}
+                        />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Preferiria que creemos un componente nuevo para la Table en nuestra carpeta Sahred asi mas ordenado. Para estos creamos un .css llamada administracion .. pero me gustaria qu utilizaramos Pages.module.css 
+Pienso yo que eso seria lo mas ordenado ... te adjunté una imagen de referencia de prototipo que nos colocó el usuario. 
+
+
+Desde el Backend tenemos esto:
+
+
+GET    /api/users
+Obtiene el listado de usuarios con filtros opcionales por estado y liderazgo.
+
+RESPONSE:
+
+{
+    "code": 200,
+    "message": "OK",
+    "data": [
+        {
+            "id": "36385795-b28e-4f3a-83f9-2697fb2def29",
+            "firstName": "ADA NOHEMI",
+            "lastName": "BAUTISTA REYES",
+            "userName": "ADAB",
+            "email": null,
+            "userEnabled": false,
+            "status": "Inactivo",
+            "isLeader": true,
+            "employeeBranchUbication": null,
+            "tellerCode": "30366",
+            "companyPositionId": null,
+            "companyPosition": "",
+            "companyLocationId": null,
+            "companyLocation": "",
+            "companyBranchId": 4,
+            "companyBranch": "AGENCIA TORRE DEL PAIS",
+            "companyAreaId": null,
+            "companyArea": "",
+            "roleId": null,
+            "roleName": ""
+        },
+        {
+            "id": "2a20b948-6545-4809-8276-7df01af6d55b",
+            "firstName": "ANA CAROLINA",
+            "lastName": "PADILLA ARTEAGA",
+            "userName": "ANACP",
+            "email": null,
+            "userEnabled": false,
+            "status": "Inactivo",
+            "isLeader": false,
+            "employeeBranchUbication": null,
+            "tellerCode": "30043",
+            "companyPositionId": null,
+            "companyPosition": "",
+            "companyLocationId": null,
+            "companyLocation": "",
+            "companyBranchId": 4,
+            "companyBranch": "AGENCIA TORRE DEL PAIS",
+            "companyAreaId": null,
+            "companyArea": "",
+            "roleId": null,
+            "roleName": ""
+        },
+        {
+            "id": "efa678a4-d68f-40ad-8ce7-4861475342e3",
+            "firstName": "ANA J",
+            "lastName": "LOPEZ",
+            "userName": "ANAL",
+            "email": null,
+            "userEnabled": false,
+            "status": "Inactivo",
+            "isLeader": false,
+            "employeeBranchUbication": null,
+            "tellerCode": "30000",
+            "companyPositionId": null,
+            "companyPosition": "",
+            "companyLocationId": null,
+            "companyLocation": "",
+            "companyBranchId": 4,
+            "companyBranch": "AGENCIA TORRE DEL PAIS",
+            "companyAreaId": null,
+            "companyArea": "",
+            "roleId": null,
+            "roleName": ""
+        },
+        {
+            "id": "840ad1df-2f14-4c04-8e29-e5f872e9432e",
+            "firstName": "ANA JOSEFINA",
+            "lastName": "PACHECO TORRES",
+            "userName": "ANAJP",
+            "email": null,
+            "userEnabled": false,
+            "status": "Inactivo",
+            "isLeader": false,
+            "employeeBranchUbication": null,
+            "tellerCode": "30702",
+            "companyPositionId": null,
+            "companyPosition": "",
+            "companyLocationId": null,
+            "companyLocation": "",
+            "companyBranchId": 4,
+            "companyBranch": "AGENCIA TORRE DEL PAIS",
+            "companyAreaId": null,
+            "companyArea": "",
+            "roleId": null,
+            "roleName": ""
+        },
+        {
+            "id": "393a4971-401e-4616-be90-985f5e575432",
+            "firstName": "ANA LOURDES",
+            "lastName": "CALIX",
+            "userName": "ANAC",
+            "email": null,
+            "userEnabled": false,
+            "status": "Inactivo",
+            "isLeader": false,
+            "employeeBranchUbication": null,
+            "tellerCode": "30275",
+            "companyPositionId": null,
+            "companyPosition": "",
+            "companyLocationId": null,
+            "companyLocation": "",
+            "companyBranchId": 4,
+            "companyBranch": "AGENCIA TORRE DEL PAIS",
+            "companyAreaId": null,
+            "companyArea": "",
+            "roleId": null,
+            "roleName": ""
+        },
+      
+        {
+            "id": "2cbe74f3-5660-4b44-aa14-0e492b9d0adf",
+            "firstName": "KENNY WITHSEL",
+            "lastName": "MEDINA",
+            "userName": "HN40432",
+            "email": null,
+            "userEnabled": false,
+            "status": "Inactivo",
+            "isLeader": false,
+            "employeeBranchUbication": null,
+            "tellerCode": "30045",
+            "companyPositionId": null,
+            "companyPosition": "",
+            "companyLocationId": null,
+            "companyLocation": "",
+            "companyBranchId": 4,
+            "companyBranch": "AGENCIA TORRE DEL PAIS",
+            "companyAreaId": null,
+            "companyArea": "",
+            "roleId": null,
+            "roleName": ""
+        },
+
+    ]
+}
+
+
+
+
+
+
+
+POST
+/api/users/filter
+Filtra usuarios por uno o varios criterios en un único objeto de filtros.
+
+
+Request:
+
+{
+  "search": "",
+  "status": 0,
+  "employeeBranchUbication": 0,
+  "companyPositionId": 0,
+  "companyLocationId": 0,
+  "companyAreaId": 0,
+  "companyBranchId": 0,
+  "roleId": 1,
+  "pageNumber": 0,
+  "pageSize": 0
+}
+
+
+
+Response:
+
+{
+    "code": 200,
+    "message": "OK",
+    "data": {
+        "items": [],
+        "pageNumber": 1,
+        "pageSize": 10,
+        "totalCount": 0,
+        "totalPages": 0
+    }
+}
+
+
+
+Tambien hay que hacer esto:
+
+POST
+/api/users
+Crea un nuevo usuario.
+
+
+Request:
+{
+  "firstName": "Pamela",
+  "lastName": "Nicole",
+  "userName": "usr_prucert10",
+  "email": "pamelas@banpais.hn",
+  "userEnabled": true,
+  "status": 0,
+  "employeeBranchUbication": 0,
+  "tellerCode": "string",
+  "companyPosition": "1",
+  "companyLocation": "1",
+  "companyBranch": "4",
+  "companyAreaId": 1,
+  "roleId": 1
+}
+
+
+
+FResponse exitoso:
+
+
+
+
+{
+    "code": 201,
+    "message": "Usuario creado correctamente.",
+    "data": {
+        "id": "c61079e5-fde5-475b-8dc5-322a46403880",
+        "firstName": "Pamela",
+        "lastName": "Nicole",
+        "userName": "usr_prucert10",
+        "email": "pamelas@banpais.hn",
+        "userEnabled": false,
+        "status": "Inactivo",
+        "isLeader": false,
+        "employeeBranchUbication": 0,
+        "tellerCode": "string",
+        "companyPositionId": 1005,
+        "companyPosition": "1",
+        "companyLocationId": 7,
+        "companyLocation": "1",
+        "companyBranchId": 5,
+        "companyBranch": "4",
+        "companyAreaId": 1,
+        "companyArea": "HN - Agencias",
+        "roleId": 1,
+        "roleName": "Super Administrador"
+    }
+}
+
+
+
+response con error:
+{
+    "code": 400,
+    "message": "Error en la validación del request.",
+    "errors": {
+        "CompanyAreaId": "El área es obligatorio."
+    }
+}
+
+
+
+
+
+----------------------------
+
+
+
+
+Lo de la exportación de archivos:
+
+POST
+/api/users/filter/export/excel
+Exporta a Excel los usuarios filtrados con la misma entrada del endpoint de filtro.
+
+Request:
+
+{
+  "search": "string",
+  "status": 0,
+  "employeeBranchUbication": 0,
+  "companyPositionId": 0,
+  "companyLocationId": 0,
+  "companyAreaId": 0,
+  "companyBranchId": 0,
+  "roleId": 1,
+  "pageNumber": 0,
+  "pageSize": 0
+}
+
+
+
+
+POST
+/api/users/filter/export/pdf
+Exporta a PDF los usuarios filtrados con la misma entrada del endpoint de filtro.
+
+
+Request:
+
+{
+  "search": "string",
+  "status": 0,
+  "employeeBranchUbication": 0,
+  "companyPositionId": 0,
+  "companyLocationId": 0,
+  "companyAreaId": 0,
+  "companyBranchId": 0,
+  "roleId": 0,
+  "pageNumber": 0,
+  "pageSize": 0
+}
+
+
+
+
+Dime paso a paso que debo hacer
