@@ -1,17 +1,98 @@
-useAuthStore.js:24 
- POST http://localhost:5173/api/auth/login 404 (Not Found)
-(anonymous)	@	useAuthStore.js:24
-(anonymous)	@	LoginPage.jsx:36
-<form>		
-(anonymous)	@	LoginPage.jsx:56
-<LoginPage>		
-(anonymous)	@	AppRouter.jsx:18
-<AppRouter>		
-(anonymous)	@	App.jsx:9
-<App>		
-(anonymous)	@	main.jsx:6
+// ¿Ya pasó la fecha de vencimiento guardada al iniciar sesión?
+const isSessionExpired = () => {
+  try {
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY));
+    return !session || new Date(session.expiresAt) <= new Date();
+  } catch {
+    return true;
+  }
+};
+
+apiFeedbackAuthorized.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+
+    // Solo se cierra la sesión si de verdad venció
+    if (status === 401 && isSessionExpired()) {
+      localStorage.removeItem(SESSION_KEY);
+      store.dispatch(onLogout());
+    }
+
+    // Marca el error para que la pantalla muestre "sin acceso"
+    if (status === 401 || status === 403) error.noAccess = true;
+
+    return Promise.reject(error);
+  }
+);
 
 
 
 
-No me deja iniciar sesion
+
+
+
+
+
+
+
+import { useEffect, useState } from "react";
+import { apiFeedbackAuthorized } from "../api/APIS";
+import { endpointsAPI } from "../api/endpointApi";
+
+// ⚠️ TEMPORAL: mientras backend crea el endpoint de áreas.
+const AREAS_TEMPORALES = [
+  { value: 1, label: "HN - Agencias", description: "" },
+];
+
+const fetchList = async (endpoint, name, mapItem) => {
+  try {
+    const { data } = await apiFeedbackAuthorized.get(endpoint);
+    return { items: (data.data ?? []).map(mapItem), warning: null };
+  } catch (error) {
+    return {
+      items: [],
+      warning: error.noAccess
+        ? `No tienes acceso al catálogo de ${name}.`
+        : `No se pudo cargar el catálogo de ${name}.`,
+    };
+  }
+};
+
+export const useCatalogs = () => {
+  const [catalogs, setCatalogs] = useState({
+    roles: [],
+    areas: AREAS_TEMPORALES,
+    positions: [],
+    warnings: [],
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchList(endpointsAPI.roles, "roles", (r) => ({
+      value: r.id,
+      label: r.roleName ?? r.name,
+      description: r.roleDescription ?? r.description,
+    })).then(({ items, warning }) => {
+      if (cancelled) return;
+      setCatalogs((c) => ({
+        ...c,
+        roles: items,
+        warnings: warning ? [...c.warnings, warning] : c.warnings,
+      }));
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  return catalogs;
+};
+
+
+
+
+
+
+
+
