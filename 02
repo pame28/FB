@@ -1,91 +1,59 @@
-usuarios-roles:27 
- GET http://localhost:5173/administracion/config/config.js?v=1792594304783 net::ERR_ABORTED 404 (Not Found)
-(anonymous)	@	usuarios-roles:27
-react-dom-client.development.js:31148 Download the React DevTools for a better development experience: https://react.dev/link/react-devtools
-APIS.js:9 Uncaught ReferenceError: config is not defined
-    at APIS.js:9:22
-(anonymous)	@	APIS.js:9
+// Campos que acepta el filtro. null = ese filtro no se aplica.
+const FILTER_FIELDS = [
+  "search",
+  "status",
+  "employeeBranchUbication",
+  "companyPositionId",
+  "companyLocationId",
+  "companyAreaId",
+  "companyBranchId",
+  "roleId",
+  "pageNumber",
+  "pageSize",
+];
+
+const toFilterRequest = (filters = {}) =>
+  Object.fromEntries(
+    FILTER_FIELDS.map((field) => {
+      const value = filters[field];
+      return [field, value === "" || value === undefined ? null : value];
+    })
+  );
 
 
 
-Ah y mira esto:
-
-
-POST https://apifeedbackcolaboradoresde.banpais.hn/api/users/filter
-{
-  "search": null,
-  "status": null,
-  "employeeBranchUbication": null,
-  "companyPositionId": null,
-  "companyLocationId": null,
-  "companyAreaId": null,
-  "companyBranchId": null,
-  "roleId": 1,
-  "pageNumber": 1,
-  "pageSize": 10
-}
 
 
 
-{
-    "code": 200,
-    "message": "OK",
-    "data": {
-        "items": [
-            {
-                "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
-                "firstName": "Orlando",
-                "lastName": "Medina",
-                "userName": "usr_prucert11",
-                "email": "orlandom@banpais.hn",
-                "userEnabled": false,
-                "status": "Activo",
-                "isLeader": true,
-                "employeeBranchUbication": null,
-                "tellerCode": null,
-                "companyPositionId": 1,
-                "companyPosition": "Cajero",
-                "companyLocationId": 1,
-                "companyLocation": "Zona 1 Foránea",
-                "companyBranchId": 4,
-                "companyBranch": "AGENCIA TORRE DEL PAIS",
-                "companyAreaId": 1,
-                "companyArea": "HN - Agencias",
-                "roleId": 1,
-                "roleName": "Super Administrador"
-            },
-            {
-                "id": "c61079e5-fde5-475b-8dc5-322a46403880",
-                "firstName": "Pamela",
-                "lastName": "Nicole",
-                "userName": "usr_prucert10",
-                "email": "pamelas@banpais.hn",
-                "userEnabled": false,
-                "status": "Inactivo",
-                "isLeader": false,
-                "employeeBranchUbication": 0,
-                "tellerCode": "string",
-                "companyPositionId": 1005,
-                "companyPosition": "1",
-                "companyLocationId": 7,
-                "companyLocation": "1",
-                "companyBranchId": 5,
-                "companyBranch": "4",
-                "companyAreaId": 1,
-                "companyArea": "HN - Agencias",
-                "roleId": 1,
-                "roleName": "Super Administrador"
-            }
-        ],
-        "pageNumber": 1,
-        "pageSize": 10,
-        "totalCount": 2,
-        "totalPages": 1
-    }
-}
 
 
 
-Asi es como se usa este endpoint mira, digamos que el null excluye el filtro
+
+
+export const usersService = {
+  filter: async (filters) => {
+    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.usersFilter, toFilterRequest(filters));
+    return data.data;
+  },
+
+  create: async (user) => {
+    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.users, user);
+    return data.data;
+  },
+
+  // pageNumber y pageSize en null → exporta todo lo filtrado
+  exportExcel: (filters) =>
+    apiFeedbackAuthorized.post(endpointsAPI.usersExportExcel, toFilterRequest(filters), { responseType: "blob" }),
+
+  exportPdf: (filters) =>
+    apiFeedbackAuthorized.post(endpointsAPI.usersExportPdf, toFilterRequest(filters), { responseType: "blob" }),
+};
+
+
+
+
+
+
+
 
 
