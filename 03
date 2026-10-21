@@ -1,6 +1,7 @@
-      {catalogs.warnings.map((warning) => (
-        <div key={warning} className={`${styles.banner} ${styles.bannerWarning}`} role="status">
-          <TriangleAlert size={18} />
-          <p>{warning} Algunos filtros u opciones no estarán disponibles.</p>
-        </div>
-      ))}
+          <div className={styles.infoBox}>
+            {selectedRole
+              ? selectedRole.description || "Este rol no tiene descripción."
+              : catalogs.roles.length > 0
+                ? "Selecciona un rol para ver qué puede hacer."
+                : "No hay roles disponibles. Verifica que tengas acceso al catálogo de roles."}
+          </div>
