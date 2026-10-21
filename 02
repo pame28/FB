@@ -1,98 +1,78 @@
-// ¿Ya pasó la fecha de vencimiento guardada al iniciar sesión?
-const isSessionExpired = () => {
-  try {
-    const session = JSON.parse(localStorage.getItem(SESSION_KEY));
-    return !session || new Date(session.expiresAt) <= new Date();
-  } catch {
-    return true;
-  }
-};
+POST https://apifeedbackcolaboradoresde.banpais.hn/api/users/filter
+{
+  "search": null,
+  "status": null,
+  "employeeBranchUbication": null,
+  "companyPositionId": null,
+  "companyLocationId": null,
+  "companyAreaId": null,
+  "companyBranchId": null,
+  "roleId": 1,
+  "pageNumber": 1,
+  "pageSize": 10
+}
 
-apiFeedbackAuthorized.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const status = error.response?.status;
 
-    // Solo se cierra la sesión si de verdad venció
-    if (status === 401 && isSessionExpired()) {
-      localStorage.removeItem(SESSION_KEY);
-      store.dispatch(onLogout());
+
+{
+    "code": 200,
+    "message": "OK",
+    "data": {
+        "items": [
+            {
+                "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
+                "firstName": "Orlando",
+                "lastName": "Medina",
+                "userName": "usr_prucert11",
+                "email": "orlandom@banpais.hn",
+                "userEnabled": false,
+                "status": "Activo",
+                "isLeader": true,
+                "employeeBranchUbication": null,
+                "tellerCode": null,
+                "companyPositionId": 1,
+                "companyPosition": "Cajero",
+                "companyLocationId": 1,
+                "companyLocation": "Zona 1 Foránea",
+                "companyBranchId": 4,
+                "companyBranch": "AGENCIA TORRE DEL PAIS",
+                "companyAreaId": 1,
+                "companyArea": "HN - Agencias",
+                "roleId": 1,
+                "roleName": "Super Administrador"
+            },
+            {
+                "id": "c61079e5-fde5-475b-8dc5-322a46403880",
+                "firstName": "Pamela",
+                "lastName": "Nicole",
+                "userName": "usr_prucert10",
+                "email": "pamelas@banpais.hn",
+                "userEnabled": false,
+                "status": "Inactivo",
+                "isLeader": false,
+                "employeeBranchUbication": 0,
+                "tellerCode": "string",
+                "companyPositionId": 1005,
+                "companyPosition": "1",
+                "companyLocationId": 7,
+                "companyLocation": "1",
+                "companyBranchId": 5,
+                "companyBranch": "4",
+                "companyAreaId": 1,
+                "companyArea": "HN - Agencias",
+                "roleId": 1,
+                "roleName": "Super Administrador"
+            }
+        ],
+        "pageNumber": 1,
+        "pageSize": 10,
+        "totalCount": 2,
+        "totalPages": 1
     }
-
-    // Marca el error para que la pantalla muestre "sin acceso"
-    if (status === 401 || status === 403) error.noAccess = true;
-
-    return Promise.reject(error);
-  }
-);
+}
 
 
 
-
-
-
-
-
-
-
-
-import { useEffect, useState } from "react";
-import { apiFeedbackAuthorized } from "../api/APIS";
-import { endpointsAPI } from "../api/endpointApi";
-
-// ⚠️ TEMPORAL: mientras backend crea el endpoint de áreas.
-const AREAS_TEMPORALES = [
-  { value: 1, label: "HN - Agencias", description: "" },
-];
-
-const fetchList = async (endpoint, name, mapItem) => {
-  try {
-    const { data } = await apiFeedbackAuthorized.get(endpoint);
-    return { items: (data.data ?? []).map(mapItem), warning: null };
-  } catch (error) {
-    return {
-      items: [],
-      warning: error.noAccess
-        ? `No tienes acceso al catálogo de ${name}.`
-        : `No se pudo cargar el catálogo de ${name}.`,
-    };
-  }
-};
-
-export const useCatalogs = () => {
-  const [catalogs, setCatalogs] = useState({
-    roles: [],
-    areas: AREAS_TEMPORALES,
-    positions: [],
-    warnings: [],
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchList(endpointsAPI.roles, "roles", (r) => ({
-      value: r.id,
-      label: r.roleName ?? r.name,
-      description: r.roleDescription ?? r.description,
-    })).then(({ items, warning }) => {
-      if (cancelled) return;
-      setCatalogs((c) => ({
-        ...c,
-        roles: items,
-        warnings: warning ? [...c.warnings, warning] : c.warnings,
-      }));
-    });
-
-    return () => { cancelled = true; };
-  }, []);
-
-  return catalogs;
-};
-
-
-
-
-
-
+Asi es como se usa este endpoint mira, digamos que el null excluye el filtro
 
 
