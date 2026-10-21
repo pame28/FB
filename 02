@@ -1,3 +1,16 @@
+usuarios-roles:27 
+ GET http://localhost:5173/administracion/config/config.js?v=1792594304783 net::ERR_ABORTED 404 (Not Found)
+(anonymous)	@	usuarios-roles:27
+react-dom-client.development.js:31148 Download the React DevTools for a better development experience: https://react.dev/link/react-devtools
+APIS.js:9 Uncaught ReferenceError: config is not defined
+    at APIS.js:9:22
+(anonymous)	@	APIS.js:9
+
+
+
+Ah y mira esto:
+
+
 POST https://apifeedbackcolaboradoresde.banpais.hn/api/users/filter
 {
   "search": null,
