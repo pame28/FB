@@ -1,1 +1,32 @@
-indexedDB.deleteDatabase("Authentication")
+  // Guarda lo que devuelven login y refresh (tienen la misma forma)
+  const saveSession = async ({ token, expiresIn, user }) => {
+    await crearIDB("Authentication");
+    await addData(token, "Authentication", "token");
+
+    // Verifica que el token realmente quedó guardado
+    const saved = await readData("Authentication", "token");
+    if (saved !== token) {
+      throw new Error("No se pudo guardar la sesión en el navegador.");
+    }
+
+    const expiresAt = new Date(Date.now() + expiresIn * 60_000).toISOString(); // expiresIn en minutos
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ user, expiresAt }));
+    dispatch(onLogin({ user, expiresAt }));
+  };
+
+
+
+
+
+
+
+
+  const logout = async () => {
+    // Borra la base completa del token; crearIDB la vuelve a crear al iniciar sesión
+    await new Promise((resolve) => {
+      const request = indexedDB.deleteDatabase("Authentication");
+      request.onsuccess = request.onerror = request.onblocked = () => resolve();
+    });
+    localStorage.removeItem(SESSION_KEY);
+    dispatch(onLogout());
+  };
