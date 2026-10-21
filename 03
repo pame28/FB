@@ -1,0 +1,6 @@
+      {catalogs.warnings.map((warning) => (
+        <div key={warning} className={`${styles.banner} ${styles.bannerWarning}`} role="status">
+          <TriangleAlert size={18} />
+          <p>{warning} Algunos filtros u opciones no estarán disponibles.</p>
+        </div>
+      ))}
