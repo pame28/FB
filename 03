@@ -1,29 +1,14 @@
-.personChip {
+.personInfo {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid #e6ebf1;
-  border-radius: 12px;
-  background: #f8fafc;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
 }
-
-.personAvatar {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--bp-blue-expert);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.personInfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 .personName {
+  max-width: 100%;
   font-size: 14.5px;
   font-weight: 700;
   color: var(--bp-blue-expert);
@@ -31,51 +16,3 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.personMeta {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12.5px;
-  color: #8592a3;
-}
-
-
-
-
-
-
-
-
-
-const initials = (u) => `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
-
-
-
-
-
-
-      <ConfirmDialog
-        open={Boolean(toDelete)}
-        danger
-        title="¿Eliminar usuario?"
-        message="Esta acción no se puede deshacer."
-        detail={toDelete && (
-          <div className={styles.personChip}>
-            <div className={styles.personAvatar}>{initials(toDelete)}</div>
-            <div className={styles.personInfo}>
-              <span className={styles.personName}>{fullName(toDelete)}</span>
-              <span className={styles.personMeta}>{toDelete.userName}</span>
-            </div>
-          </div>
-        )}
-        confirmText={deleting ? "Eliminando..." : "Sí, eliminar"}
-        loading={deleting}
-        error={deleteError}
-        onConfirm={confirmDelete}
-        onCancel={() => setToDelete(null)}
-      />
-
-
-
-
-
-
