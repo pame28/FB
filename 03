@@ -1,228 +1,41 @@
-import { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
-import { Loader2, Trash2, TriangleAlert } from "lucide-react";
-import styles from "./ConfirmDialog.module.css";
-
-/**
- * <ConfirmDialog
- *   open title="..." message={...} danger
- *   confirmText="Eliminar" loading={false} error=""
- *   onConfirm={fn} onCancel={fn}
- * />
- */
-export function ConfirmDialog({
-  open,
-  title,
-  message,
-  confirmText = "Confirmar",
-  cancelText = "Cancelar",
-  danger = false,
-  icon: Icon = danger ? Trash2 : TriangleAlert,
-  loading = false,
-  error,
-  onConfirm,
-  onCancel,
-}) {
-  const cancelRef = useRef(null);
-
-  // Esc para cerrar, bloquear scroll del fondo y enfocar "Cancelar" (opción segura)
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === "Escape" && !loading && onCancel();
-    const previousOverflow = document.body.style.overflow;
-
-    document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    cancelRef.current?.focus();
-
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open, loading, onCancel]);
-
-  if (!open) return null;
-
-  return createPortal(
-    <div
-      className={styles.overlay}
-      onMouseDown={(e) => e.target === e.currentTarget && !loading && onCancel()}
-    >
-      <div
-        className={styles.dialog}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="confirm-title"
-        aria-describedby="confirm-message"
-      >
-        <div className={`${styles.icon} ${danger ? styles.iconDanger : styles.iconWarning}`}>
-          <Icon size={26} strokeWidth={2.2} />
-        </div>
-
-        <h2 id="confirm-title" className={styles.title}>{title}</h2>
-        <div id="confirm-message" className={styles.message}>{message}</div>
-
-        {error && <p className={styles.error} role="alert">{error}</p>}
-
-        <div className={styles.actions}>
-          <button
-            ref={cancelRef}
-            type="button"
-            className={`${styles.btn} ${styles.cancel}`}
-            onClick={onCancel}
-            disabled={loading}
-          >
-            {cancelText}
-          </button>
-          <button
-            type="button"
-            className={`${styles.btn} ${danger ? styles.danger : styles.primary}`}
-            onClick={onConfirm}
-            disabled={loading}
-          >
-            {loading && <Loader2 size={18} className={styles.spin} />}
-            {confirmText}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
+.personChip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e6ebf1;
+  border-radius: 12px;
+  background: #f8fafc;
 }
 
-
-
-
-
-
-
-
-
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 110;
-  display: grid;
-  place-items: center;
-  padding: 24px 16px;
-  background: rgba(0, 25, 45, 0.55);
-  backdrop-filter: blur(3px);
-  animation: fade 0.15s ease;
-}
-
-.dialog {
-  width: 100%;
-  max-width: 400px;
-  padding: 32px 28px 24px;
-  border-radius: 20px;
-  background: #fff;
-  box-shadow: 0 24px 60px rgba(0, 30, 60, 0.3);
-  text-align: center;
-  animation: pop 0.2s ease;
-}
-
-/* ---- Ícono con doble anillo ---- */
-.icon {
-  width: 60px;
-  height: 60px;
-  margin: 0 auto;
+.personAvatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
   display: grid;
   place-items: center;
   border-radius: 50%;
-}
-.iconDanger {
-  background: #fde8e8;
-  color: var(--bp-red);
-  box-shadow: 0 0 0 8px #fef4f4;
-}
-.iconWarning {
-  background: #fff3cc;
-  color: #b07800;
-  box-shadow: 0 0 0 8px #fffaeb;
-}
-
-/* ---- Texto ---- */
-.title {
-  margin-top: 22px;
-  font-size: 19px;
+  background: var(--bp-blue-expert);
+  color: #fff;
+  font-size: 14px;
   font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--bp-blue-expert);
 }
 
-.message {
-  margin-top: 8px;
-  font-size: 14.5px;
-  line-height: 1.6;
-  color: #5b6b80;
-}
-.message strong { color: var(--bp-blue-expert); font-weight: 700; }
+.personInfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
-.error {
-  margin-top: 16px;
-  padding: 10px 12px;
-  border: 1px solid #f3caca;
-  border-radius: 10px;
-  background: #fdf1f1;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--bp-red);
-}
-
-/* ---- Botones ---- */
-.actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 26px;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 16px;
-  border: 1px solid transparent;
-  border-radius: 12px;
-  font: inherit;
+.personName {
   font-size: 14.5px;
   font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--bp-blue-digital) 55%, transparent);
-  outline-offset: 2px;
+  color: var(--bp-blue-expert);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.cancel { background: #fff; border-color: #d9e0ea; color: var(--bp-blue-expert); }
-.cancel:hover:not(:disabled) { background: #f6f8fb; border-color: #c3ccd9; }
-
-.danger { background: var(--bp-red); color: #fff; box-shadow: 0 4px 12px rgba(163, 45, 45, 0.25); }
-.danger:hover:not(:disabled) { background: #8c2525; }
-
-.primary { background: var(--bp-yellow-opt); color: var(--bp-blue-expert); }
-.primary:hover:not(:disabled) { box-shadow: 0 6px 14px rgba(255, 192, 0, 0.4); }
-
-.spin { animation: spin 1s linear infinite; }
-
-@keyframes fade { from { opacity: 0; } }
-@keyframes pop { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* En celular: botones uno sobre otro, el principal arriba */
-@media (max-width: 420px) {
-  .dialog { padding: 28px 20px 20px; }
-  .actions { grid-template-columns: 1fr; }
-  .actions .cancel { order: 2; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .overlay, .dialog, .spin { animation: none; }
+.personMeta {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12.5px;
+  color: #8592a3;
 }
 
 
@@ -233,13 +46,36 @@ export function ConfirmDialog({
 
 
 
-        title="¿Eliminar este usuario?"
-        message={toDelete && (
-          <>
-            Se eliminará a <strong>{fullName(toDelete)}</strong>
-            <br />
-            <span className={styles.mono}>{toDelete.userName}</span>
-            <br />
-            Esta acción no se puede deshacer.
-          </>
+const initials = (u) => `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
+
+
+
+
+
+
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        danger
+        title="¿Eliminar usuario?"
+        message="Esta acción no se puede deshacer."
+        detail={toDelete && (
+          <div className={styles.personChip}>
+            <div className={styles.personAvatar}>{initials(toDelete)}</div>
+            <div className={styles.personInfo}>
+              <span className={styles.personName}>{fullName(toDelete)}</span>
+              <span className={styles.personMeta}>{toDelete.userName}</span>
+            </div>
+          </div>
         )}
+        confirmText={deleting ? "Eliminando..." : "Sí, eliminar"}
+        loading={deleting}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      />
+
+
+
+
+
+
