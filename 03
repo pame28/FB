@@ -1,18 +1,135 @@
-.personInfo {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-width: 0;
-  text-align: left;
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: rgba(0, 25, 45, 0.55);
+  backdrop-filter: blur(3px);
+  animation: fade 0.15s ease;
 }
 
-.personName {
-  max-width: 100%;
+.dialog {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px 28px 24px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(0, 30, 60, 0.3);
+  text-align: center;
+  animation: pop 0.2s ease;
+}
+
+/* ---- Ícono con doble anillo ---- */
+.icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+.iconDanger {
+  background: #fde8e8;
+  color: var(--bp-red);
+  box-shadow: 0 0 0 8px #fef4f4;
+}
+.iconWarning {
+  background: #fff3cc;
+  color: #b07800;
+  box-shadow: 0 0 0 8px #fffaeb;
+}
+
+/* ---- Texto ---- */
+.title {
+  margin-top: 22px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--bp-blue-expert);
+}
+
+.message {
+  margin-top: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6b7a8f;
+}
+.message strong { color: var(--bp-blue-expert); font-weight: 700; }
+.detail{margin-top: 28px 0 0; text-align: left;}
+.error {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid #f3caca;
+  border-radius: 10px;
+  background: #fdf1f1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bp-red);
+}
+
+/* ---- Botones ---- */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font: inherit;
   font-size: 14.5px;
   font-weight: 700;
-  color: var(--bp-blue-expert);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--bp-blue-digital) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.cancel { background: #fff; border-color: #d9e0ea; color: var(--bp-blue-expert); }
+.cancel:hover:not(:disabled) { background: #f6f8fb; border-color: #c3ccd9; }
+
+.danger { background: var(--bp-red); color: #fff; box-shadow: 0 4px 12px rgba(163, 45, 45, 0.25); }
+.danger:hover:not(:disabled) { background: #8c2525; }
+
+.primary { background: var(--bp-yellow-opt); color: var(--bp-blue-expert); }
+.primary:hover:not(:disabled) { box-shadow: 0 6px 14px rgba(255, 192, 0, 0.4); }
+
+.spin { animation: spin 1s linear infinite; }
+
+
+
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* En celular: botones uno sobre otro, el principal arriba */
+@media (max-width: 420px) {
+  .dialog { padding: 28px 20px 20px; }
+  .actions { grid-template-columns: 1fr; }
+  .actions .cancel { order: 2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .dialog, .spin { animation: none; }
+}
+
+
+
+
+
+Quiero que este parrafo: Esta acción no se puede deshacer.
+
+este mas pegado al titulo y mas separado del nombre del usuario
