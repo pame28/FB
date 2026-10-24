@@ -1,18 +1,414 @@
-import styles from '../../Pages.module.css';
+    fetchList(endpointsAPI.roles, "roles", (r) => ({
+      value: r.id,
+      label: r.roleName ?? r.name,
+      description: r.roleDescription ?? r.description,
+      // Módulos y páginas a los que da acceso el rol (RoleCatalogModuleDto / RoleCatalogPageDto)
+      modules: (r.modules ?? []).map((m) => ({
+        id: m.id,
+        name: m.moduleName,
+        pages: (m.pages ?? []).map((p) => ({
+          id: p.id,
+          name: p.pageName,
+          permissions: (p.permissions ?? []).map((x) => x.permissionName),
+        })),
+      })),
+    })).then(({ items, warning }) => {
 
-export const VistaUsuarioRolPage = () => (
-  <header className={styles.header}>
-    <div>
-      <span className={styles.eyebrow}>Administración</span>
-      <h1 className={styles.title}>Vista de Roles</h1>
-    </div>
-  </header>
-);
 
 
 
-Ayudame a realizar esta pagina
 
-GET
-/api/roles
-Obtiene el listado de roles con sus modulos, paginas y permisos asignados.
+
+import { toTitleCase } from "../../../../helpers/format";
+import styles from "../../../Pages.module.css";
+
+export const fullName = (u) => toTitleCase(`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim());
+export const initials = (u) => `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
+
+// Cada área recibe siempre el mismo color, calculado a partir de su nombre
+const AREA_TONES = [styles.tagBlue, styles.tagPurple, styles.tagPink, styles.tagAmber, styles.tagTeal];
+export const toneFor = (text) =>
+  AREA_TONES[[...text].reduce((sum, c) => sum + c.charCodeAt(0), 0) % AREA_TONES.length];
+
+const dash = <span className={styles.muted}>—</span>;
+
+/** Columnas de usuarios para <DataTable>. Las páginas agregan sus propias columnas (ej. acciones). */
+export const userColumns = [
+  {
+    key: "name",
+    header: "Nombre",
+    render: (u) => <span className={styles.cellMain}>{fullName(u)}</span>,
+  },
+  {
+    key: "userName",
+    header: "Usuario de red",
+    render: (u) => <span className={styles.mono}>{u.userName}</span>,
+  },
+  {
+    key: "companyPosition",
+    header: "Puesto",
+    render: (u) => u.companyPosition || dash,
+  },
+  {
+    key: "companyArea",
+    header: "Área",
+    render: (u) => u.companyArea
+      ? <span className={`${styles.tag} ${toneFor(u.companyArea)}`}>{u.companyArea}</span>
+      : dash,
+  },
+  {
+    key: "roleName",
+    header: "Rol asignado",
+    render: (u) => u.roleName
+      ? <span className={`${styles.tag} ${styles.tagRole}`}>{u.roleName}</span>
+      : <span className={`${styles.tag} ${styles.tagNeutral}`}>Sin rol</span>,
+  },
+  {
+    key: "branch",
+    header: "Agencia / Zona",
+    render: (u) => (
+      <>
+        {u.companyBranch ? toTitleCase(u.companyBranch) : dash}
+        {u.companyLocation && <span className={styles.cellSub}>{u.companyLocation}</span>}
+      </>
+    ),
+  },
+  {
+    key: "tellerCode",
+    header: "Cód. cajero",
+    render: (u) => u.tellerCode
+      ? <span className={`${styles.tag} ${styles.tagAmber}`}>{u.tellerCode}</span>
+      : dash,
+  },
+  {
+    key: "status",
+    header: "Estado",
+    render: (u) => (
+      <span className={`${styles.status} ${u.status === "Activo" ? styles.statusActive : styles.statusInactive}`}>
+        {u.status}
+      </span>
+    ),
+  },
+];
+
+
+
+
+
+
+
+
+
+
+
+  const columns = [
+    ...userColumns,
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "right",
+      render: (u) => (
+        <div className={styles.rowActions}>
+          <Can permission="edit.users">
+            <button type="button" className={styles.iconBtn} title="Editar"
+              aria-label={`Editar a ${fullName(u)}`} onClick={() => setForm({ open: true, user: u })}>
+              <Pencil size={16} />
+            </button>
+          </Can>
+          <Can permission="delete.users">
+            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
+              aria-label={`Eliminar a ${fullName(u)}`} onClick={() => openDelete(u)}>
+              <Trash2 size={16} />
+            </button>
+          </Can>
+        </div>
+      ),
+    },
+  ];
+
+
+
+
+
+
+
+
+
+
+/* ---- Enlace dentro de avisos ---- */
+.bannerLink {
+  font-weight: 800;
+  color: var(--bp-blue-expert);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.bannerLink:hover { color: var(--bp-blue); }
+
+/* ---- Resumen de rol ---- */
+.roleSummary {
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border: 1px solid #e6ebf1;
+  border-left: 4px solid var(--bp-yellow-opt);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.roleSummaryHead { display: flex; align-items: flex-start; gap: 14px; }
+
+.roleIcon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--bp-blue-expert);
+  color: var(--bp-yellow-opt);
+}
+
+.roleName { margin: 0; font-size: 17px; font-weight: 800; color: var(--bp-blue-expert); }
+.roleDesc { margin: 2px 0 0; font-size: 13.5px; color: #6b7a8f; }
+
+.roleCount {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #f1f4f8;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--bp-blue-expert);
+  white-space: nowrap;
+}
+
+.roleAccess {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #eef1f5;
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+
+
+
+
+
+
+
+
+
+
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { AlertCircle, Eye, Search, ShieldCheck, TriangleAlert } from "lucide-react";
+import { DataTable } from "../../../shared/components";
+import { usersService } from "../../../api/usersService";
+import { useCatalogs } from "../../../hooks/useCatalogs";
+import { useDebounce } from "../../../hooks/useDebounce";
+import { userColumns } from "./components/userColumns";
+import styles from "../../Pages.module.css";
+
+const PAGE_SIZE = 10;
+const EMPTY_FILTERS = { search: "", roleId: "", companyAreaId: "", companyPositionId: "" };
+
+const toNumber = (value) => (value === "" ? undefined : Number(value));
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+export const VistaUsuarioRolPage = () => {
+  const catalogs = useCatalogs();
+
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const search = useDebounce(filters.search, 400);
+  const [page, setPage] = useState(1);
+
+  const [result, setResult] = useState({ items: [], totalCount: 0, totalPages: 0, pageSize: PAGE_SIZE });
+  const [loading, setLoading] = useState(true);
+  const [firstLoad, setFirstLoad] = useState(true);
+  const [error, setError] = useState("");
+
+  const request = useMemo(() => ({
+    search: search.trim() || undefined,
+    roleId: toNumber(filters.roleId),
+    companyAreaId: toNumber(filters.companyAreaId),
+    companyPositionId: toNumber(filters.companyPositionId),
+  }), [search, filters.roleId, filters.companyAreaId, filters.companyPositionId]);
+
+  const hasFilters = Object.values(filters).some((v) => v !== "");
+  const selectedRole = catalogs.roles.find((r) => String(r.value) === filters.roleId);
+
+  // Lista de usuarios
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    usersService
+      .filter({ ...request, pageNumber: page, pageSize: PAGE_SIZE })
+      .then((data) => {
+        if (!cancelled) {
+          setResult(data);
+          setFirstLoad(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.noAccess
+          ? "No tienes permiso para ver la lista de usuarios."
+          : "No se pudo cargar la lista de usuarios. Intenta de nuevo.");
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [request, page]);
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((f) => ({ ...f, [name]: value }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
+  };
+
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Administración</span>
+          <h1 className={styles.title}>Vista de usuarios por rol</h1>
+          <p className={styles.subtitle}>Consulta de solo lectura. Filtra por rol, área o busca un usuario específico.</p>
+        </div>
+      </header>
+
+      <div className={styles.banner}>
+        <Eye size={18} />
+        <p>
+          Vista de <strong>solo lectura</strong>. Para modificar el rol de un usuario ve
+          a <Link to="/administracion/usuarios-roles" className={styles.bannerLink}>Usuarios y roles</Link>.
+        </p>
+      </div>
+
+      {catalogs.warnings.map((warning) => (
+        <div key={warning} className={`${styles.banner} ${styles.bannerWarning}`} role="status">
+          <TriangleAlert size={18} />
+          <p>{warning} Algunos filtros no estarán disponibles.</p>
+        </div>
+      ))}
+
+      {error && (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>{error}</p>
+        </div>
+      )}
+
+      {/* Resumen del rol seleccionado (sale de GET /api/roles) */}
+      {selectedRole && (
+        <section className={styles.roleSummary} aria-label={`Resumen del rol ${selectedRole.label}`}>
+          <div className={styles.roleSummaryHead}>
+            <div className={styles.roleIcon}>
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <h2 className={styles.roleName}>{selectedRole.label}</h2>
+              <p className={styles.roleDesc}>{selectedRole.description || "Este rol no tiene descripción."}</p>
+            </div>
+            {!loading && (
+              <span className={styles.roleCount}>{plural(result.totalCount, "usuario", "usuarios")}</span>
+            )}
+          </div>
+
+          <div className={styles.roleAccess}>
+            <span className={styles.label}>Acceso a</span>
+            {selectedRole.modules.length > 0 ? (
+              <div className={styles.chips}>
+                {selectedRole.modules.flatMap((m) =>
+                  m.pages.map((p) => (
+                    <span key={`${m.id}-${p.id}`} className={`${styles.tag} ${styles.tagRole}`}>
+                      {m.name} · {p.name}
+                    </span>
+                  ))
+                )}
+              </div>
+            ) : (
+              <span className={styles.muted}>Este rol no tiene páginas asignadas.</span>
+            )}
+          </div>
+        </section>
+      )}
+
+      <section className={styles.panel}>
+        <div className={styles.toolbar}>
+          <label className={styles.search}>
+            <Search size={16} />
+            <input name="search" className={styles.input} placeholder="Buscar por nombre o usuario de red"
+              value={filters.search} onChange={handleFilterChange} aria-label="Buscar usuarios" />
+          </label>
+
+          <select name="roleId" className={styles.select} value={filters.roleId}
+            onChange={handleFilterChange} aria-label="Filtrar por rol">
+            <option value="">Todos los roles</option>
+            {catalogs.roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+
+          {catalogs.areas.length > 0 && (
+            <select name="companyAreaId" className={styles.select} value={filters.companyAreaId}
+              onChange={handleFilterChange} aria-label="Filtrar por área">
+              <option value="">Todas las áreas</option>
+              {catalogs.areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          )}
+
+          {catalogs.positions.length > 0 && (
+            <select name="companyPositionId" className={styles.select} value={filters.companyPositionId}
+              onChange={handleFilterChange} aria-label="Filtrar por puesto">
+              <option value="">Todos los puestos</option>
+              {catalogs.positions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          )}
+
+          {hasFilters && (
+            <button type="button" className={styles.linkBtn} onClick={clearFilters}>Limpiar filtros</button>
+          )}
+
+          <span className={styles.count}>
+            {firstLoad ? "" : plural(result.totalCount, "usuario", "usuarios")}
+          </span>
+        </div>
+
+        <DataTable
+          columns={userColumns}
+          rows={result.items}
+          loading={loading}
+          emptyMessage={
+            selectedRole
+              ? `Ningún usuario tiene el rol ${selectedRole.label}${filters.search || filters.companyAreaId ? " con esos filtros" : ""}.`
+              : hasFilters ? "Ningún usuario coincide con los filtros." : "Aún no hay usuarios registrados."
+          }
+          pagination={{
+            page,
+            pageSize: result.pageSize || PAGE_SIZE,
+            totalCount: result.totalCount,
+            totalPages: result.totalPages,
+            onPageChange: setPage,
+          }}
+        />
+      </section>
+    </>
+  );
+};
+
+
+
+
+
+
+
+
