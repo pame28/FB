@@ -13,3 +13,6 @@ export const VistaUsuarioRolPage = () => (
 
 Ayudame a realizar esta pagina
 
+GET
+/api/roles
+Obtiene el listado de roles con sus modulos, paginas y permisos asignados.
