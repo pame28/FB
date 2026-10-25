@@ -1,2 +1,13 @@
-.bannerWarning { border-color: #fbe2a0; background: #fff8e6; color: var(--bp-warning); }
-.bannerWarning svg { color: #b07800; }
+/* Buscador dentro de un campo de formulario (lupa a la izquierda) */
+.searchField { position: relative; }
+
+.searchField svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8592a3;
+  pointer-events: none;
+}
+
+.searchField .input { padding-left: 38px; }
