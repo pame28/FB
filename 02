@@ -1,14 +1,2 @@
-.statusPlain { font-size: 13px; font-weight: 700; }
-
-@media (max-width: 768px) {
-  .filterGrid { grid-template-columns: 1fr; }
-  .filterActions .btn { flex: 1 1 auto; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spin { animation: none; }
-}
-
-
-
-
+.bannerWarning { border-color: #fbe2a0; background: #fff8e6; color: var(--bp-warning); }
+.bannerWarning svg { color: #b07800; }
