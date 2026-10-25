@@ -1,1 +1,15 @@
-https://teams.microsoft.com/meet/2934951000764?p=J0gqvxPbkcc2eZKWLQ
+:11:37.006 [Information] [ApiFeedbackColaboradores.Middlewares.LoggingMiddleware] [40002a5a-0001-cd00-b63f-84710c7967bb] Path: "/api/users/sync/as400", Method: "POST"
+2026-10-24 18:11:37.223 [Error] [ApiFeedbackColaboradores.Endpoints.UserEndpoints] [40002a5a-0001-cd00-b63f-84710c7967bb] SyncUsersAs400Error
+System.IO.FileNotFoundException: Could not load file or assembly 'System.Data.OleDb, Version=10.0.0.12, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
+File name: 'System.Data.OleDb, Version=10.0.0.12, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
+   at ApiFeedbackColaboradores.Services.CoachingCajerosService.ObtenerCajerosAsync(CancellationToken cancellationToken)
+   at ApiFeedbackColaboradores.Services.CoachingCajerosService.ObtenerCajerosAsync(CancellationToken cancellationToken)
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at ApiFeedbackColaboradores.Services.CoachingCajerosService.ObtenerCajerosAsync(CancellationToken cancellationToken)
+   at ApiFeedbackColaboradores.Endpoints.UserEndpoints.SyncUsersAs400(ICoachingCajerosService coachingCajerosService, IUsersRepository usersRepository, IModelLogsRepository modelLogsRepository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory)
+2026-10-24 18:11:37.249 [Information] [ApiFeedbackColaboradores.Middlewares.LoggingMiddleware] [40002a5a-0001-cd00-b63f-84710c7967bb] HttpStatusCode: 500
+2026-10-24 18:11:37.249 [Information] [ApiFeedbackColaboradores.Middlewares.LoggingMiddleware] [40002a5a-0001-cd00-b63f-84710c7967bb] {"code":500,"message":"Ocurrió un error interno en el servidor.","errors":null}
+
+
+
+mira estos son los logs del backend ... que es?
