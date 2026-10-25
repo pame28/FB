@@ -1,15 +1,156 @@
-:11:37.006 [Information] [ApiFeedbackColaboradores.Middlewares.LoggingMiddleware] [40002a5a-0001-cd00-b63f-84710c7967bb] Path: "/api/users/sync/as400", Method: "POST"
-2026-10-24 18:11:37.223 [Error] [ApiFeedbackColaboradores.Endpoints.UserEndpoints] [40002a5a-0001-cd00-b63f-84710c7967bb] SyncUsersAs400Error
-System.IO.FileNotFoundException: Could not load file or assembly 'System.Data.OleDb, Version=10.0.0.12, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'. The system cannot find the file specified.
-File name: 'System.Data.OleDb, Version=10.0.0.12, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51'
-   at ApiFeedbackColaboradores.Services.CoachingCajerosService.ObtenerCajerosAsync(CancellationToken cancellationToken)
-   at ApiFeedbackColaboradores.Services.CoachingCajerosService.ObtenerCajerosAsync(CancellationToken cancellationToken)
-   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
-   at ApiFeedbackColaboradores.Services.CoachingCajerosService.ObtenerCajerosAsync(CancellationToken cancellationToken)
-   at ApiFeedbackColaboradores.Endpoints.UserEndpoints.SyncUsersAs400(ICoachingCajerosService coachingCajerosService, IUsersRepository usersRepository, IModelLogsRepository modelLogsRepository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory)
-2026-10-24 18:11:37.249 [Information] [ApiFeedbackColaboradores.Middlewares.LoggingMiddleware] [40002a5a-0001-cd00-b63f-84710c7967bb] HttpStatusCode: 500
-2026-10-24 18:11:37.249 [Information] [ApiFeedbackColaboradores.Middlewares.LoggingMiddleware] [40002a5a-0001-cd00-b63f-84710c7967bb] {"code":500,"message":"Ocurrió un error interno en el servidor.","errors":null}
+/* ---- Tarjeta de filtros ---- */
+.filterCard {
+  margin-bottom: 20px;
+  padding: 20px 22px;
+  border: 1px solid #e6ebf1;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.filterCardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--bp-blue-expert);
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px 24px;
+}
+.filterGrid .search { max-width: none; }
+
+.filterActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.btnGhost { background: transparent; border-color: transparent; color: var(--bp-blue-expert); }
+.btnGhost:hover:not(:disabled) { background: #f2f5f9; }
+
+.statusPlain { font-size: 13px; font-weight: 700; }
 
 
 
-mira estos son los logs del backend ... que es?
+
+
+
+
+
+
+
+
+  .filterGrid { grid-template-columns: 1fr; }
+  .filterActions .btn { flex: 1 1 auto; }
+
+
+
+
+
+
+
+
+
+    render: (u) => <span className={`${styles.statusPlain} ${statusClass(u.status)}`}>{u.status}</span>,
+
+
+
+
+
+
+  const [panelOpen, setPanelOpen] = useState(true);
+
+
+
+
+
+
+
+
+
+      {/* ---------- Filtros de búsqueda ---------- */}
+      <form className={styles.filterCard} onSubmit={handleLoad}>
+        <h2 className={styles.filterCardTitle}>
+          <Filter size={16} /> Filtros de búsqueda
+        </h2>
+
+        <div className={styles.filterGrid}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="companyAreaId">Área</label>
+            <select id="companyAreaId" name="companyAreaId" className={styles.select}
+              value={filters.companyAreaId} onChange={handleFilterChange}>
+              <option value="">Selecciona un área</option>
+              {catalogs.areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="companyPositionId">Perfil de puesto</label>
+            <select id="companyPositionId" name="companyPositionId" className={styles.select}
+              value={filters.companyPositionId} onChange={handleFilterChange}
+              disabled={catalogs.positions.length === 0}>
+              <option value="">
+                {catalogs.positions.length === 0 ? "No disponible aún" : "Selecciona un perfil"}
+              </option>
+              {catalogs.positions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="search">Buscar usuario</label>
+            <div className={styles.search}>
+              <Search size={16} />
+              <input id="search" name="search" className={styles.input} placeholder="Código o nombre..."
+                value={filters.search} onChange={handleFilterChange} />
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.filterActions}>
+          <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`}
+            disabled={!isValid || loading}
+            title={!isValid ? "Selecciona al menos un filtro o escribe al menos 2 letras" : undefined}>
+            {loading ? <Loader2 size={16} className={styles.spin} /> : <Download size={16} />}
+            Cargar
+          </button>
+
+          <button type="button" className={`${styles.btn} ${styles.btnGhost}`}
+            onClick={() => setConfirmAllOpen(true)} disabled={loading}>
+            <Users size={16} /> Cargar todos los usuarios
+          </button>
+
+          <button type="button" className={`${styles.btn} ${styles.btnGhost}`}
+            onClick={clearFilters} disabled={!hasAnyFilter}>
+            Limpiar filtros
+          </button>
+
+          {users.items !== null && !loading && (
+            <span className={styles.count}>
+              {plural(users.total, "usuario", "usuarios")}
+              {users.total > users.items.length && ` · mostrando ${users.items.length}`}
+            </span>
+          )}
+        </div>
+      </form>
+
+      {/* ---------- Listado (solo después de cargar) ---------- */}
+      {(users.items !== null || loading) && (
+        <section className={styles.panel}>
+          <DataTable
+            columns={columns}
+            rows={users.items ?? []}
+            loading={loading}
+            maxHeight={420}
+            onRowClick={selectUser}
+            selectedKey={selected?.id}
+            emptyMessage="Ningún usuario coincide con la búsqueda."
+          />
+        </section>
+      )}
