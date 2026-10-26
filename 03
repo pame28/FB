@@ -1,5 +1,20 @@
-SELECT
-  LOGINPROPERTY('api_reposicionPIN', 'IsExpired')           AS IsExpired,
-  LOGINPROPERTY('api_reposicionPIN', 'IsLocked')            AS IsLocked,
-  LOGINPROPERTY('api_reposicionPIN', 'PasswordLastSetTime') AS UltimoCambio,
-  LOGINPROPERTY('api_reposicionPIN', 'DaysUntilExpiration') AS DiasRestantes;
+INSERT INTO UsuarioAcceso (privilegioid, usuarioid, IdMenu)
+SELECT 1, NULL, m.idMenu
+FROM Menu m
+WHERE m.padre IN (1021, 1022) AND m.activo = 1
+  AND NOT EXISTS (SELECT 1 FROM UsuarioAcceso ua
+                  WHERE ua.privilegioid = 1 AND ua.IdMenu = m.idMenu);
+
+
+
+
+
+
+
+INSERT INTO UsuarioAcceso (Id, privilegioid, usuarioid, IdMenu)
+SELECT (SELECT MAX(Id) FROM UsuarioAcceso) + ROW_NUMBER() OVER (ORDER BY m.idMenu),
+       1, NULL, m.idMenu
+FROM Menu m
+WHERE m.padre IN (1021, 1022) AND m.activo = 1
+  AND NOT EXISTS (SELECT 1 FROM UsuarioAcceso ua
+                  WHERE ua.privilegioid = 1 AND ua.IdMenu = m.idMenu);
