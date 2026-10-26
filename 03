@@ -1,24 +1,302 @@
-USE PerdidasOperativas;
-GO
--- Usuarios de la BD sin login asociado
-SELECT dp.name, dp.sid
-FROM sys.database_principals dp
-LEFT JOIN sys.server_principals sp ON dp.sid = sp.sid
-WHERE sp.sid IS NULL
-  AND dp.type IN ('S','U')
-  AND dp.authentication_type_desc = 'INSTANCE';
+Mira que necesito dar con ese combobox (si es que es un combobox)
+
+No tengo ni idea de como se llena ese menu, porque me están pidiendo esto:
+
+El usuario administrador debe tener asignado por default todos los reportes del menú de "Reportes" con el submenú "Reportes - Internos" y "Reportes - CNBS"  detallar los reportes internos y CNBS.													
+La opción del menú de "Reportes" con el submenú "Reportes - Internos" y "Reportes - CNBS", no debe permitir asignarse al usuario Gestor. Cuando el usuario administrador intente agregar alguno de estos reportes al usuario gestor, deberá mostrar un mensaje en rojo con el detalle "NO SE PUEDE ASIGNAR ESTE REPORTE YA QUE EL USUARIO DESTINO NO ES ADMINISTRADOR"													
+
+Pero el item #1 yo ya lo veo hecho
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using System.Web.UI;
+using System.Web.UI.WebControls;
+using System.Collections;
+using System.Collections.Specialized;
+using System.Data;
+using System.Data.SqlClient;
+using System.Configuration;
+using System.Web.Configuration;
+
+namespace BasePerdidasOperativas.Transacciones
+{
+    public partial class Login : System.Web.UI.Page
+    {
+        protected void Page_Load(object sender, EventArgs e)
+        {
+            Session["Usuario"] = null;
+            ASPxTextBoxUsr.Focus();
+        }
+
+        protected void ASPxButtonLogin_Click(object sender, EventArgs e)
+        {
+            //bool authenticate = true;
+            bool authenticate = false;            
+            if (!authenticate)
+            {
+                try
+                {
+                    hn.banpais.wsactivedirectoryde.xmlwsAD adu = new hn.banpais.wsactivedirectoryde.xmlwsAD();
+                    authenticate = adu.AD_Autenticar_Grupo(ASPxTextBoxUsr.Text.Trim(), ASPxTextBoxClave.Text.Trim(), "app_poperativa");
+                }
+                catch (Exception et)
+                {
+                    LblError.ForeColor = System.Drawing.Color.Red;
+                    LblError.Text = "ERROR EN INICIO DE SESIÓN: " + et.Message;
+                    LblError.Visible = true;
+                }
+            }
+            if (authenticate)
+            {
+                if (ASPxTextBoxUsr.Text == "")
+                {
+                    LblError.ForeColor = System.Drawing.Color.Red;
+                    LblError.Text = "INGRESE UN NOMBRE DE USUARIO.";
+                    LblError.Visible = true;
+                }
+                if (ASPxTextBoxClave.Text == "")
+                {
+                    LblError.ForeColor = System.Drawing.Color.Red;
+                    LblError.Text = "INGRESE UNA CONTRASEÑA.";
+                    LblError.Visible = true;
+                }
+                else
+                {
+                    if (ASPxTextBoxClave.Text == "")
+                    {
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "INGRESE UNA CONTRASEÑA.";
+                        LblError.Visible = true;
+                    }
+                    else
+                    {
+
+                        string connection_String = System.Configuration.ConfigurationManager.ConnectionStrings["BasePerdidasOperativas.Properties.Settings.SettingConnectionString"].ConnectionString;
+                        SqlConnection sqlcone = new SqlConnection(connection_String);
+                        SqlDataAdapter sqladapter = new SqlDataAdapter();
+                        sqladapter.SelectCommand = new SqlCommand();
+                        sqladapter.SelectCommand.Connection = sqlcone;
+                        DataSet usuarios = new DataSet();
+                        string query = @"SELECT usuarioid,usuario,nombreenlace,privilegioid FROM tblUsuarios WHERE activo = 1 AND usuario= '{0}'";
+                        query = String.Format(query, ASPxTextBoxUsr.Text);
+                        sqladapter.SelectCommand.CommandText = query;
+                        sqlcone.Open();
+                        sqladapter.SelectCommand.ExecuteNonQuery();
+                        sqlcone.Close();
+                        sqladapter.Fill(usuarios);
+                        if (usuarios.Tables[0].Rows.Count > 0)
+                        {
+                            Session["nombreenlace"] = ASPxTextBoxUsr.Text;
+                            foreach (DataRow pRow in usuarios.Tables[0].Rows)
+                            {
+                                Session["usuarioid"] = pRow[0];
+                                Session["usuario"] = pRow[1];
+                                Session["nombreenlace"] = pRow[2];
+                                Session["privilegioid"] = pRow[3];
+                            }
+                            //Obtiene el menu dinamico asignado a cada usuario
+                            DataTable MenuUsuario = new DataTable();
+                            Session["MenuUsuario"] = ObtenerMenu();
+
+                            Response.Redirect("~/Index.aspx", true);
+                        }
+                        if (usuarios.Tables[0].Rows.Count == 0)
+                        {
+                            LblError.ForeColor = System.Drawing.Color.Red;
+                            LblError.Text = "USUARIO NO TIENE ACCESO.";
+                            LblError.Visible = true;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                LblError.ForeColor = System.Drawing.Color.Red;
+                LblError.Text = "ERROR: USUARIO O CONTRASEÑA INVÁLIDA";
+                LblError.Visible = true;
+            }            
+     
+       }
+
+        private DataTable ObtenerMenu ()
+        {
+            DataTable dt = new DataTable();
+            string connection_String = System.Configuration.ConfigurationManager.ConnectionStrings["BasePerdidasOperativas.Properties.Settings.SettingConnectionString"].ConnectionString;
+            SqlConnection sqlcone = new SqlConnection(connection_String);
+            SqlCommand cmd = new SqlCommand();
+            sqlcone.Open();
+            cmd.Connection = sqlcone;
+            cmd.CommandText = "usp_ObtenerMenUsuario";
+            cmd.CommandType = CommandType.StoredProcedure;
+            cmd.Parameters.Add(new SqlParameter("@Usuario",ASPxTextBoxUsr.Text));
+
+            using (SqlDataReader reader = cmd.ExecuteReader())
+            {
+                dt.Load(reader);
+
+                if (!reader.IsClosed)
+                    reader.Close();
+            }
+
+            sqlcone.Close();
+
+            return dt;
+        }
+    }
+
+
+}
 
 
 
 
 
-USE PerdidasOperativas;
-GO
-ALTER USER app_perdidaso WITH LOGIN = app_perdidaso;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using System.Web.UI;
+using System.Web.UI.WebControls;
+using System.Configuration;
+using DevExpress.Web;
+using System.Data;
+
+namespace BasePerdidasOperativas
+{
+    public partial class MasterPageBanpais : System.Web.UI.MasterPage
+    {
+        protected void Page_Load(object sender, EventArgs e)
+        {
+            if (Session["nombreenlace"] == null || Session["MenuUsuario"]==null)
+            {
+                redireccionar();
+            }
+            LblUsuario.Text = Session["nombreenlace"].ToString();
+
+            if (!IsPostBack)
+            {
+                if (Session["UsuarioId"] == null || Session["MenuUsuario"] == null)
+                {
+                    redireccionar();
+                }
+
+                if (ASPxMenu1.Items.Count == 0 && Session["MenuUsuario"] != null)
+                {
+                    crearMenu();
+                }
+
+                if (ASPxMenu1.Items.Count == 0 && Session["MenuUsuario"] == null)
+                {
+                    ASPxMenu1.Items.Add(agregarOpcionMenu(null));
+                }
+                LblUsuario.Text = Session["nombreenlace"].ToString();
+            }
+        }
+
+        private void crearMenu()
+        {
+            DataRow[] MenuUsuario = ((DataTable)(Session["MenuUsuario"])).Select("visible = True", "padre, orden");
+
+            Dictionary<string, DevExpress.Web.ASPxMenu.MenuItem> menuItems =
+                new Dictionary<string, DevExpress.Web.ASPxMenu.MenuItem>();
+
+            //Recorriendo registros de accesos de usuario
+            for (int i = 0; i < MenuUsuario.Length; i++)
+            {
+                //Obtiene registro por registro
+                //DataRow row = MenuUsuario.Rows[i];
+                DataRow row = MenuUsuario[i];
+                DevExpress.Web.ASPxMenu.MenuItem item = agregarOpcionMenu(row);
+                string itemID = row["idMenu"].ToString();
+                string parentID = row["padre"].ToString();
+
+                //Busca el padre el menú para asignar los hijos.
+                if (menuItems.ContainsKey(parentID))
+                    menuItems[parentID].Items.Add(item);
+                else
+                {
+                    // Si es padre solo se crea.
+                    if (parentID == "0")
+                        ASPxMenu1.Items.Add(item);
+                }
+                menuItems.Add(itemID, item);
+            }
+            ASPxMenu1.Items.Add(agregarOpcionMenu(null));
+        }
+
+        private DevExpress.Web.ASPxMenu.MenuItem agregarOpcionMenu(DataRow row)
+        {
+            //Define variable de tipo MenuItem de DevExpress
+            DevExpress.Web.ASPxMenu.MenuItem ret = new DevExpress.Web.ASPxMenu.MenuItem();
+
+            if (row != null)
+            {
+                //Asigna texto a mostrar en el menú
+                ret.Text = row["Acceso"].ToString();
+                //Asigna ruta de acceso al item nuevo.
+                ret.NavigateUrl = row["URL"].ToString();
+
+                if (ret.Text == "Inicio") {
+                    ret.Image.Url="~/Imagenes/homepage.png";
+                }
+                if (ret.Text == "Parámetros" || ret.Text == "Usuarios" || ret.Text == "Ubicación" || ret.Text == "General")
+                {
+                    ret.Image.Url = "~/Imagenes/mantenimiento.png";
+                }
+                if (ret.Text == "Reportes Varios" || ret.Text == "Reportes Detallados")
+                {
+                    ret.Image.Url = "~/Imagenes/report.png";
+                }
+                if (ret.Text == "Reportes CNBS")
+                {
+                    ret.Image.Url = "~/Imagenes/cn.png";
+                }
+                if (ret.Text == "Reportes CNBS")
+                {
+                    ret.Image.Url = "~/Imagenes/cn.png";
+                }
+                //if (ret.Text == "Salir")
+                //{
+                //    ret.Image.Url = "~/Imagenes/Log Off.png";
+                //}
+            }
+            else
+            {
+                //Asigna texto a mostrar en el menú
+                ret.Text = "Salir";
+                ret.Image.Url = "~/Imagenes/Log Off.png";
+                //Asigna ruta de acceso al item nuevo.
+                ret.NavigateUrl = "~/Transacciones/Login.aspx";
+            }
+            return ret;
+        }
+
+        private void redireccionar()
+        {
+            try
+            {
+                if (!Page.IsCallback)
+                {
+                    Response.Redirect("~/Transacciones/Login.aspx");
+                }
+                else
+                {
+                    Response.Redirect("~/Transacciones/Login.aspx");
+                }
+            }
+            catch (Exception)
+            {
+                Response.Redirect("~/Transacciones/Login.aspx");
+            }
+        }
+
+    }
+}
 
 
 
 
 
-
-CREATE LOGIN app_perdidaso WITH PASSWORD = 'la_del_web.config', CHECK_POLICY = OFF;
