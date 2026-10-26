@@ -1,6 +1,12 @@
-SELECT u.usuario, u.nombreenlace, u.privilegioid, m.idMenu, m.Acceso
-FROM tblAccesoExtra ae
-JOIN tblUsuarios u ON u.usuarioid = ae.UsuarioId
-JOIN Menu m ON m.idMenu = ae.idMenu
-WHERE u.privilegioid <> 1
-  AND (m.idMenu IN (6, 1021, 1022) OR m.padre IN (1021, 1022));
+Ayudame con estos criterios tambien por favor,asi como lo estamos manejando, paso a paso.
+
+Dentro del menú "Usuarios" > "Mantenimiento a Usuario" > "Agregar accesos a Usuario" (disponible únicamente para el administrador), se debe excluir la asignación de accesos a los reportes CNBS  (los 14 reportes detallados en criterio 1) cuando se trate del usuario Gestor.													
+Renombrar el nombre del menú "Reportes CNBS" para el usuario Gestor, por el nombre "Registro de Información CNBS". Esto no debe afectar los usuarios que actualmente ya tienen accesos asignados.													
+Se debe mantener la funcionalidad actual de asignación  para que desde el menú "Usuarios" > "Mantenimiento a Usuario" > "Agregar accesos a usuario", el usuario administrador podrá agregar los diferentes reportes, para que el gestor registre la información en el menú "Registro de Información CNBS". 													
+Se debe mantener la funcionalidad actual de asignación  para que desde el menú "Usuarios > Mantenimiento a Usuario > Agregar accesos a usuario", el administrador podrá asignar los permisos para que el usuario Gestor genere reportes desde el menú "Reportes Detallados". Estos reportes incluirán únicamente la información previamente registrada por dicho usuario.													
+Se debe mantener la funcionalidad actual en la que El usuario Gestor únicamente podrá visualizar la información registrada por su mismo usuario, al momento de generar o consultar el reporte asignado.													
+Se solicita agregar un icono a la par del menú de "Reportes" para el usuario administrador (ver referencia del icono 1 en el prototipado).													
+
+
+
+Nota: te adjunté el icono del que hablan
