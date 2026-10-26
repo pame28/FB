@@ -1,20 +1,69 @@
-INSERT INTO UsuarioAcceso (privilegioid, usuarioid, IdMenu)
-SELECT 1, NULL, m.idMenu
-FROM Menu m
-WHERE m.padre IN (1021, 1022) AND m.activo = 1
-  AND NOT EXISTS (SELECT 1 FROM UsuarioAcceso ua
-                  WHERE ua.privilegioid = 1 AND ua.IdMenu = m.idMenu);
+   oniteminserted="DetailsView1_ItemInserted" oniteminserting="DetailsView1_ItemInserting" HorizontalAlign="Center"
+
+
+using System.Data.SqlClient;
+using System.Configuration;
+using DevExpress.Web.ASPxEditors;
 
 
 
 
+protected void DetailsView1_ItemInserting(object sender, DetailsViewInsertEventArgs e)
+{
+    // Obtener el acceso seleccionado en el combo
+    object valor = e.Values["idMenu"];
+    if (valor == null)
+    {
+        ASPxComboBox combo = (ASPxComboBox)DetailsView1.FindControl("ASPxComboBox4");
+        valor = combo != null ? combo.Value : null;
+    }
+    if (valor == null) return;
 
+    int idMenu = Convert.ToInt32(valor);
+    int usuarioDestino = Convert.ToInt32(Session["UsuarioAcceso"]);
 
+    if (EsReporteRestringido(idMenu) && !EsAdministrador(usuarioDestino))
+    {
+        e.Cancel = true; // No guarda
+        LblError.Visible = true;
+        LblError.ForeColor = System.Drawing.Color.Red;
+        LblError.Text = "NO SE PUEDE ASIGNAR ESTE REPORTE YA QUE EL USUARIO DESTINO NO ES ADMINISTRADOR";
+    }
+}
 
-INSERT INTO UsuarioAcceso (Id, privilegioid, usuarioid, IdMenu)
-SELECT (SELECT MAX(Id) FROM UsuarioAcceso) + ROW_NUMBER() OVER (ORDER BY m.idMenu),
-       1, NULL, m.idMenu
-FROM Menu m
-WHERE m.padre IN (1021, 1022) AND m.activo = 1
-  AND NOT EXISTS (SELECT 1 FROM UsuarioAcceso ua
-                  WHERE ua.privilegioid = 1 AND ua.IdMenu = m.idMenu);
+private string CadenaConexion
+{
+    get
+    {
+        return ConfigurationManager.ConnectionStrings[
+            "BasePerdidasOperativas.Properties.Settings.SettingConnectionString"].ConnectionString;
+    }
+}
+
+// Reportes (6), Reportes - Internos (1021), Reportes - CNBS (1022) y sus hijos
+private bool EsReporteRestringido(int idMenu)
+{
+    const string sql = @"SELECT COUNT(1) FROM Menu
+                         WHERE idMenu = @idMenu
+                           AND (idMenu IN (6, 1021, 1022) OR padre IN (1021, 1022))";
+    using (SqlConnection cn = new SqlConnection(CadenaConexion))
+    using (SqlCommand cmd = new SqlCommand(sql, cn))
+    {
+        cmd.Parameters.AddWithValue("@idMenu", idMenu);
+        cn.Open();
+        return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+    }
+}
+
+private bool EsAdministrador(int usuarioId)
+{
+    const string sql = "SELECT privilegioid FROM tblUsuarios WHERE usuarioid = @usuarioid";
+    using (SqlConnection cn = new SqlConnection(CadenaConexion))
+    using (SqlCommand cmd = new SqlCommand(sql, cn))
+    {
+        cmd.Parameters.AddWithValue("@usuarioid", usuarioId);
+        cn.Open();
+        object r = cmd.ExecuteScalar();
+        return r != null && Convert.ToInt32(r) == 1; // 1 = ADMINISTRADOR
+    }
+}
