@@ -1,38 +1,24 @@
-Server Error in '/' Application.
-Cannot open database "PerdidasOperativas" requested by the login. The login failed.
-Login failed for user 'app_perdidaso'.
-Description: An unhandled exception occurred during the execution of the current web request. Please review the stack trace for more information about the error and where it originated in the code.
-
-Exception Details: System.Data.SqlClient.SqlException: Cannot open database "PerdidasOperativas" requested by the login. The login failed.
-Login failed for user 'app_perdidaso'.
-
-Source Error:
-
-An unhandled exception was generated during the execution of the current web request. Information regarding the origin and location of the exception can be identified using the exception stack trace below.
-
-Stack Trace:
-
-
-[SqlException (0x80131904): Cannot open database "PerdidasOperativas" requested by the login. The login failed.
-Login failed for user 'app_perdidaso'.]
-   System.Data.SqlClient.SqlInternalConnectionTds..ctor(DbConnectionPoolIdentity identity, SqlConnectionString connectionOptions, SqlCredential credential, Object providerInfo, String newPassword, SecureString newSecurePassword, Boolean redirectedUserInstance, SqlConnectionString userConnectionOptions, SessionData reconnectSessionData, DbConnectionPool pool, String accessToken, Boolean applyTransientFaultHandling, SqlAuthenticationProviderManager sqlAuthProviderManager) +1524
-   System.Data.SqlClient.SqlConnectionFactory.CreateConnection(DbConnectionOptions options, DbConnectionPoolKey poolKey, Object poolGroupProviderInfo, DbConnectionPool pool, DbConnection owningConnection, DbConnectionOptions userOptions) +467
-   System.Data.ProviderBase.DbConnectionFactory.CreatePooledConnection(DbConnectionPool pool, DbConnection owningObject, DbConnectionOptions options, DbConnectionPoolKey poolKey, DbConnectionOptions userOptions) +70
-   System.Data.ProviderBase.DbConnectionPool.CreateObject(DbConnection owningObject, DbConnectionOptions userOptions, DbConnectionInternal oldConnection) +1145
-   System.Data.ProviderBase.DbConnectionPool.UserCreateRequest(DbConnection owningObject, DbConnectionOptions userOptions, DbConnectionInternal oldConnection) +111
-   System.Data.ProviderBase.DbConnectionPool.TryGetConnection(DbConnection owningObject, UInt32 waitForMultipleObjectsTimeout, Boolean allowCreate, Boolean onlyOneCheckConnection, DbConnectionOptions userOptions, DbConnectionInternal& connection) +1567
-   System.Data.ProviderBase.DbConnectionPool.TryGetConnection(DbConnection owningObject, TaskCompletionSource`1 retry, DbConnectionOptions userOptions, DbConnectionInternal& connection) +118
-   System.Data.ProviderBase.DbConnectionFactory.TryGetConnection(DbConnection owningConnection, TaskCompletionSource`1 retry, DbConnectionOptions userOptions, DbConnectionInternal oldConnection, DbConnectionInternal& connection) +268
-   System.Data.ProviderBase.DbConnectionInternal.TryOpenConnectionInternal(DbConnection outerConnection, DbConnectionFactory connectionFactory, TaskCompletionSource`1 retry, DbConnectionOptions userOptions) +315
-   System.Data.SqlClient.SqlConnection.TryOpenInner(TaskCompletionSource`1 retry) +128
-   System.Data.SqlClient.SqlConnection.TryOpen(TaskCompletionSource`1 retry) +265
-   System.Data.SqlClient.SqlConnection.Open() +133
-   BasePerdidasOperativas.Transacciones.Login.ASPxButtonLogin_Click(Object sender, EventArgs e) in C:\Users\66966\Downloads\Proyectos\BH-69375 Mantenimiento cuentas contables reporte CNBS\Desarrollo\VS\PerdidasOperativas\BasePerdidasOperativas\BasePerdidasOperativas\Transacciones\Login.aspx.cs:76
-   DevExpress.Web.ASPxEditors.ASPxButton.OnClick(EventArgs e) +126
-   System.Web.UI.Page.ProcessRequestMain(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint) +1890
-
-Version Information: Microsoft .NET Framework Version:4.0.30319; ASP.NET Version:4.8.4805.0
+USE PerdidasOperativas;
+GO
+-- Usuarios de la BD sin login asociado
+SELECT dp.name, dp.sid
+FROM sys.database_principals dp
+LEFT JOIN sys.server_principals sp ON dp.sid = sp.sid
+WHERE sp.sid IS NULL
+  AND dp.type IN ('S','U')
+  AND dp.authentication_type_desc = 'INSTANCE';
 
 
 
-Mira que, ya habia una BD y pedí una restauracion supongo que algo paso con el user
+
+
+USE PerdidasOperativas;
+GO
+ALTER USER app_perdidaso WITH LOGIN = app_perdidaso;
+
+
+
+
+
+
+CREATE LOGIN app_perdidaso WITH PASSWORD = 'la_del_web.config', CHECK_POLICY = OFF;
