@@ -1,302 +1,519 @@
-Mira que necesito dar con ese combobox (si es que es un combobox)
-
-No tengo ni idea de como se llena ese menu, porque me están pidiendo esto:
-
-El usuario administrador debe tener asignado por default todos los reportes del menú de "Reportes" con el submenú "Reportes - Internos" y "Reportes - CNBS"  detallar los reportes internos y CNBS.													
-La opción del menú de "Reportes" con el submenú "Reportes - Internos" y "Reportes - CNBS", no debe permitir asignarse al usuario Gestor. Cuando el usuario administrador intente agregar alguno de estos reportes al usuario gestor, deberá mostrar un mensaje en rojo con el detalle "NO SE PUEDE ASIGNAR ESTE REPORTE YA QUE EL USUARIO DESTINO NO ES ADMINISTRADOR"													
-
-Pero el item #1 yo ya lo veo hecho
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Web;
-using System.Web.UI;
-using System.Web.UI.WebControls;
-using System.Collections;
-using System.Collections.Specialized;
-using System.Data;
-using System.Data.SqlClient;
-using System.Configuration;
-using System.Web.Configuration;
-
-namespace BasePerdidasOperativas.Transacciones
-{
-    public partial class Login : System.Web.UI.Page
-    {
-        protected void Page_Load(object sender, EventArgs e)
-        {
-            Session["Usuario"] = null;
-            ASPxTextBoxUsr.Focus();
-        }
-
-        protected void ASPxButtonLogin_Click(object sender, EventArgs e)
-        {
-            //bool authenticate = true;
-            bool authenticate = false;            
-            if (!authenticate)
-            {
-                try
-                {
-                    hn.banpais.wsactivedirectoryde.xmlwsAD adu = new hn.banpais.wsactivedirectoryde.xmlwsAD();
-                    authenticate = adu.AD_Autenticar_Grupo(ASPxTextBoxUsr.Text.Trim(), ASPxTextBoxClave.Text.Trim(), "app_poperativa");
-                }
-                catch (Exception et)
-                {
-                    LblError.ForeColor = System.Drawing.Color.Red;
-                    LblError.Text = "ERROR EN INICIO DE SESIÓN: " + et.Message;
-                    LblError.Visible = true;
-                }
-            }
-            if (authenticate)
-            {
-                if (ASPxTextBoxUsr.Text == "")
-                {
-                    LblError.ForeColor = System.Drawing.Color.Red;
-                    LblError.Text = "INGRESE UN NOMBRE DE USUARIO.";
-                    LblError.Visible = true;
-                }
-                if (ASPxTextBoxClave.Text == "")
-                {
-                    LblError.ForeColor = System.Drawing.Color.Red;
-                    LblError.Text = "INGRESE UNA CONTRASEÑA.";
-                    LblError.Visible = true;
-                }
-                else
-                {
-                    if (ASPxTextBoxClave.Text == "")
-                    {
-                        LblError.ForeColor = System.Drawing.Color.Red;
-                        LblError.Text = "INGRESE UNA CONTRASEÑA.";
-                        LblError.Visible = true;
-                    }
-                    else
-                    {
-
-                        string connection_String = System.Configuration.ConfigurationManager.ConnectionStrings["BasePerdidasOperativas.Properties.Settings.SettingConnectionString"].ConnectionString;
-                        SqlConnection sqlcone = new SqlConnection(connection_String);
-                        SqlDataAdapter sqladapter = new SqlDataAdapter();
-                        sqladapter.SelectCommand = new SqlCommand();
-                        sqladapter.SelectCommand.Connection = sqlcone;
-                        DataSet usuarios = new DataSet();
-                        string query = @"SELECT usuarioid,usuario,nombreenlace,privilegioid FROM tblUsuarios WHERE activo = 1 AND usuario= '{0}'";
-                        query = String.Format(query, ASPxTextBoxUsr.Text);
-                        sqladapter.SelectCommand.CommandText = query;
-                        sqlcone.Open();
-                        sqladapter.SelectCommand.ExecuteNonQuery();
-                        sqlcone.Close();
-                        sqladapter.Fill(usuarios);
-                        if (usuarios.Tables[0].Rows.Count > 0)
-                        {
-                            Session["nombreenlace"] = ASPxTextBoxUsr.Text;
-                            foreach (DataRow pRow in usuarios.Tables[0].Rows)
-                            {
-                                Session["usuarioid"] = pRow[0];
-                                Session["usuario"] = pRow[1];
-                                Session["nombreenlace"] = pRow[2];
-                                Session["privilegioid"] = pRow[3];
-                            }
-                            //Obtiene el menu dinamico asignado a cada usuario
-                            DataTable MenuUsuario = new DataTable();
-                            Session["MenuUsuario"] = ObtenerMenu();
-
-                            Response.Redirect("~/Index.aspx", true);
-                        }
-                        if (usuarios.Tables[0].Rows.Count == 0)
-                        {
-                            LblError.ForeColor = System.Drawing.Color.Red;
-                            LblError.Text = "USUARIO NO TIENE ACCESO.";
-                            LblError.Visible = true;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                LblError.ForeColor = System.Drawing.Color.Red;
-                LblError.Text = "ERROR: USUARIO O CONTRASEÑA INVÁLIDA";
-                LblError.Visible = true;
-            }            
-     
-       }
-
-        private DataTable ObtenerMenu ()
-        {
-            DataTable dt = new DataTable();
-            string connection_String = System.Configuration.ConfigurationManager.ConnectionStrings["BasePerdidasOperativas.Properties.Settings.SettingConnectionString"].ConnectionString;
-            SqlConnection sqlcone = new SqlConnection(connection_String);
-            SqlCommand cmd = new SqlCommand();
-            sqlcone.Open();
-            cmd.Connection = sqlcone;
-            cmd.CommandText = "usp_ObtenerMenUsuario";
-            cmd.CommandType = CommandType.StoredProcedure;
-            cmd.Parameters.Add(new SqlParameter("@Usuario",ASPxTextBoxUsr.Text));
-
-            using (SqlDataReader reader = cmd.ExecuteReader())
-            {
-                dt.Load(reader);
-
-                if (!reader.IsClosed)
-                    reader.Close();
-            }
-
-            sqlcone.Close();
-
-            return dt;
-        }
-    }
+USE [PerdidasOperativas_DESA]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_ObtenerMenUsuario]    Script Date: 26/10/2026 10:31:57 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		<Cinthia Cardoza>
+-- Create date: <20/03/2024>
+-- Description:	<Obtiene menu dinámico acorde a cada usuario>
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_ObtenerMenUsuario] 
+	-- Add the parameters for the stored procedure here
+@Usuario VARCHAR (20)
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+	--Obtiene usuario ID para hacer la busqueda en la tabla Menú
+	DECLARE @UsuarioId INT = (SELECT usuarioid FROM tblUsuarios WHERE usuario=@Usuario)
+	 SELECT DISTINCT m.idMenu,
+       m.padre,
+       m.Acceso,
+       m.[URL],
+       u.UsuarioId,
+       m.visible,
+       m.orden
+	FROM   UsuarioAcceso pa
+		   INNER JOIN Menu m
+				ON  m.idMenu = pa.idMenu 
+		   INNER JOIN tblUsuarios u
+				ON  u.privilegioid = pa.privilegioid
+				INNER JOIN tblPrivilegios p
+				ON p.privilegioid = pa.privilegioid
+	WHERE  u.UsuarioId = @UsuarioId
+		   AND u.activo = 1
+		   AND m.activo = 1
+	UNION ALL
+	SELECT DISTINCT m.idMenu,
+       m.padre,
+       m.Acceso,
+       m.[URL],
+       ae.UsuarioId,
+       m.visible,
+       m.orden
+	FROM   Menu m
+		   INNER JOIN tblAccesoExtra ae
+				ON  m.idMenu = ae.idMenu
+	Where ae.UsuarioId = @UsuarioId
+END
 
 
-}
+
+
+
+SELECT TOP (1000) [idMenu]
+      ,[padre]
+      ,[URL]
+      ,[Acceso]
+      ,[orden]
+      ,[activo]
+      ,[visible]
+  FROM [PerdidasOperativas_DESA].[dbo].[Menu]
+
+
+
+idMenu	padre	URL	Acceso	orden	activo	visible
+1	0	~/Index.aspx	Inicio	0	1	1
+2	0		Parámetros	1	1	1
+3	0		Usuarios	2	1	1
+4	0		Ubicación	3	1	1
+5	0		General	4	1	1
+6	0		Reportes	5	1	1
+7	0		Reportes CNBS	6	1	1
+8	0		Reportes Detallados	7	1	1
+26	7	~/Transacciones/Registros.aspx	Registro Eventos de Pérdidas	1	1	1
+1003	1021	~/Transacciones/CiberIncidentes.aspx	Incidentes de Ciberseguridad	3	1	1
+1005	8	~/Reportes/ReporteCNBSxUsuario.aspx	Reporte de Eventos de Pérdida	1	1	1
+1006	1022	~/Reportes/ReporteCNBS.aspx	Eventos de Pérdida	1	1	1
+1007	1021	~/Reportes/ReporteGeneralRecuperacionEP.aspx	Reporte Recuperacion Eventos Pérdida	2	1	1
+1008	8	~/Reportes/ReporteGeneralCiberIncidentes.aspx	Reporte CiberIncidentes	3	1	1
+1010	1021	~/Reportes/ReporteCNBSxUsuario.aspx	Reporte General - Eventos de Pérdida	1	1	1
+1011	1022	~/Reportes/ReporteCNBSRecuperacionEP.aspx	Recuperación Eventos de Pérdida	2	1	1
+1015	7	~/Transacciones/CargaMasiva/CargaArchivoREP.aspx	Carga Masiva - Recuperacion Eventos Pérdida	4	1	1
+1013	1022	~/Reportes/ReporteCNBSCiberIncidentes.aspx	Incidentes de Ciberseguridad	3	1	1
+1017	7	~/Transacciones/CargaMasiva/CargaArchivoEventosPerdidas.aspx	Carga Masiva - Evento Perdida	6	1	1
+1018	1021	~/Reportes/ReporteGraficos.aspx	Reporte Gráficos de Pérdidas	2	1	1
+1019	1021	~/Reportes/ReportePerdidasNetas.aspx	Reporte Pérdidas Netas	3	1	1
+1020	1021	~/Reportes/ReporteSeguimiento.aspx	Reporte Seguimientos	4	1	1
+9	2	~/Mantenimientos/NegocioNivel1.aspx	Mantenimiento a Nivel de Negocio	1	1	1
+10	2	~/Mantenimientos/TipoEvento.aspx	Mantenimiento a Tipo de Evento	2	1	1
+11	2	~/Mantenimientos/AgrupacionEventos.aspx	Mantenimiento a Agrupacion de Eventos	3	1	1
+12	2	~/Mantenimientos/TipoFraude1.aspx	Mantenimiento a Tipo de Fraude por Sector	4	1	1
+13	2	~/Mantenimientos/RiesgoAsociado.aspx	Mantenimiento a Riesgo Asociado al Evento	5	1	1
+14	2	~/Mantenimientos/Ciberincidentes1.aspx	Mantenimiento a CiberIncidentes	6	1	1
+15	3	~/Mantenimientos/Usuarios.aspx	Mantenimiento a Usuario	1	1	1
+16	3	~/Mantenimientos/CierreMensual.aspx	Cierres por Usuario	2	1	1
+17	4	~/Mantenimientos/Areas.aspx	Mantenimiento a Áreas	1	1	1
+18	4	~/Mantenimientos/Departamentos.aspx	Mantenimiento a Departamentos	2	1	1
+19	4	~/Mantenimientos/Zonas.aspx	Mantenimiento a Zonas	3	1	1
+20	4	~/Mantenimientos/Empresas.aspx	Mantenimiento a Empresas	4	1	1
+21	5	~/Mantenimientos/Causas.aspx	Mantenimiento a Causas	1	1	1
+22	5	~/Mantenimientos/Estados.aspx	Mantenimiento a Estados	2	1	1
+23	5	~/Mantenimientos/Monedas.aspx	Mantenimiento a Monedas	3	1	1
+24	5	~/Mantenimientos/ControlCorreo.aspx	Mantenimiento a Correos	4	1	1
+25	5	~/Mantenimientos/TitulosEventos.aspx	Mantenimiento a Títulos de Eventos	5	1	1
+27	7	~/Transacciones/RecuperacionEventoPerdida.aspx	Recuperacion Evento Perdida	2	1	1
+1004	7	~/Transacciones/DetalledeRegistros.aspx	Consulta de Registros	7	1	1
+1016	7	~/Transacciones/CargaMasiva/CargaArchivoCiberIncidentes.aspx	Carga Masiva - CiberIncidentes	5	1	1
+1021	6		Reportes - Internos	1	1	1
+1022	6		Reportes - CNBS 	2	1	1
+1023	2		Mantenimiento a Demandas y Juicios en Ejecución	7	1	1
+1024	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/NaturalezaDemanda.aspx	Mantenimiento Naturaleza de la Demanda	1	1	1
+1025	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/TipoDemandante.aspx	Mantenimiento Tipo de Demandante	2	1	1
+1026	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/TipoDemanda.aspx	Mantenimiento Tipo de Demanda	3	1	1
+1027	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/JuzgadoDemanda.aspx	Mantenimiento Juzgado Presentó Demanda	4	1	1
+1028	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/ResultadoPrimeraInstancia.aspx	Mantenimiento Resultado Primera Instancia	5	1	1
+1029	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/ResultadoSegundaInstancia.aspx	Mantenimiento Resultado Segunda Instancia	6	1	1
+1030	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/DemandaAsociadaRiesgoCredito.aspx	Mantenimiento Demanda Asociada a Riesgos de Crédito	7	1	1
+1031	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/TipoGarantia.aspx	Mantenimiento Tipo de Garantia	8	1	1
+1032	1023	~/Mantenimientos/DemandasYjuiciosEnEjecucion/ProbabilidadPerdida.aspx	Mantenimiento Probabilidad de Pérdida	9	1	1
+1033	7	~/FormIngresoInfo/RegistroDemandasJuiciosEjecucion.aspx	Registro de Demandas y Juicios en Ejecución	8	1	1
+1035	7	~/FormIngresoInfo/RegistroCanalesServiciosDisponibles(ATM).aspx	Registro de Canales de servicios disponibles (ATM)	9	1	1
+1037	2	~/Mantenimientos/CodigosATM.aspx	Mantenimiento a Código ATM	8	1	1
+1038	2	~/Mantenimientos/CodigosPOS.aspx	Mantenimiento a Código POS	9	1	1
+1039	7	~/FormIngresoInfo/RegistroCanalesServiciosDisponibles(POS).aspx	Registro de Canales de servicios disponibles (POS)	10	1	1
+1052	2	~/FormIngresoInfo/ActualizacionRegistroPOS.aspx	Mantenimiento al registro de Canales de servicios disponibles (POS)	11	1	1
+1054	2	~/Mantenimientos/RegistroTransacciones.aspx	Registro de Transacciones POS	12	1	1
+1055	7	~/FormIngresoInfo/RegistroTransaccionesCanalesServiciosPOS.aspx	Mantenimiento al registro de Transacciones Canales de servicios POS	11	0	0
+1073	1021	~/Reportes/ReporteDemandasCerradas.aspx	Reporte Demandas Cerradas	7	1	1
+1057	1021	~/Reportes/ReportDemandasJuiciosEjecución.aspx	Reporte Demandas y Juicios en Ejecución	5	1	1
+1071	7	~/FormIngresoInfo/DemandasJuiciosEjecucionBajas.aspx	Bajas Demandas y Juicios en Ejecución	12	1	1
+1080	1022	~/Reportes/ReportTransaccionesCanalesServiciosCNBS.aspx	Reporte de Transacciones por Canales de Servicio CNBS	5	1	1
+1081	1022	~/Reportes/ReporteCanalesServiciosDisponiblesCNBS.aspx	Reporte de Canales de Servicios Disponibles (ATM / POS)	6	1	1
+1083	1022	~/Reportes/ReportDemandasJuiciosEjecuciónCNBS.aspx	Reporte de demandas y juicios en ejecución	7	1	1
+1086	5	~/Mantenimientos/ControlCorreoPeriodicidad.aspx	Mantenimiento a Correo Periodicidad	6	1	1
+1090	2	~/Mantenimientos/CodigoCierreDemanda.aspx	Mantenimiento Cierre de la Demanda	13	1	1
+1092	2	~/Mantenimientos/CodigoResultadoDemanda.aspx	Mantenimiento Resultado de la Demanda	14	1	1
+1093	2	~/Mantenimientos/EquiCuentContables.aspx	Mantenimiento Equivalencia Cuentas Contables	7	1	1
+1036	7	~/FormIngresoInfo/ActualizacionRegistroATM.aspx	Mantenimiento al registro de Canales de servicios disponibles (ATM)	10	0	0
+1070	1021	~/Reportes/ReportTransaccionesCanalesServicio.aspx	Reporte Transacciones por Canales de Servicios	6	1	1
+1077	1022	~/Reportes/ReporteDemandasCerradasCNBS.aspx	Reporte de Demandas Cerradas CNBS	4	1	1
+1075	1021	~/Reportes/ServiciosDisponibles.aspx	Reporte Canales de Servicios disponibles	8	1	1
+1084	7	~/FormIngresoInfo/CargaArchivoDemandasJuiciosEjecucion.aspx	Carga Masiva - Demandas y Juicios en Ejecución	14	1	1
 
 
 
 
 
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Web;
-using System.Web.UI;
-using System.Web.UI.WebControls;
-using System.Configuration;
-using DevExpress.Web;
-using System.Data;
 
-namespace BasePerdidasOperativas
-{
-    public partial class MasterPageBanpais : System.Web.UI.MasterPage
-    {
-        protected void Page_Load(object sender, EventArgs e)
-        {
-            if (Session["nombreenlace"] == null || Session["MenuUsuario"]==null)
-            {
-                redireccionar();
-            }
-            LblUsuario.Text = Session["nombreenlace"].ToString();
-
-            if (!IsPostBack)
-            {
-                if (Session["UsuarioId"] == null || Session["MenuUsuario"] == null)
-                {
-                    redireccionar();
-                }
-
-                if (ASPxMenu1.Items.Count == 0 && Session["MenuUsuario"] != null)
-                {
-                    crearMenu();
-                }
-
-                if (ASPxMenu1.Items.Count == 0 && Session["MenuUsuario"] == null)
-                {
-                    ASPxMenu1.Items.Add(agregarOpcionMenu(null));
-                }
-                LblUsuario.Text = Session["nombreenlace"].ToString();
-            }
-        }
-
-        private void crearMenu()
-        {
-            DataRow[] MenuUsuario = ((DataTable)(Session["MenuUsuario"])).Select("visible = True", "padre, orden");
-
-            Dictionary<string, DevExpress.Web.ASPxMenu.MenuItem> menuItems =
-                new Dictionary<string, DevExpress.Web.ASPxMenu.MenuItem>();
-
-            //Recorriendo registros de accesos de usuario
-            for (int i = 0; i < MenuUsuario.Length; i++)
-            {
-                //Obtiene registro por registro
-                //DataRow row = MenuUsuario.Rows[i];
-                DataRow row = MenuUsuario[i];
-                DevExpress.Web.ASPxMenu.MenuItem item = agregarOpcionMenu(row);
-                string itemID = row["idMenu"].ToString();
-                string parentID = row["padre"].ToString();
-
-                //Busca el padre el menú para asignar los hijos.
-                if (menuItems.ContainsKey(parentID))
-                    menuItems[parentID].Items.Add(item);
-                else
-                {
-                    // Si es padre solo se crea.
-                    if (parentID == "0")
-                        ASPxMenu1.Items.Add(item);
-                }
-                menuItems.Add(itemID, item);
-            }
-            ASPxMenu1.Items.Add(agregarOpcionMenu(null));
-        }
-
-        private DevExpress.Web.ASPxMenu.MenuItem agregarOpcionMenu(DataRow row)
-        {
-            //Define variable de tipo MenuItem de DevExpress
-            DevExpress.Web.ASPxMenu.MenuItem ret = new DevExpress.Web.ASPxMenu.MenuItem();
-
-            if (row != null)
-            {
-                //Asigna texto a mostrar en el menú
-                ret.Text = row["Acceso"].ToString();
-                //Asigna ruta de acceso al item nuevo.
-                ret.NavigateUrl = row["URL"].ToString();
-
-                if (ret.Text == "Inicio") {
-                    ret.Image.Url="~/Imagenes/homepage.png";
-                }
-                if (ret.Text == "Parámetros" || ret.Text == "Usuarios" || ret.Text == "Ubicación" || ret.Text == "General")
-                {
-                    ret.Image.Url = "~/Imagenes/mantenimiento.png";
-                }
-                if (ret.Text == "Reportes Varios" || ret.Text == "Reportes Detallados")
-                {
-                    ret.Image.Url = "~/Imagenes/report.png";
-                }
-                if (ret.Text == "Reportes CNBS")
-                {
-                    ret.Image.Url = "~/Imagenes/cn.png";
-                }
-                if (ret.Text == "Reportes CNBS")
-                {
-                    ret.Image.Url = "~/Imagenes/cn.png";
-                }
-                //if (ret.Text == "Salir")
-                //{
-                //    ret.Image.Url = "~/Imagenes/Log Off.png";
-                //}
-            }
-            else
-            {
-                //Asigna texto a mostrar en el menú
-                ret.Text = "Salir";
-                ret.Image.Url = "~/Imagenes/Log Off.png";
-                //Asigna ruta de acceso al item nuevo.
-                ret.NavigateUrl = "~/Transacciones/Login.aspx";
-            }
-            return ret;
-        }
-
-        private void redireccionar()
-        {
-            try
-            {
-                if (!Page.IsCallback)
-                {
-                    Response.Redirect("~/Transacciones/Login.aspx");
-                }
-                else
-                {
-                    Response.Redirect("~/Transacciones/Login.aspx");
-                }
-            }
-            catch (Exception)
-            {
-                Response.Redirect("~/Transacciones/Login.aspx");
-            }
-        }
-
-    }
-}
+SELECT TOP (1000) [usuarioid]
+      ,[usuario]
+      ,[nombreenlace]
+      ,[correo]
+      ,[zonaid]
+      ,[privilegioid]
+      ,[activo]
+  FROM [PerdidasOperativas_DESA].[dbo].[tblUsuarios]
 
 
 
 
 
+usuarioid	usuario	nombreenlace	correo	zonaid	privilegioid	activo
+2	sayral	Sayra López	henrryp@banpais.hn	1	1	0
+3	mauriciop	Mauricio Pandy	henrryp@banpais.hn	1	2	0
+4	renanz	Renan Zelaya	henrryp@banpais.hn	1	3	0
+5	omarc	Omar Coello	henrryp@banpais.hn	1	2	0
+6	evaristo	Evaristo Bobadilla	henrryp@banpais.hn	1	2	0
+7	cesarb	Cesar Banegas	henrryp@banpais.hn	1	2	0
+8	irmav	Irma Valenzuela	henrryp@banpais.hn	1	2	0
+9	taniach	Tania Chinchilla	henrryp@banpais.hn	1	2	0
+10	alexer	Alex Rodriguez	henrryp@banpais.hn	1	2	1
+12	juana	Juan Carlos Alfonso	henrryp@banpais.hn	1	1	1
+13	elisandrod	Elisandro Discua	henrryp@banpais.hn	1	2	0
+14	edypc	Edy Caballero	henrryp@banpais.hn	1	2	0
+15	laurae	Laura Elvir	henrryp@banpais.hn	1	2	0
+16	eydenp	Eyden Perdomo	henrryp@banpais.hn	1	2	0
+17	tomaslm	Tomas Lagos	henrryp@banpais.hn	1	2	0
+19	enriqueg	Ricardo Granados	henrryp@banpais.hn	1	2	0
+41	34043	Sayda Victoria Varela Flores	henrryp@banpais.hn	1	2	1
+42	melissav	Melissa Vasquez	henrryp@banpais.hn	1	2	1
+43	danielm	Daniel Martinez	henrryp@banpais.hn	1	2	0
+44	31003	Xiomara Jacqueline Mejia Moreno	henrryp@banpais.hn	1	2	1
+45	mariajch	Maria Josefina Chavarria	henrryp@banpais.hn	1	1	0
+46	33217	Paola Redondo	henrryp@banpais.hn	1	1	1
+47	odalisa	Odalis Waldina Arita Clara	henrryp@banpais.hn	1	2	1
+48	joelm	Joel Bladimir Murillo	henrryp@banpais.hn	1	2	0
+49	marioes	Mario Soto	henrryp@banpais.hn	1	2	0
+50	dairoc	Dairo Castro	henrryp@banpais.hn	1	2	0
+53	dinayrab	Dinayra Briones	henrryp@banpais.hn	1	2	0
+61	edgarw	Edgar Waller	henrryp@banpais.hn	1	1	0
+62	luisao	Luisa Oliva	henrryp@banpais.hn	1	2	0
+63	gabrielaja	Gabriela Janneth Acosta Varela	henrryp@banpais.hn	1	2	1
+64	33533	Marco Antonio Montes	henrryp@banpais.hn	1	2	0
+65	graicyz	Graicy Zaldivar	henrryp@banpais.hn	1	2	0
+66	henryg	Henry Galeas	henrryp@banpais.hn	1	2	1
+67	wendym	Wendy Martínez	henrryp@banpais.hn	1	2	0
+68	rolanr	Rolan Reineire Reyes Mejia	henrryp@banpais.hn	3	2	1
+69	dilciar	Raquel Rivas	henrryp@banpais.hn	1	1	0
+70	saidap	Saida Pacheco	henrryp@banpais.hn	1	2	0
+71	leslypb	Lesly del Carmen Portillo	henrryp@banpais.hn	1	2	1
+72	ruthj	Ruth Juarez	henrryp@banpais.hn	1	2	0
+73	indiras	Indira Jackeline Sanchez 	henrryp@banpais.hn	1	1	1
+74	mairal	Maira Lozano	henrryp@banpais.hn	1	2	0
+75	francisyv	Francis Veliz	henrryp@banpais.hn	1	2	0
+76	suanyt	Suany Yazmin Tabora Diaz	henrryp@banpais.hn	1	2	1
+77	62118	Enoc Rauda Ulloa	henrryp@banpais.hn	1	2	0
+78	lourdesq   	Lourdes Alejandra Quintanilla Archaga	henrryp@banpais.hn	1	2	1
+79	ering	Erin Gerardo Galdamez	henrryp@banpais.hn	1	2	0
+80	ingrism	Ingris Mejia	henrryp@banpais.hn	1	2	0
+81	manuelp	Manuel E. Pin	henrryp@banpais.hn	1	2	0
+82	33011	Edwin Yair Ordoñez Argueta 	henrryp@banpais.hn	1	2	1
+83	carlosh	Carlos Hernandez Luna	henrryp@banpais.hn	1	2	0
+84	wendyl	Wendy Lanza	henrryp@banpais.hn	1	2	0
+85	danielaf	Daniela Patricia Ferrufino Gonzales	henrryp@banpais.hn	1	2	1
+87	allarm	Allan Roberto Medina	henrryp@banpais.hn	1	2	1
+88	gabrielat	Gabriela Tábora	henrryp@banpais.hn	1	2	0
+90	ederr	Eder Rodriguez	henrryp@banpais.hn	1	2	0
+91	ANACP	Ana Padilla	henrryp@banpais.hn	1	2	0
+92	jorgecg	Jorge Rolando Cano Grijalba	henrryp@banpais.hn	3	2	1
+93	luisab	LUISA PATRICIA BARAHONA OSEGUERA	henrryp@banpais.hn	1	2	1
+94	angeer	Angee Ramirez	henrryp@banpais.hn	1	2	1
+95	lauram	Laura Madrid	henrryp@banpais.hn	1	2	0
+96	victoriac	Victoria Cáceres	henrryp@banpais.hn	1	2	0
+97	christianf	Christian Sadiel Flores Raudales	henrryp@banpais.hn	1	2	1
+98	oscarar	Oscar Aguilar	henrryp@banpais.hn	1	2	0
+99	32113	Nery Angel Benítez Pérez	henrryp@banpais.hn	1	2	1
+100	luisp	Luis Padilla	henrryp@banpais.hn	1	2	0
+101	juanr	Juan Carlos Ramos	henrryp@banpais.hn	1	2	0
+102	miriam	Miriam Mejía	henrryp@banpais.hn	1	2	0
+104	saudyq	Saudy Reynel Quintero Borjas	henrryp@banpais.hn	1	2	1
+105	yadirab	Yadira Baca	henrryp@banpais.hn	2	2	0
+106	germanl	German Enrique Lopez Estrada	henrryp@banpais.hn	1	2	1
+107	33229	Juan Jose Villamil Bueso	henrryp@banpais.hn	1	2	1
+108	32349	Tulio Corrales	henrryp@banpais.hn	2	2	0
+109	jairoo	Jairo Ortíz	henrryp@banpais.hn	3	2	0
+110	39002	Yiny Ramon Orellana Gomez	henrryp@banpais.hn	1	2	1
+111	hectorjh	Hector Joel Henriquez Figueroa	henrryp@banpais.hn	2	2	1
+112	nelsonc	Nelson Caballero	henrryp@banpais.hn	3	2	0
+113	joselino	Jose Lino Chavez	henrryp@banpais.hn	1	2	1
+114	taniag	Tania Machado	henrryp@banpais.hn	1	2	0
+115	laural	Laura Lopez	henrryp@banpais.hn	1	2	0
+116	33844	Marvin Josue Mejia Mejia	henrryp@banpais.hn	1	2	1
+117	keniac	Kenia Castellanos	henrryp@banpais.hn	1	2	0
+118	carlosrav	Carlos Antunez	henrryp@banpais.hn	1	2	0
+119	eliaa	Elia Dinora Ayala Hernández	henrryp@banpais.hn	1	2	1
+120	mabelm	Iris Mabel Mejia	henrryp@banpais.hn	1	2	0
+121	claudiajp	Claudia Paz	henrryp@banpais.hn	1	2	0
+122	dinah	Eunice Hernandez	henrryp@banpais.hn	1	2	0
+123	irispp	Iris Paredes	henrryp@banpais.hn	1	2	0
+124	lilianr	Lilian Rodas	henrryp@banpais.hn	1	1	0
+125	Lial	Lia Graciela Lopéz Gotfre	henrryp@banpais.hn	1	2	1
+126	marjorieg	Marjorie Michelle Guzman	henrryp@banpais.hn	2	2	0
+127	Hildegardop	Hildegardo Paz Briones	henrryp@banpais.hn	1	2	0
+128	Claudiac	Claudia Yadira Munguia Castro	henrryp@banpais.hn	1	2	1
+129	Mariacv	Maria Del Carmen Vasquez Andino	henrryp@banpais.hn	1	2	1
+130	Tatianar	Tatiana Teresa Rojas Barcenas	henrryp@banpais.hn	1	2	0
+131	mayraa	Mayra Iveth Alvarado Umaña	henrryp@banpais.hn	1	2	1
+132	47429	Darwin Joel Baca Paz 	henrryp@banpais.hn	1	2	1
+133	claudiarc	Claudia Roxana Ramirez Castillo	henrryp@banpais.hn	1	2	0
+134	Josselineb	Josseline Alexandra Benitez Contreras	henrryp@banpais.hn	1	2	0
+135	monicad	Monica Paola Duarte Castro	henrryp@banpais.hn	1	2	1
+136	nancyc 	Nancy Carolina Claros Mendoza	henrryp@banpais.hn	1	2	1
+137	enmal 	Enma Onelsa López Vásquez 	henrryp@banpais.hn	1	2	1
+138	31020	Gladys Yolanda Guifarro	henrryp@banpais.hn	1	2	1
+139	Josem	Jose A. Meza Escalante	henrryp@banpais.hn	1	2	0
+140	Josep	Jose Francisco Perdomo	henrryp@banpais.hn	1	2	1
+141	reinaa	Reina Isabel Aguilera Solorzano	henrryp@banpais.hn	1	2	1
+142	ederm	Eder Juvini Martel Montoya	henrryp@banpais.hn	1	2	0
+143	Genesise	Genesis Escalante Zuniga	henrryp@banpais.hn	3	2	0
+145	52195	Edin Armando Espinales Panchame	henrryp@banpais.hn	1	1	1
+146	32062	Eduardo Iván Garcia Andrade	henrryp@banpais.hn	1	2	1
+147	eldam	Elda Yulissa Montes	henrryp@banpais.hn	1	2	0
+148	juance	Juan Francisco Castillo Estrada	henrryp@banpais.hn	1	2	1
+149	evelynr	Evelyn Julissa Ramos Villanueva	henrryp@banpais.hn	1	2	1
+150	mercedesh	Mercedes Deniza Hernandez Trochez	henrryp@banpais.hn	1	2	0
+151	ricardop	Ricardo Antonio Parada Castillo	henrryp@banpais.hn	2	2	1
+153	33179	Martha Lidia Aguilar Gutiérrez	henrryp@banpais.hn	1	2	1
+156	joserc	Jose Rolando Castillo Orellana	henrryp@banpais.hn	1	2	1
+157	javierf	Javier  Armando Funes Suvillaga	henrryp@banpais.hn	1	2	1
+158	albaez	Alba Estela Zuniga Rodriguez	henrryp@banpais.hn	1	2	0
+160	reinaas	Reina Fabiola Alvarez	henrryp@banpais.hn	2	2	0
+161	laurab	Laura Carolina Betacourth Rodriguez	henrryp@banpais.hn	1	2	1
+162	alexv	Alex Ricardo Valdez Munguia	henrryp@banpais.hn	1	2	0
+164	32687	Cesar Humberto Molina 	henrryp@banpais.hn	1	2	1
+165	darwinm	Darwin Anael Melgar Chacón	henrryp@banpais.hn	1	2	1
+166	darwinmd	Darwin Noé Medina	henrryp@banpais.hn	1	2	0
+167	daysiv	Daysi Maribel Velasquez Leon	henrryp@banpais.hn	1	2	1
+169	franciscoj	Francisco Jiménez Chávez	henrryp@banpais.hn	1	2	0
+170	geysin	Geysi Larigsa Novoa Romero	henrryp@banpais.hn	1	2	0
+171	gilmag	Gilma Magdalena Gomez Zamora	henrryp@banpais.hn	1	2	1
+172	icelam	Icela Johana Miranda Velasquez	henrryp@banpais.hn	1	2	0
+173	isidroc	Isidro Mauricio Castro Moreno	henrryp@banpais.hn	1	2	1
+174	jenifers	Jenifer Silva	henrryp@banpais.hn	1	2	0
+175	josesc	Jose Sergio Chavez Mejia 	henrryp@banpais.hn	1	2	1
+176	karlasm	KARLA SARAHI MATUTE CERRATO	henrryp@banpais.hn	1	2	1
+177	kerenh	Keren Patricia Hernandez Sabillon	henrryp@banpais.hn	1	2	1
+178	lennisd	Lennis Vanessa Duron Lagos	henrryp@banpais.hn	1	2	1
+179	30930	Liliam Gabriela Palacios Perez	henrryp@banpais.hn	1	2	1
+180	linsyv	Linsy Ines Vargas Rojas	henrryp@banpais.hn	1	2	1
+181	luisd	LUIS ENRIQUE DOMINGUEZ DIAZ	henrryp@banpais.hn	1	2	1
+182	marlono	Marlon Amilcar Ordoñez Mejia	henrryp@banpais.hn	1	2	1
+183	mileskam	Mileska Yordana Moradel Contreras	henrryp@banpais.hn	1	2	1
+184	47273	Yesseny Sarai Tercero Fonseca	henrryp@banpais.hn	1	2	1
+185	xiomarab	Xiomara Carolina Bustillo Juanez	henrryp@banpais.hn	1	2	1
+186	30410	Rosa Elia Reyes Doblado	henrryp@banpais.hn	1	2	1
+187	dianat	Diana Karina Tejada Ferrera	henrryp@banpais.hn	1	2	0
+189	33548	Beltran Santiago Murcia	henrryp@banpais.hn	1	2	1
+190	cristhians	Christian Jean Carlos Santamaria	henrryp@banpais.hn	1	2	1
+191	grandyp	Grandy Enoc Paz Pereira	henrryp@banpais.hn	1	2	1
+192	mariadm	Maria Isabel Diaz Morales	henrryp@banpais.hn	2	2	1
+193	dennisr	Dennis Fernando Ramirez	henrryp@banpais.hn	1	2	1
+194	melvinm	Melvin Josue Mendez Zavala	henrryp@banpais.hn	1	2	0
+195	dianneo	Dianne Michelle Orellana 	henrryp@banpais.hn	1	2	1
+196	nestorg	Nestor Omar Guinil Díaz	henrryp@banpais.hn	1	2	0
+197	keilynr	KEILYN YESSENIA RIVERA URBINA	henrryp@banpais.hn	1	2	1
+198	mayrac	Mayra Johana Castillo Peña 	henrryp@banpais.hn	1	2	1
+199	40983	Bryan Jóse Escobar Cervantes 	henrryp@banpais.hn	1	2	1
+200	ingrids	Ingrid Silva	henrryp@banpais.hn	1	2	0
+201	nancypp	Nancy Danery Paz Pineda	henrryp@banpais.hn	1	2	1
+202	vivianj	Vivian Nohemy  Juarez Reyes	henrryp@banpais.hn	1	2	1
+203	edgara	Edgar Alberto	henrryp@banpais.hn	1	2	0
+204	yenyt	Yeny Alejandra Turcios Escoto	henrryp@banpais.hn	2	2	1
+205	31095	Rene Gerardo Berrios	henrryp@banpais.hn	2	2	1
+206	maholid	Maholi Alejandra Doblado Padilla	henrryp@banpais.hn	1	2	1
+207	dianaz	Diana Zuniga	henrryp@banpais.hn	2	2	1
+208	kareng	Karen Yamileth Garcia	henrryp@banpais.hn	1	2	1
+209	karenjc	Karen Jhoana Cerrato Benitez	henrryp@banpais.hn	1	2	1
+210	55733	Lesby Paola Castellanos 	henrryp@banpais.hn	1	2	1
+211	41910	Gerardo Rene Gutiérrez Girón	henrryp@banpais.hn	1	1	1
+213	46574	Mariam Ester Mejia 	henrryp@banpais.hn	1	2	0
+214	34449	Roque Daniel Pineda	henrryp@banpais.hn	1	2	1
+215	Franciscoe	Francisco Espinoza Varela	henrryp@banpais.hn	1	1	0
+216	39225	Oscar Medina Sorto	henrryp@banpais.hn	1	2	0
+217	41192	Wilmer Rolando Burgos Soto	henrryp@banpais.hn	1	2	1
+218	50538	Asaías Henam Miranda Girón	henrryp@banpais.hn	1	2	1
+225	cristianf	CRISTIAN FUENTES	henrryp@banpais.hn	1	2	0
+227	62269	Alicia Arevalo	henrryp@banpais.hn	1	2	0
+228	Crisstelg	Crisstel Julissa Garcia 	henrryp@banpais.hn	2	2	1
+229	Katherineco	Katherine Abigail Cruz Ortiz	henrryp@banpais.hn	1	2	0
+230	nancydc	Nancy Damaris Castillo Sosa	henrryp@banpais.hn	1	2	0
+231	anibalm	Anibal Alejandro Martinez Lopez	henrryp@banpais.hn	2	2	1
+232	34252	Arlen Klelya Alemán Espinal	henrryp@banpais.hn	1	2	1
+233	josuepp	Josue Aron Pavon Ponce	henrryp@banpais.hn	2	2	1
+234	39349	Axel Eduardo Juarez Velásquez	henrryp@banpais.hn	1	2	1
+235	53310	Renan Issai Toledo Enamorado	henrryp@banpais.hn	1	2	1
+236	32770	Sayda Karina Flores Vaquero	henrryp@banpais.hn	1	2	1
+238	32949	JHONNY JOEL GRANADOS MELENDEZ 	henrryp@banpais.hn	1	2	0
+239	30518	MAYRA SUYAPA MARTINEZ RUIZ	henrryp@banpais.hn	1	2	1
+240	55427	Isis Melissa Guzmán Cerros	henrryp@banpais.hn	1	2	1
+241	josuebp	Josue Alberto Benitez Portillo	henrryp@banpais.hn	1	2	1
+242	47138	Cesiah Sarai Beltrand Mariona	henrryp@banpais.hn	1	2	0
+243	52719	David Gustavo Rodriguez Chacon	henrryp@banpais.hn	1	2	1
+244	sandyf	Sandy Fabiola Fernandez Palacios	henrryp@banpais.hn	1	2	0
+245	60072	Katia Isabel Castellon Cruz	henrryp@banpais.hn	1	2	1
+246	30505	Fe Martín Castillo Murillo	henrryp@banpais.hn	1	2	1
+247	42181	Vanessa Janeth Rosales Nuñez	henrryp@banpais.hn	1	2	1
+248	erasmor	Erasmo Rogelio Rodriguez Tejada 	henrryp@banpais.hn	1	2	1
+249	33898	Ana Carolina Garcia Cantarero	henrryp@banpais.hn	1	2	1
+250	30396	Maria Angélica Torres Hernandez	henrryp@banpais.hn	1	2	1
+251	52728	Julio César Lazo López	henrryp@banpais.hn	1	2	1
+252	65703	Fátima Militza Ávila Orellana	henrryp@banpais.hn	1	2	1
+253	46823	KEVIN JOAN AVILA BAIDE	henrryp@banpais.hn	1	2	0
+254	58728	JOSE ALEJANDRO ISCOA VASQUEZ	henrryp@banpais.hn	1	2	1
+255	59277	JENNIFER ABIGAIL TABORA ESCOBAR	henrryp@banpais.hn	1	2	1
+256	60417	ANDREA VERENICE RODAS TREJO	henrryp@banpais.hn	1	2	1
+257	60881	KATERIN NICOL ALVARADO PAZ	henrryp@banpais.hn	1	2	1
+258	51118	OSWALDO JOSUE GARCIA RAMOS	henrryp@banpais.hn	1	2	1
+259	33565	Fany Carolina Murillo Redondo	henrryp@banpais.hn	1	2	1
+260	Nahunr	Nahum Antonio Rodriguez	henrryp@banpais.hn	1	2	0
+261	amilcarm	Jose Amilcar Murillo Mejía	henrryp@banpais.hn	1	2	0
+262	41686	Jenifer Raquel Landaverde Oliva	henrryp@banpais.hn	1	2	1
+263	51286	RAFAEL ALBERTO BAIDE MELENDEZ	henrryp@banpais.hn	1	2	1
+264	60398	HELEN ESTEFANY BANEGAS REYES	henrryp@banpais.hn	1	2	0
+265	32371	OSCAR ARMANDO COREA MONTALVAN	henrryp@banpais.hn	1	2	1
+266	62771	Elvin Daniel Pagoada Cantillano	henrryp@banpais.hn	1	1	1
+267	70602	Alfredo Perla Brito	henrryp@banpais.hn	1	1	1
+268	47936	Alejandra Isabel Cuellar Hernandez	henrryp@banpais.hn	1	1	1
+269	71246	Seyli Cecilia Palma Hernandez	henrryp@banpais.hn	1	1	1
+270	47014	Abigail Amarayni Orellana Garcia	henrryp@banpais.hn	1	2	1
+271	Fredyc	Fredy Josue Chavarria 	henrryp@banpais.hn	1	2	1
+272	48580	Joel Darío Pineda Mejía	henrryp@banpais.hn	1	2	1
+273	73730	Ana Angelica Motiño Gomez	henrryp@banpais.hn	1	1	1
+274	63576	Andrea Alejandra Padilla Vigil 	henrryp@banpais.hn	1	2	1
+276	34142	Mario Antonio Perez Vasquez	henrryp@banpais.hn	1	2	1
+277	68631	Mario Wilfredo Miranda Coto	henrryp@banpais.hn	1	2	1
+278	31933	Any Lisbeth Fuentes Castillo	henrryp@banpais.hn	1	2	1
+279	72229	Ruth Merari Morales Lopez	henrryp@banpais.hn	1	2	1
+280	64184	Kimberly Abigail Pineda Reyes	henrryp@banpais.hn	1	2	1
+281	35553	Ada Esperanza Morales Antunez	henrryp@banpais.hn	1	1	1
+282	59223	Karen Lizeth Gamez Martinez	henrryp@banpais.hn	1	2	1
+283	42051	Eduar Isahi Lopez Rodriguez	henrryp@banpais.hn	1	2	1
+284	39267	Jose Santos Ramirez Zelaya	henrryp@banpais.hn	1	2	1
+285	60571	Fernando David Serrano Mejia	henrryp@banpais.hn	1	2	1
+286	49075	Astry Carolina Rivera Reyes	henrryp@banpais.hn	1	1	1
+287	50535	Keily Patricia Rodriguez Obando	henrryp@banpais.hn	1	2	1
+289	31581	Mario Miguel Godoy Gómez	henrryp@banpais.hn	1	2	1
+290	60419	Ibis Daniel Merino Rodriguez 	henrryp@banpais.hn	1	2	1
+291	53670	Christian Ricardo Zavala Chavez 	henrryp@banpais.hn	1	2	1
+292	32349	Tulio Anibal Corrales Aleman	henrryp@banpais.hn	2	2	1
+293	39036	Ana Gissela Barrientos Avila  	henrryp@banpais.hn	2	2	1
+294	35750	Josselyn Aracely Suarez Juarez  	henrryp@banpais.hn	3	2	1
+295	32994	Milthon Leandro Romero Urbina 	henrryp@banpais.hn	3	2	1
+296	47679	Ana Mabel Flores Guerra 	henrryp@banpais.hn	1	2	1
+297	41782	Angie Paola Varela Flores	henrryp@banpais.hn	1	2	1
+298	33383	Christian Omar Umaña Godoy	henrryp@banpais.hn	1	2	1
+299	64328	Karen Melissa Corrales Montoya	henrryp@banpais.hn	1	2	1
+300	55392	Yessenia Maribel Guzman Henríquez	henrryp@banpais.hn	1	2	1
+301	Manuelf 	Manuel de Jesus Fonseca Aleman	henrryp@banpais.hn	1	2	1
+302	65715	Cinthia Mariela Cardoza	henrryp@banpais.hn	1	2	1
+303	66176	Ricardo Antonio Valladares Arriaga	henrryp@banpais.hn	1	3	1
+304	46618	Larissa Alexandra Santos Lopez	henrryp@banpais.hn	1	2	1
+
+
+
+
+
+SELECT TOP (1000) [privilegioid]
+      ,[privilegio]
+      ,[activo]
+  FROM [PerdidasOperativas_DESA].[dbo].[tblPrivilegios]
+
+
+privilegioid	privilegio	activo
+1	ADMINISTRADOR	1
+2	GESTORES	1
+3	CONSULTA	1
+
+
+SELECT TOP (1000) [Id]
+      ,[privilegioid]
+      ,[usuarioid]
+      ,[IdMenu]
+  FROM [PerdidasOperativas_DESA].[dbo].[UsuarioAcceso]
+
+
+Id	privilegioid	usuarioid	IdMenu
+1	1	NULL	1
+2	1	NULL	2
+3	1	NULL	3
+4	1	NULL	4
+5	1	NULL	5
+6	1	NULL	6
+25	2	NULL	1
+8	1	NULL	9
+9	1	NULL	10
+10	1	NULL	11
+11	1	NULL	12
+12	1	NULL	13
+13	1	NULL	14
+14	1	NULL	15
+15	1	NULL	16
+16	1	NULL	17
+17	1	NULL	18
+18	1	NULL	19
+19	1	NULL	20
+20	1	NULL	21
+21	1	NULL	22
+22	1	NULL	23
+23	1	NULL	24
+24	1	NULL	25
+28	2	NULL	7
+29	2	NULL	8
+30	2	NULL	26
+31	3	NULL	6
+1002	2	NULL	1004
+1003	2	NULL	1005
+1004	1	NULL	1006
+1005	1	NULL	1010
+1006	1	NULL	1011
+1008	1	NULL	1013
+1010	1	NULL	1018
+1011	1	NULL	1019
+1012	1	NULL	1020
+1013	1	NULL	1021
+1014	1	NULL	1023
+1015	1	NULL	1025
+1016	1	NULL	1026
+1017	1	NULL	1021
+1018	1	NULL	1022
+1019	1	NULL	1023
+1020	1	NULL	1024
+1021	1	NULL	1025
+1022	1	NULL	1026
+1023	1	NULL	1027
+1024	1	NULL	1028
+1025	1	NULL	1029
+1026	1	NULL	1030
+1027	1	NULL	1031
+1028	1	NULL	1032
+1029	1	NULL	1021
+1030	1	NULL	1022
+1031	1	NULL	1023
+1032	1	NULL	1024
+1033	1	NULL	1025
+1034	1	NULL	1026
+1035	1	NULL	1027
+1036	1	NULL	1028
+1037	1	NULL	1029
+1038	1	NULL	1030
+1039	1	NULL	1031
+1040	1	NULL	1032
+1041	1	NULL	1021
+1042	1	NULL	1022
+1043	1	NULL	1023
+1044	1	NULL	1024
+1045	1	NULL	1025
+1046	1	NULL	1026
+1047	1	NULL	1027
+1048	1	NULL	1028
+1049	1	NULL	1029
+1050	1	NULL	1030
+1051	1	NULL	1031
+1052	1	NULL	1032
+1053	1	NULL	1093
