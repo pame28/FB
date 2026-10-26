@@ -1,652 +1,334 @@
-<%@ Page Title="" Language="C#" MasterPageFile="~/MasterPageBanpais.Master" AutoEventWireup="true" CodeBehind="UsuarioAcceso.aspx.cs" Inherits="BasePerdidasOperativas.Mantenimientos.UsuarioAcceso" %>
-<%@ Register assembly="DevExpress.Web.ASPxEditors.v10.1, Version=10.1.5.0, Culture=neutral, PublicKeyToken=940cfcde86f32efd" namespace="DevExpress.Web.ASPxEditors" tagprefix="dx" %>
-<asp:Content ID="Content1" ContentPlaceHolderID="head" runat="server">
-</asp:Content>
-<asp:Content ID="Content2" ContentPlaceHolderID="ContentPlaceHolder1" runat="server">
-    <asp:Label ID="Label2" runat="server" Font-Bold="True" Font-Size="Medium" 
-        ForeColor="#6992AB" 
-        Text="MANTENIMIENTO DE ACCESOS POR USUARIO"></asp:Label>
-    <span style="color: #6992AB"><strong>
-    <br /><br />
-    <asp:DetailsView ID="DetailsView2" runat="server" 
-        AutoGenerateRows="False" CellPadding="4" DataKeyNames="usuarioid" 
-        DataSourceID="SqlDataSourceUsuario" ForeColor="#333333" GridLines="None" 
-        HorizontalAlign="Center" BorderColor="#6992BA" 
-        BorderStyle="Solid" BorderWidth="2px" Width="532px">
-        <AlternatingRowStyle BackColor="White" ForeColor="#284775" />
-        <CommandRowStyle BackColor="#E2DED6" Font-Bold="True" />
-        <EditRowStyle BackColor="#999999" />
-        <EmptyDataTemplate>
-            <span style="color: #6992AB">No se encontraron registros.</span>
-            <asp:ImageButton ID="ImageButton3" runat="server" 
-                AlternateText="Agregar un registro." ImageUrl="~/Imagenes/New.png" 
-                onclick="ImageButton3_Click" ToolTip="Agregar un registro." 
-                style="height: 16px" />
-        </EmptyDataTemplate>
-        <FieldHeaderStyle BackColor="#E9ECF1" Font-Bold="True" />
-        <Fields>
-            <asp:BoundField DataField="usuarioid" HeaderText="N" InsertVisible="False" 
-                ReadOnly="True" SortExpression="usuarioid" Visible="False" >
-            </asp:BoundField>
-            <asp:TemplateField HeaderText="USUARIO" 
-                SortExpression="nombreenlace">
-                <ItemTemplate>
-                    <asp:Label ID="Label3" runat="server" Text='<%# Eval("nombreenlace") %>'></asp:Label>
-                </ItemTemplate>
-                <HeaderStyle VerticalAlign="Top" Width="220px" />
-            </asp:TemplateField>
-        </Fields>
-        <FooterStyle BackColor="#5D7B9D" Font-Bold="True" ForeColor="White" />
-        <HeaderStyle BackColor="#5D7B9D" Font-Bold="True" ForeColor="White" 
-            HorizontalAlign="Center" />
-        <PagerStyle BackColor="#284775" ForeColor="White" HorizontalAlign="Center" />
-        <RowStyle BackColor="#F7F6F3" ForeColor="#333333" />
-    </asp:DetailsView>
-    <br />FILTRAR POR </strong></span>
-    <asp:TextBox ID="TxtFiltro" runat="server" BorderColor="#6992BA" 
-        BorderStyle="Solid" Width="254px"></asp:TextBox>
-    <asp:ImageButton ID="ImageButton1" runat="server" AlternateText="Filtrar" 
-        ImageUrl="~/Imagenes/Filter.png" ToolTip="Filtrar" 
-        onclick="ImageButton1_Click" />
-    <br />    
-    <asp:SqlDataSource ID="SqlDataSource1" runat="server" 
-    ConnectionString="<%$ ConnectionStrings:BasePerdidasOperativas.Properties.Settings.SettingConnectionString %>" 
-    
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Web;
+using System.Web.UI;
+using System.Web.UI.WebControls;
+using DevExpress.Web.ASPxEditors;
+
+namespace BasePerdidasOperativas.Mantenimientos
+{
+    public partial class Usuarios : System.Web.UI.Page
+    {
+        protected void Page_Load(object sender, EventArgs e)
+        {
+            if (Session["usuarioid"] == null)
+            {
+                Response.Redirect("~/Transacciones/Login.aspx");
+            }
+
+            if (!Page.IsPostBack)
+            {
+                GridView1.SelectedIndex = 0;
+            }
+            else
+            {
+                if (DetailsView2.CurrentMode == DetailsViewMode.Insert)
+                {
+                    string a = SqlDataSourceAreas.SelectParameters["empresaid"].DefaultValue;
+                    Session["empresaid"] = ((DropDownList)DetailsView2.FindControl("DropDownEmpresa3")).SelectedValue;
+                }
+            }
+
+            if (Convert.ToInt32(Session["privilegioid"]) != 1)
+            {
+                GridView1.Visible = false;
+                DetailsView1.Visible = false;
+                LblError.Visible = true;
+                LblError.ForeColor = System.Drawing.Color.Red;
+                LblError.Text = "NO TIENE PERMISOS PARA INGRESAR A ESTE MANTENIMIENTO.";
+            }
+            else
+            {
+                LblError.Visible = false;
+            }
+        }
+
+        protected void ImageButton1_Click(object sender, ImageClickEventArgs e)
+        {
+            String filtro = "";
+            for (int i = 0; i < TxtFiltro.Text.Length; i++)
+            {
+                if (TxtFiltro.Text.Substring(i, 1) != "'" & TxtFiltro.Text.Substring(i, 1) != "[" & TxtFiltro.Text.Substring(i, 1) != "]" & TxtFiltro.Text.Substring(i, 1) != "}" & TxtFiltro.Text.Substring(i, 1) != "{")
+                {
+                    filtro += TxtFiltro.Text.Substring(i, 1);
+                }
+            }
+            SqlDataSource1.FilterExpression = string.Format("nombreenlace like '%{0}%'", filtro);
+        }
+
+        protected void ImageButton2_Click(object sender, ImageClickEventArgs e)
+        {
+            DetailsView1.ChangeMode(DetailsViewMode.Insert);
+        }
+
+        protected void ImageButton3_Click(object sender, ImageClickEventArgs e)
+        {
+            DetailsView1.ChangeMode(DetailsViewMode.Insert);
+        }
+
+        protected void DetailsView1_ItemDeleted(object sender, DetailsViewDeletedEventArgs e)
+        {
+            if (e.Exception == null)
+            {
+                //DisplayValues(e);
+                LblError.Visible = true;
+                LblError.Text = "REGISTRO ELIMINADO.";
+                LblError.ForeColor = System.Drawing.Color.Green;
+            }
+            else
+            {
+                string[] error = { e.Exception.Message };
+
+                string[] Errores = { "REFERENCE" };
+
+                foreach (string s in error)
+                {
+
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[0], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ELIMINAR EL REGISTRO. ESTE USUARIO ESTÁ SIENDO UTILIZADO.";
+                    }
+                }
+
+                // Use the ExceptionHandled property to indicate that the 
+                // exception is already handled.
+                e.ExceptionHandled = true;
+
+            }
+            actualizarpage();
+        }
+
+        /// <summary>
+        /// Actualiza el Grid, DetailGrid y limpia el Texbox de Filtro.
+        /// </summary>
+        public void actualizarpage()
+        {
+            GridView1.DataBind();
+            DetailsView1.DataBind();
+            DetailsView2.DataBind();
+            TxtFiltro.Text = "";
+        }
+
+        protected void DetailsView1_ItemUpdated(object sender, DetailsViewUpdatedEventArgs e)
+        {
+            if (e.Exception == null)
+            {
+                //DisplayValues(e);
+                LblError.Visible = true;
+                LblError.Text = "REGISTRO ACTUALIZADO.";
+                LblError.ForeColor = System.Drawing.Color.Green;
+            }
+            else
+            {
+                string[] error = { e.Exception.Message };
+
+                string[] Errores = { "UNIQUE", "NULL" };
+
+                foreach (string s in error)
+                {
+
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[0], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ACTUALIZAR EL REGISTRO. USUARIO YA EXISTE.";
+                    }
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[1], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ACTUALIZAR EL REGISTRO. FAVOR DE LLENAR LOS CAMPOS OBLIGATORIOS.";
+                    }
+                    else
+                    {
+
+                    }
+                }
+                // Use the ExceptionHandled property to indicate that the 
+                // exception is already handled.
+                e.ExceptionHandled = true;
+                // When an exception occurs, keep the DetailsView
+                // control in edit mode.
+                e.KeepInEditMode = true;
+            }
+            actualizarpage();
+        }
+
+        protected void DetailsView1_ItemInserted(object sender, DetailsViewInsertedEventArgs e)
+        {
+            if (e.Exception == null)
+            {
+                //DisplayValues(e);
+                LblError.Visible = true;
+                LblError.Text = "REGISTRO ALMACENADO.";
+                LblError.ForeColor = System.Drawing.Color.Green;
+            }
+            else
+            {
+                string[] error = { e.Exception.Message };
+
+                string[] Errores = { "UNIQUE", "NULL" };
+
+                foreach (string s in error)
+                {
+
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[0], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ALMACENAR EL REGISTRO. USUARIO YA EXISTE.";
+                    }
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[1], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ALMACENAR EL REGISTRO. FAVOR DE LLENAR LOS CAMPOS OBLIGATORIOS.";
+                    }
+                    else
+                    {
+                    }
+                }
+
+                // Use the ExceptionHandled property to indicate that the 
+                // exception is already handled.
+                e.ExceptionHandled = true;
+                // When an exception occurs, keep the DetailsView
+                // control in edit mode.
+                e.KeepInInsertMode = true;
+            }
+            actualizarpage();
+        }
         
         
-        
-        
-        SelectCommand="SELECT DISTINCT m.idMenu,
-       m.padre,
-       m.Acceso,
-       m.[URL],
-       u.UsuarioId,
-       m.visible,
-       m.orden
-	FROM   UsuarioAcceso pa
-		   INNER JOIN Menu m
-				ON  m.idMenu = pa.idMenu 
-		   INNER JOIN tblUsuarios u
-				ON  u.privilegioid = pa.privilegioid
-				INNER JOIN tblPrivilegios p
-				ON p.privilegioid = pa.privilegioid
-	WHERE  u.UsuarioId = @UsuarioId
-		   AND u.activo = 1
-		   AND m.activo = 1
-	UNION ALL
-	SELECT DISTINCT m.idMenu,
-       m.padre,
-       m.Acceso,
-       m.[URL],
-       ae.UsuarioId,
-       m.visible,
-       m.orden
-	FROM   Menu m
-		   INNER JOIN tblAccesoExtra ae
-				ON  m.idMenu = ae.idMenu
-	Where ae.UsuarioId = @UsuarioId">
-        <SelectParameters>
-            <asp:SessionParameter Name="UsuarioId" SessionField="UsuarioAcceso" />
-        </SelectParameters>
-    </asp:SqlDataSource>
-    <br />
-    <asp:SqlDataSource ID="SqlDataSourceUsuario" runat="server" 
-    ConnectionString="<%$ ConnectionStrings:BasePerdidasOperativas.Properties.Settings.SettingConnectionString %>" 
-        
-        SelectCommand="SELECT * FROM tblUsuarios WHERE (usuarioid = @usuarioid)">
-        <SelectParameters>
-            <asp:SessionParameter Name="usuarioid" SessionField="UsuarioAcceso" />
-        </SelectParameters>
-    </asp:SqlDataSource>
-    <asp:Label ID="LblError" runat="server" Text="Label" Visible="False" 
-        Font-Bold="True"></asp:Label>
-    <asp:ValidationSummary ID="ValidationSummary1" runat="server" Font-Bold="True" 
-        ForeColor="Red" ShowMessageBox="True" ShowSummary="False" 
-        style="margin-bottom: 20px" />
-    <asp:GridView ID="GridView1" runat="server" DataSourceID="SqlDataSource1" 
-    AllowPaging="True" AllowSorting="True" AutoGenerateColumns="False" 
-    CellPadding="4" DataKeyNames="idMenu" ForeColor="#6992BA" GridLines="None" 
-        BorderColor="#6992BA" BorderStyle="Solid" BorderWidth="2px" 
-        ToolTip="Listado de accesos actuales de usuario">
-        <AlternatingRowStyle BackColor="White" ForeColor="#284775" />
-        <Columns>
-            <asp:CommandField ShowSelectButton="True" ButtonType="Image" 
-            SelectImageUrl="~/Imagenes/Find.png" />
-            <asp:BoundField DataField="idMenu" HeaderText="N" InsertVisible="False" 
-            ReadOnly="True" SortExpression="idMenu" Visible="False" />
-            <asp:BoundField DataField="Acceso" HeaderText="ACCESOS POR USUARIO" 
-                SortExpression="Acceso" />
-        </Columns>
-        <EditRowStyle BackColor="#999999" />
-        <EmptyDataTemplate>
-            No se encontraron registros.
-            <asp:ImageButton ID="ImageButton2" runat="server" 
-                AlternateText="Nuevo registro." ImageUrl="~/Imagenes/New.png" 
-                Width="16px" onclick="ImageButton2_Click" />
-        </EmptyDataTemplate>
-        <FooterStyle BackColor="#6992BA" Font-Bold="True" ForeColor="#6992BA" />
-        <HeaderStyle BackColor="#5D7B9D" Font-Bold="True" ForeColor="White" />
-        <PagerStyle BackColor="#284775" ForeColor="White" HorizontalAlign="Center" />
-        <RowStyle BackColor="#F7F6F3" ForeColor="#333333" />
-        <SelectedRowStyle BackColor="#E2DED6" Font-Bold="True" ForeColor="#333333" />
-        <SortedAscendingCellStyle BackColor="#E9E7E2" />
-        <SortedAscendingHeaderStyle BackColor="#506C8C" />
-        <SortedDescendingCellStyle BackColor="#FFFDF8" />
-        <SortedDescendingHeaderStyle BackColor="#6F8DAE" />
-    </asp:GridView>
-    <br /><br />
-    <asp:DetailsView ID="DetailsView1" runat="server" 
-        AutoGenerateRows="False" CellPadding="4" DataKeyNames="idMenu" 
-        DataSourceID="SqlDataSourceAccesosActuales" ForeColor="#333333" GridLines="None"  
-        oniteminserted="DetailsView1_ItemInserted" HorizontalAlign="Center" 
-        onitemdeleted="DetailsView1_ItemDeleted" BorderColor="#6992BA" 
-        BorderStyle="Solid" BorderWidth="2px" ToolTip="Mantenimiento a accesos por usuarios" 
-        HeaderText="MANTENIMIENTO DE ACCESOS POR USUARIO" Width="404px">
-        <AlternatingRowStyle BackColor="White" ForeColor="#284775" />
-        <CommandRowStyle BackColor="#E2DED6" Font-Bold="True" />
-        <EditRowStyle BackColor="#999999" />
-        <EmptyDataTemplate>
-            <span style="color: #6992AB">No se encontraron registros.</span>
-            <asp:ImageButton ID="ImageButton3" runat="server" 
-                AlternateText="Agregar un registro." ImageUrl="~/Imagenes/New.png" 
-                onclick="ImageButton3_Click" ToolTip="Agregar un registro." 
-                style="height: 16px" />
-        </EmptyDataTemplate>
-        <FieldHeaderStyle BackColor="#E9ECF1" Font-Bold="True" />
-        <Fields>
-            <asp:TemplateField ShowHeader="False">
-                <InsertItemTemplate>
-                    <asp:ImageButton ID="ImageButton6" runat="server" CausesValidation="True" 
-                        CommandName="Insert" ImageUrl="~/Imagenes/save.png" Text="Insert" 
-                        ToolTip="Guardar" />
-                    &nbsp;<asp:ImageButton ID="ImageButton7" runat="server" CausesValidation="False" 
-                        CommandName="Cancel" ImageUrl="~/Imagenes/Cancel.png" Text="Cancel" 
-                        ToolTip="Cancelar" />
-                </InsertItemTemplate>
-                <ItemTemplate>
-                    &nbsp;<asp:ImageButton ID="ImageButton9" runat="server" CausesValidation="False" 
-                        CommandName="New" ImageUrl="~/Imagenes/New.png" Text="New" 
-                        ToolTip="Nuevo Acceso" />
-                    &nbsp;<asp:ImageButton ID="ImageButton10" runat="server" CausesValidation="False" 
-                        CommandName="Delete" ImageUrl="~/Imagenes/Delete.png" 
-                        onclientclick="return confirm('¿ESTA SEGURO DE ELIMINAR ESTE REGISTRO?');" 
-                        Text="Delete" ToolTip="Elíminar Acceso" />
-                </ItemTemplate>
-            </asp:TemplateField>
-            <asp:BoundField DataField="idMenu" HeaderText="N" InsertVisible="False" 
-                ReadOnly="True" SortExpression="idMenu" Visible="False" >
-            </asp:BoundField>
-            <asp:TemplateField HeaderText="ACCESO">
-                <EditItemTemplate>
-                    <dx:ASPxComboBox ID="ASPxComboBox4" runat="server" ClientIDMode="AutoID" 
-                        CssFilePath="~/App_Themes/Aqua/{0}/styles.css" CssPostfix="Aqua" 
-                        DataSourceID="SqlDataSourceAccesosExtra" DropDownStyle="DropDownList" 
-                        EnableIncrementalFiltering="True" EnableSynchronization="Default" 
-                        HorizontalAlign="NotSet" IncrementalFilteringMode="StartsWith" 
-                        LoadingPanelImagePosition="Top" PopupHorizontalAlign="LeftSides" 
-                        PopupVerticalAlign="Below" RenderIFrameForPopupElements="Default" 
-                        ShowShadow="False" SpriteCssFilePath="~/App_Themes/Aqua/{0}/sprite.css" 
-                        TextField="Acceso" Value='<%# Bind("idMenu") %>' ValueField="idMenu" 
-                        ValueType="System.Int32" Width="100%" Text='<%# Bind("Acceso") %>'>
-                        <ItemImage Align="NotSet">
-                        </ItemImage>
-                        <ItemStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                        <SelectedStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </SelectedStyle>
-                        <HoverStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </HoverStyle>
-                        <BackgroundImage Repeat="Repeat" />
-                        <Border BorderStyle="NotSet" />
-                        <BorderLeft BorderStyle="NotSet" />
-                        <BorderTop BorderStyle="NotSet" />
-                        <BorderRight BorderStyle="NotSet" />
-                        <BorderBottom BorderStyle="NotSet" />
-                        </ItemStyle>
-                        <ListBoxStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </ListBoxStyle>
-                        <LoadingPanelImage Align="NotSet" Url="~/App_Themes/Aqua/Editors/Loading.gif">
-                        </LoadingPanelImage>
-                        <LoadingPanelStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" 
-                            Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </LoadingPanelStyle>
-                        <DropDownButton ImagePosition="Left" Position="Right">
-                            <Image Align="NotSet">
-                                <SpriteProperties HottrackedCssClass="dxEditors_edtDropDownHover_Aqua" 
-                                    PressedCssClass="dxEditors_edtDropDownPressed_Aqua" />
-                            </Image>
-                        </DropDownButton>
-                        <ButtonEditEllipsisImage Align="NotSet">
-                        </ButtonEditEllipsisImage>
-                        <ButtonStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                            <DisabledStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </DisabledStyle>
-                            <PressedStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </PressedStyle>
-                            <HoverStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </HoverStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </ButtonStyle>
-                        <ValidationSettings Display="Static" ErrorDisplayMode="ImageWithText" 
-                            ErrorTextPosition="Right">
-                            <ErrorImage Align="NotSet">
-                            </ErrorImage>
-                            <ErrorFrameStyle HorizontalAlign="NotSet" ImageSpacing="4px" 
-                                VerticalAlign="NotSet" Wrap="Default">
-                                <ErrorTextPaddings PaddingLeft="4px" />
-                                <HoverStyle>
-                                    <BackgroundImage Repeat="Repeat" />
-                                    <Border BorderStyle="NotSet" />
-                                    <BorderLeft BorderStyle="NotSet" />
-                                    <BorderTop BorderStyle="NotSet" />
-                                    <BorderRight BorderStyle="NotSet" />
-                                    <BorderBottom BorderStyle="NotSet" />
-                                </HoverStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </ErrorFrameStyle>
-                        </ValidationSettings>
-                        <ReadOnlyStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </ReadOnlyStyle>
-                        <FocusedStyle HorizontalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </FocusedStyle>
-                        <InvalidStyle HorizontalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </InvalidStyle>
-                        <BackgroundImage Repeat="Repeat" />
-                        <Border BorderStyle="NotSet" />
-                        <BorderLeft BorderStyle="NotSet" />
-                        <BorderTop BorderStyle="NotSet" />
-                        <BorderRight BorderStyle="NotSet" />
-                        <BorderBottom BorderStyle="NotSet" />
-                        <DisabledStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </DisabledStyle>
-                    </dx:ASPxComboBox>
-                </EditItemTemplate>
-                <InsertItemTemplate>
-                    <dx:ASPxComboBox ID="ASPxComboBox4" runat="server" ClientIDMode="AutoID" 
-                        CssFilePath="~/App_Themes/Aqua/{0}/styles.css" CssPostfix="Aqua" 
-                        DataSourceID="SqlDataSourceAccesosExtra" DropDownStyle="DropDownList" 
-                        EnableIncrementalFiltering="True" EnableSynchronization="Default" 
-                        HorizontalAlign="NotSet" IncrementalFilteringMode="StartsWith" 
-                        LoadingPanelImagePosition="Top" PopupHorizontalAlign="LeftSides" 
-                        PopupVerticalAlign="Below" RenderIFrameForPopupElements="Default" 
-                        ShowShadow="False" SpriteCssFilePath="~/App_Themes/Aqua/{0}/sprite.css" 
-                        TextField="Acceso" Value='<%# Bind("idMenu") %>' ValueField="idMenu" 
-                        ValueType="System.Int32" Width="100%" Text='<%# Bind("Acceso") %>'>
-                        <ItemImage Align="NotSet">
-                        </ItemImage>
-                        <ItemStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                        <SelectedStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </SelectedStyle>
-                        <HoverStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </HoverStyle>
-                        <BackgroundImage Repeat="Repeat" />
-                        <Border BorderStyle="NotSet" />
-                        <BorderLeft BorderStyle="NotSet" />
-                        <BorderTop BorderStyle="NotSet" />
-                        <BorderRight BorderStyle="NotSet" />
-                        <BorderBottom BorderStyle="NotSet" />
-                        </ItemStyle>
-                        <ListBoxStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </ListBoxStyle>
-                        <LoadingPanelImage Align="NotSet" Url="~/App_Themes/Aqua/Editors/Loading.gif">
-                        </LoadingPanelImage>
-                        <LoadingPanelStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" 
-                            Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </LoadingPanelStyle>
-                        <DropDownButton ImagePosition="Left" Position="Right">
-                            <Image Align="NotSet">
-                                <SpriteProperties HottrackedCssClass="dxEditors_edtDropDownHover_Aqua" 
-                                    PressedCssClass="dxEditors_edtDropDownPressed_Aqua" />
-                            </Image>
-                        </DropDownButton>
-                        <ButtonEditEllipsisImage Align="NotSet">
-                        </ButtonEditEllipsisImage>
-                        <ButtonStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                            <DisabledStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </DisabledStyle>
-                            <PressedStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </PressedStyle>
-                            <HoverStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </HoverStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </ButtonStyle>
-                        <ValidationSettings Display="Static" ErrorDisplayMode="ImageWithText" 
-                            ErrorTextPosition="Right">
-                            <ErrorImage Align="NotSet">
-                            </ErrorImage>
-                            <ErrorFrameStyle HorizontalAlign="NotSet" ImageSpacing="4px" 
-                                VerticalAlign="NotSet" Wrap="Default">
-                                <ErrorTextPaddings PaddingLeft="4px" />
-                                <HoverStyle>
-                                    <BackgroundImage Repeat="Repeat" />
-                                    <Border BorderStyle="NotSet" />
-                                    <BorderLeft BorderStyle="NotSet" />
-                                    <BorderTop BorderStyle="NotSet" />
-                                    <BorderRight BorderStyle="NotSet" />
-                                    <BorderBottom BorderStyle="NotSet" />
-                                </HoverStyle>
-                                <BackgroundImage Repeat="Repeat" />
-                                <Border BorderStyle="NotSet" />
-                                <BorderLeft BorderStyle="NotSet" />
-                                <BorderTop BorderStyle="NotSet" />
-                                <BorderRight BorderStyle="NotSet" />
-                                <BorderBottom BorderStyle="NotSet" />
-                            </ErrorFrameStyle>
-                        </ValidationSettings>
-                        <ReadOnlyStyle HorizontalAlign="NotSet" VerticalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </ReadOnlyStyle>
-                        <FocusedStyle HorizontalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </FocusedStyle>
-                        <InvalidStyle HorizontalAlign="NotSet" Wrap="Default">
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </InvalidStyle>
-                        <BackgroundImage Repeat="Repeat" />
-                        <Border BorderStyle="NotSet" />
-                        <BorderLeft BorderStyle="NotSet" />
-                        <BorderTop BorderStyle="NotSet" />
-                        <BorderRight BorderStyle="NotSet" />
-                        <BorderBottom BorderStyle="NotSet" />
-                        <DisabledStyle>
-                            <BackgroundImage Repeat="Repeat" />
-                            <Border BorderStyle="NotSet" />
-                            <BorderLeft BorderStyle="NotSet" />
-                            <BorderTop BorderStyle="NotSet" />
-                            <BorderRight BorderStyle="NotSet" />
-                            <BorderBottom BorderStyle="NotSet" />
-                        </DisabledStyle>
-                    </dx:ASPxComboBox>
-                </InsertItemTemplate>
-                <ItemTemplate>
-                    <asp:Label ID="Label2" runat="server" Text='<%# Eval("Acceso") %>'></asp:Label>
-                </ItemTemplate>
-            </asp:TemplateField>
-        </Fields>
-        <FooterStyle BackColor="#5D7B9D" Font-Bold="True" ForeColor="White" />
-        <HeaderStyle BackColor="#5D7B9D" Font-Bold="True" ForeColor="White" 
-            HorizontalAlign="Center" />
-        <PagerStyle BackColor="#284775" ForeColor="White" HorizontalAlign="Center" />
-        <RowStyle BackColor="#F7F6F3" ForeColor="#333333" />
-    </asp:DetailsView>
-    <asp:SqlDataSource ID="SqlDataSourceAccesosExtra" runat="server" 
-        ConnectionString="<%$ ConnectionStrings:BasePerdidasOperativas.Properties.Settings.SettingConnectionString %>" 
-        SelectCommand="SELECT [idMenu]
-      ,[padre]
-      ,[URL]
-      ,[Acceso]
-      ,[orden]
-      ,[activo]
-      ,[visible]
-  FROM [Menu] X
-  WHERE NOT EXISTS(SELECT 1
-	FROM   UsuarioAcceso pa
-		   INNER JOIN Menu m
-				ON  m.idMenu = pa.idMenu 
-		   INNER JOIN tblUsuarios u
-				ON  u.privilegioid = pa.privilegioid
-				INNER JOIN tblPrivilegios p
-				ON p.privilegioid = pa.privilegioid
-	WHERE  u.UsuarioId = @UsuarioId
-		   AND u.activo = 1
-		   AND m.activo = 1
-		   AND m.idMenu=X.idMenu
-	UNION ALL
-	SELECT DISTINCT 1
-	FROM   Menu m
-		   INNER JOIN tblAccesoExtra ae
-				ON  m.idMenu = ae.idMenu
-	Where ae.UsuarioId = @UsuarioId AND m.idMenu=X.idMenu)
-  order by idMenu asc" 
-        DeleteCommand="DELETE FROM tblAccesoExtra WHERE (usuarioid= @usuarioid) AND (idMenu=@idMenu)
-DELETE FROM tblMenu WHERE (usuarioid= @usuarioid) AND (idMenu=@idMenu)" 
-        InsertCommand="INSERT INTO tblAccesoExtra VALUES  (@usuarioid,@IdMenu)
-">
-        <DeleteParameters>
-            <asp:SessionParameter Name="usuarioid" SessionField="UsuarioAcceso" />
-            <asp:Parameter Name="idMenu" />
-        </DeleteParameters>
-        <InsertParameters>
-            <asp:SessionParameter Name="usuarioid" SessionField="UsuarioAcceso"/>
-            <asp:Parameter Name="IdMenu" />
-        </InsertParameters>
-        <SelectParameters>
-            <asp:SessionParameter Name="UsuarioId" SessionField="UsuarioAcceso" />
-        </SelectParameters>
-    </asp:SqlDataSource>
-    <asp:SqlDataSource ID="SqlDataSourceAccesosActuales" runat="server" 
-        ConnectionString="<%$ ConnectionStrings:BasePerdidasOperativas.Properties.Settings.SettingConnectionString %>" 
-        SelectCommand="SELECT * FROM MENU WHERE idMenu=@idMenu" 
-        DeleteCommand="DELETE FROM tblAccesoExtra WHERE (usuarioid= @usuarioid) AND (idMenu=@idMenu)" 
-        InsertCommand="INSERT INTO tblAccesoExtra VALUES  (@usuarioid,@IdMenu)
-">
-        <DeleteParameters>
-            <asp:SessionParameter Name="usuarioid" SessionField="UsuarioAcceso" />
-            <asp:Parameter Name="idMenu" />
-        </DeleteParameters>
-        <InsertParameters>
-            <asp:SessionParameter Name="usuarioid" SessionField="UsuarioAcceso"/>
-            <asp:Parameter Name="IdMenu" />
-        </InsertParameters>
-        <SelectParameters>
-            <asp:ControlParameter ControlID="GridView1" Name="idMenu" 
-                PropertyName="SelectedValue" />
-        </SelectParameters>
-    </asp:SqlDataSource>
-    <br />
-    <dx:ASPxButton ID="ASPxButton1" runat="server" ClientIDMode="AutoID" 
-        CssFilePath="~/App_Themes/Aqua/{0}/styles.css" CssPostfix="Aqua" 
-        HorizontalAlign="NotSet" ImagePosition="Right" 
-        SpriteCssFilePath="~/App_Themes/Aqua/{0}/sprite.css" Text="REGRESAR" 
-        VerticalAlign="NotSet" Wrap="Default" onclick="Button1_Click" 
-        SpriteImageUrl="~/Imagenes/dt.png">
-<Image Align="NotSet" Url="~/Imagenes/Regresar.png"></Image>
+        protected void DropDownListEmpresa_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            Session["empresaid"] = ((DropDownList)sender).SelectedValue;
+        }
 
-<CheckedStyle>
-<BackgroundImage Repeat="Repeat"></BackgroundImage>
+        protected void DetailsView2_DataBound(object sender, EventArgs e)
+        {
+            if (DetailsView1.Rows.Count > 0 && DetailsView2.DataItemCount > 0)
+            {
+                if (DetailsView2.CurrentMode == DetailsViewMode.ReadOnly)
+                {
+                    Session["empresaid"] = ((Label)DetailsView2.FindControl("LabelEmpresaid")).Text;
+                    Session["areaid"] = ((Label)DetailsView2.FindControl("LabelAreaid")).Text;
+                }
+            }
+            if (DetailsView2.CurrentMode == DetailsViewMode.Edit)
+            {
+                Session["empresaid"] = ((DropDownList)DetailsView2.FindControl("DropDownEmpresa2")).SelectedValue;
+            }
+            if (DetailsView2.CurrentMode == DetailsViewMode.Insert)
+            {
+                Session["empresaid"] = ((DropDownList)DetailsView2.FindControl("DropDownEmpresa3")).SelectedValue;
+                SqlDataSourceAreas.SelectParameters["empresaid"].DefaultValue = Session["empresaid"].ToString();
+            }
+        }
 
-<Border BorderStyle="NotSet"></Border>
+        protected void DetailsView2_ItemUpdating(object sender, DetailsViewUpdateEventArgs e)
+        {
+            Session["areaid"] = ((DropDownList)DetailsView2.FindControl("DropDownListArea2")).SelectedValue;
+        }
 
-<BorderLeft BorderStyle="NotSet"></BorderLeft>
+        protected void DetailsView2_ItemInserting(object sender, DetailsViewInsertEventArgs e)
+        {
+            Session["areaid"] = ((DropDownList)DetailsView2.FindControl("DropDownListArea3")).SelectedValue;
+        }
 
-<BorderTop BorderStyle="NotSet"></BorderTop>
+        protected void DetailsView2_ItemInserted(object sender, DetailsViewInsertedEventArgs e)
+        {
+            if (e.Exception == null)
+            {
+                //DisplayValues(e);
+                LblError.Visible = true;
+                LblError.Text = "REGISTRO ALMACENADO.";
+                LblError.ForeColor = System.Drawing.Color.Green;
+            }
+            else
+            {
+                string[] error = { e.Exception.Message };
 
-<BorderRight BorderStyle="NotSet"></BorderRight>
+                string[] Errores = { "UNIQUE", "NULL" };
 
-<BorderBottom BorderStyle="NotSet"></BorderBottom>
-</CheckedStyle>
+                foreach (string s in error)
+                {
 
-<PressedStyle>
-<BackgroundImage Repeat="Repeat"></BackgroundImage>
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[0], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ALMACENAR EL REGISTRO. USUARIO YA EXISTE.";
+                    }
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[1], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ALMACENAR EL REGISTRO. FAVOR DE LLENAR LOS CAMPOS OBLIGATORIOS.";
+                    }
+                    else
+                    {
+                    }
+                }
 
-<Border BorderStyle="NotSet"></Border>
+                e.ExceptionHandled = true;
+                // When an exception occurs, keep the DetailsView
+                // control in edit mode.
+                e.KeepInInsertMode = true;
+            }
+            actualizarpage();
+        }
 
-<BorderLeft BorderStyle="NotSet"></BorderLeft>
+        protected void DetailsView2_ItemDeleted(object sender, DetailsViewDeletedEventArgs e)
+        {
+            if (e.Exception == null)
+            {
+                //DisplayValues(e);
+                LblError.Visible = true;
+                LblError.Text = "REGISTRO ELIMINADO.";
+                LblError.ForeColor = System.Drawing.Color.Green;
+            }
+            else
+            {
+                string[] error = { e.Exception.Message };
 
-<BorderTop BorderStyle="NotSet"></BorderTop>
+                string[] Errores = { "REFERENCE" };
 
-<BorderRight BorderStyle="NotSet"></BorderRight>
+                foreach (string s in error)
+                {
 
-<BorderBottom BorderStyle="NotSet"></BorderBottom>
-</PressedStyle>
+                    if (System.Text.RegularExpressions.Regex.IsMatch(s, Errores[0], System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                    {
+                        LblError.Visible = true;
+                        LblError.ForeColor = System.Drawing.Color.Red;
+                        LblError.Text = "NO SE PUEDE ELIMINAR EL REGISTRO. ESTE USUARIO ESTÁ SIENDO UTILIZADO.";
+                    }
+                }
 
-<HoverStyle>
-<BackgroundImage Repeat="Repeat"></BackgroundImage>
+                // Use the ExceptionHandled property to indicate that the 
+                // exception is already handled.
+                e.ExceptionHandled = true;
 
-<Border BorderStyle="NotSet"></Border>
+            }
+            actualizarpage();
+        }
 
-<BorderLeft BorderStyle="NotSet"></BorderLeft>
+        protected void ImgBtnAreaUsuario_Click(object sender, ImageClickEventArgs e)
+        {
+            DetailsView2.ChangeMode(DetailsViewMode.Insert);
+        }
 
-<BorderTop BorderStyle="NotSet"></BorderTop>
+        protected void Button1_Click(object sender, EventArgs e)
+        {
+            Session["UsuarioAcceso"] = DetailsView1.DataKey.Value.ToString();
+            if (Session["UsuarioAcceso"] != null)
+            {
+                Response.Redirect("~/Mantenimientos/UsuarioAcceso.aspx");
+            }
+        }
 
-<BorderRight BorderStyle="NotSet"></BorderRight>
-
-<BorderBottom BorderStyle="NotSet"></BorderBottom>
-</HoverStyle>
-
-<FocusRectBorder BorderStyle="NotSet"></FocusRectBorder>
-
-<BackgroundImage Repeat="Repeat"></BackgroundImage>
-
-<Border BorderStyle="NotSet"></Border>
-
-<BorderLeft BorderStyle="NotSet"></BorderLeft>
-
-<BorderTop BorderStyle="NotSet"></BorderTop>
-
-<BorderRight BorderStyle="NotSet"></BorderRight>
-
-<BorderBottom BorderStyle="NotSet"></BorderBottom>
-
-<DisabledStyle>
-<BackgroundImage Repeat="Repeat"></BackgroundImage>
-
-<Border BorderStyle="NotSet"></Border>
-
-<BorderLeft BorderStyle="NotSet"></BorderLeft>
-
-<BorderTop BorderStyle="NotSet"></BorderTop>
-
-<BorderRight BorderStyle="NotSet"></BorderRight>
-
-<BorderBottom BorderStyle="NotSet"></BorderBottom>
-</DisabledStyle>
-    </dx:ASPxButton>
-</asp:Content>
+    }
+}
