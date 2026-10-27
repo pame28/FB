@@ -1,19 +1,89 @@
-UPDATE Menu
-SET Acceso = 'Registro de Información CNBS'
-WHERE idMenu = 7;
-
-
-
-SELECT u.usuario, u.privilegioid
-FROM tblAccesoExtra ae JOIN tblUsuarios u ON u.usuarioid = ae.UsuarioId
-WHERE ae.idMenu = 7 AND u.privilegioid <> 2;
+oniteminserted="DetailsView1_ItemInserted" oniteminserting="DetailsView1_ItemInserting" HorizontalAlign="Center"
 
 
 
 
-SELECT u.usuario, u.nombreenlace, m.idMenu, m.Acceso
-FROM tblAccesoExtra ae
-JOIN tblUsuarios u ON u.usuarioid = ae.UsuarioId
-JOIN Menu m ON m.idMenu = ae.idMenu
-WHERE u.privilegioid = 2
-  AND (m.idMenu IN (6, 1022) OR m.padre = 1022);
+
+
+
+	Where ae.UsuarioId = @UsuarioId AND m.idMenu=X.idMenu)
+  AND NOT ((X.idMenu = 1022 OR X.padre = 1022)
+           AND EXISTS (SELECT 1 FROM tblUsuarios
+                       WHERE usuarioid = @UsuarioId AND privilegioid = 2))
+  order by idMenu asc"
+
+
+
+
+
+protected global::System.Web.UI.WebControls.DetailsView DetailsView1;
+
+
+
+
+
+
+
+protected void DetailsView1_ItemInserting(object sender, DetailsViewInsertEventArgs e)
+{
+    // Acceso seleccionado en el combo
+    object valor = e.Values["idMenu"];
+    if (valor == null)
+    {
+        ASPxComboBox combo = (ASPxComboBox)DetailsView1.FindControl("ASPxComboBox4");
+        valor = combo != null ? combo.Value : null;
+    }
+    if (valor == null) return;
+
+    int idMenu = Convert.ToInt32(valor);
+    int usuarioDestino = Convert.ToInt32(Session["UsuarioAcceso"]);
+
+    // 6 = menú "Reportes"
+    if (idMenu == 6 && EsGestor(usuarioDestino))
+    {
+        e.Cancel = true; // No guarda
+        LblError.Visible = true;
+        LblError.ForeColor = System.Drawing.Color.Red;
+        LblError.Text = "NO SE PUEDE ASIGNAR ESTE REPORTE YA QUE EL USUARIO DESTINO NO ES ADMINISTRADOR";
+    }
+}
+
+private bool EsGestor(int usuarioId)
+{
+    string cadena = ConfigurationManager.ConnectionStrings[
+        "BasePerdidasOperativas.Properties.Settings.SettingConnectionString"].ConnectionString;
+    const string sql = "SELECT privilegioid FROM tblUsuarios WHERE usuarioid = @usuarioid";
+    using (SqlConnection cn = new SqlConnection(cadena))
+    using (SqlCommand cmd = new SqlCommand(sql, cn))
+    {
+        cmd.Parameters.AddWithValue("@usuarioid", usuarioId);
+        cn.Open();
+        object r = cmd.ExecuteScalar();
+        return r != null && Convert.ToInt32(r) == 2; // 2 = GESTORES
+    }
+}
+
+
+
+
+
+
+
+
+
+
+if (ret.Text == "Registro de Información CNBS")
+{
+    ret.Image.Url = "~/Imagenes/cn.png";
+}
+if (ret.Text == "Reportes" && Convert.ToInt32(Session["privilegioid"]) == 1)
+{
+    ret.Image.Url = "~/Imagenes/reportes.png";
+}
+
+
+
+
+
+
+
