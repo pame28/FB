@@ -1,75 +1,621 @@
 USE [PerdidasOperativas_DESA]
 GO
-/****** Object:  StoredProcedure [dbo].[usp_ReporteDemandaJuicioEjecucion]    Script Date: 27/10/2026 12:09:51 ******/
+/****** Object:  StoredProcedure [dbo].[usp_validacionDemandasJuiciosEjecucion]    Script Date: 27/10/2026 12:13:33 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
--- ===================================================================================== --
--- Author:		Valeria López                                                            --
--- Description:	Consulta Reporte Demanda y Juicios en Ejecucion.  --
--- ===================================================================================== --
-
-ALTER PROCEDURE [dbo].[usp_ReporteDemandaJuicioEjecucion] --'2025-1-1', '2025-7-1'
-	@fecha_inicio DATE = NULL
-	,@fecha_fin DATE = NULL
+-- =============================================
+-- Author:		HENRRY PADILLA XD
+-- Create date: <25-07-2025>
+-- Description:	Se valida la informacion cargada en el excel y devuelve una tabla con las inconsistencias encontradas
+--en el archivo para que el usuario las corrija.
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_validacionDemandasJuiciosEjecucion]
+	@usuario VARCHAR(50)
 AS
 BEGIN
+	SET NOCOUNT ON;
+	SET LANGUAGE 'spanish'
+	TRUNCATE TABLE [dbo].[tblInconsistenciasArchivo_Demandas]
+	---VARIABLES GENERALES PARA VALIDACIONES
+	DECLARE @USERID INT = (SELECT usuarioid FROM tblUsuarios WHERE usuario=@usuario)
 
-    SET NOCOUNT ON;
+	--VALIDACIONES SI ENCUENTRA CAMPOS VACIOS-------------------------------------------------------------------------
 
-	IF(@fecha_inicio IS NOT NULL AND @fecha_fin IS NOT NULL)
+
+	DECLARE @Campos TABLE (NombreCampo VARCHAR(100))
+	INSERT INTO @Campos (NombreCampo)
+	VALUES 
+		('empresa'),
+		('Zona'),
+		('NumeroDemanda'),
+		('NumeroExpediente'),
+		('FechaPresentacion'),
+		('NaturalezaDemanda'),
+		('NombreDemandado'),
+		('NombreDemandante'),
+		('TipoDemandante'),
+		('TipoDemanda'),
+		('MotivoDemanda'),
+		('AccionInstitucion'),
+		('JuzgadoDemanda'),
+		('NombreJuzgado'),
+		('MontoDemandado'),
+		('moneda'),
+		('TipoCambio'),
+		('ResultadoPrimera'),
+		('FechaActuacion'),
+		('ResultadoSegunda'),
+		('MontoGastosLegalesHonorarios'),
+		('DemandaAsociadaRiesgoCredito'),
+		('TipoGarantia'),
+		('ProbabilidadPerdida'),
+		('ProcuradorAsignado')
+
+	DECLARE @Campo VARCHAR(100)
+	DECLARE @SQL NVARCHAR(MAX)
+	DECLARE @Cantidad INT
+
+	DECLARE Campos_Cursor CURSOR FOR
+	SELECT NombreCampo FROM @Campos
+
+	OPEN Campos_Cursor
+
+	FETCH NEXT FROM Campos_Cursor INTO @Campo
+
+	WHILE @@FETCH_STATUS = 0
 	BEGIN
-		SELECT 
-		Id_RegistroDemanda, 
-		NumeroDemanda, 
-		NaturalezaDemanda, 
-		REPLACE(CONVERT(DATE,FechaPresentacion), '-', '/') AS FechaPresentacion,
-		NombreDemandado,
-		NombreDemandante, 
-		MontoDemandado, 
-		TipoGarantia,
-		ProcuradorAsignado, 
-		MotivoDemanda, 
-		JuzgadoDemanda, 
-		AccionInstitucion,
-		Zona, 
-		FechaActuacion, 
-		ProbabilidadPerdida 
-		FROM tblRegistroDemandasJuiciosEjecucion 
-	WHERE CONVERT(DATE,FechaPresentacion) BETWEEN @fecha_inicio AND @fecha_fin
+		SET @SQL = '
+			SELECT @CantidadOUT = COUNT(*) 
+			FROM [dbo].[tblExcelDemandasJuiciosEjecucion]
+			WHERE ' + QUOTENAME(@Campo) + ' IS NULL 
+				OR LEN(LTRIM(RTRIM(CAST(' + QUOTENAME(@Campo) + ' AS VARCHAR)))) = 0'
+
+		EXEC sp_executesql @SQL, N'@CantidadOUT INT OUTPUT', @CantidadOUT = @Cantidad OUTPUT
+
+		IF (@Cantidad > 0)
+		BEGIN
+			INSERT INTO tblInconsistenciasArchivo_Demandas
+			VALUES(@Campo, 'Se encontraron campos vacíos: ' + CAST(@Cantidad AS VARCHAR(100)) + '.')
+
+			SET @SQL = '
+			UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]
+			SET RegistroError = 1
+			WHERE ' + QUOTENAME(@Campo) + ' IS NULL 
+				OR LEN(LTRIM(RTRIM(CAST(' + QUOTENAME(@Campo) + ' AS VARCHAR)))) = 0'
+
+			EXEC sp_executesql @SQL
+
+		END
+
+		FETCH NEXT FROM Campos_Cursor INTO @Campo
 	END
+
+	CLOSE Campos_Cursor
+	DEALLOCATE Campos_Cursor
+	
+	-----OTRAS VALIDACIONES
+	DECLARE @RegistrosDuplicados INT = (	
+											SELECT sum(CANT)
+											FROM (
+													SELECT empresa,	Zona,	NumeroDemanda,	NumeroExpediente,	FechaPresentacion,	NaturalezaDemanda,	NombreDemandado,	NombreDemandante,	
+													TipoDemandante,	TipoDemanda,	MotivoDemanda,	AccionInstitucion,	JuzgadoDemanda,	NombreJuzgado,	MontoDemandado,   moneda,  TipoCambio,
+													ResultadoPrimera,	FechaActuacion,	ResultadoSegunda,	MontoGastosLegalesHonorarios,	DemandaAsociadaRiesgoCredito,	TipoGarantia,	
+													ProbabilidadPerdida,	ProcuradorAsignado,	RegistroError,COUNT(*) AS CANT 
+													FROM [dbo].[tblExcelDemandasJuiciosEjecucion]
+													GROUP BY empresa,	Zona,	NumeroDemanda,	NumeroExpediente,	FechaPresentacion,	NaturalezaDemanda,	NombreDemandado,	NombreDemandante,	
+													TipoDemandante,	TipoDemanda,	MotivoDemanda,	AccionInstitucion,	JuzgadoDemanda,	NombreJuzgado,	MontoDemandado,   moneda,  TipoCambio,
+													ResultadoPrimera,	FechaActuacion,	ResultadoSegunda,	MontoGastosLegalesHonorarios,	DemandaAsociadaRiesgoCredito,	TipoGarantia,	
+													ProbabilidadPerdida,	ProcuradorAsignado,	RegistroError
+												) A
+											WHERE CANT>1
+										)
+	IF(@RegistrosDuplicados>0)
+		INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('RegistrosDuplicados','Registros Duplicados en EXCEL: ' + CAST(@RegistrosDuplicados AS VARCHAR(100)) + '.')
+		UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																										SELECT NumeroDemanda
+																										FROM (
+																												SELECT empresa,	Zona,	NumeroDemanda,	NumeroExpediente,	FechaPresentacion,	NaturalezaDemanda,	NombreDemandado,	NombreDemandante,	
+																												TipoDemandante,	TipoDemanda,	MotivoDemanda,	AccionInstitucion,	JuzgadoDemanda,	NombreJuzgado,	MontoDemandado,   moneda,  TipoCambio,
+																												ResultadoPrimera,	FechaActuacion,	ResultadoSegunda,	MontoGastosLegalesHonorarios,	DemandaAsociadaRiesgoCredito,	TipoGarantia,	
+																												ProbabilidadPerdida,	ProcuradorAsignado,	RegistroError,COUNT(*) AS CANT 
+																												FROM [dbo].[tblExcelDemandasJuiciosEjecucion]
+																												GROUP BY empresa,	Zona,	NumeroDemanda,	NumeroExpediente,	FechaPresentacion,	NaturalezaDemanda,	NombreDemandado,	NombreDemandante,	
+																												TipoDemandante,	TipoDemanda,	MotivoDemanda,	AccionInstitucion,	JuzgadoDemanda,	NombreJuzgado,	MontoDemandado,   moneda,  TipoCambio,
+																												ResultadoPrimera,	FechaActuacion,	ResultadoSegunda,	MontoGastosLegalesHonorarios,	DemandaAsociadaRiesgoCredito,	TipoGarantia,	
+																												ProbabilidadPerdida,	ProcuradorAsignado,	RegistroError
+																											) A
+																										WHERE CANT>1
+																									)
+
+	DECLARE @NumeroDemanda INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE TRIM(NumeroDemanda) in (
+														SELECT DISTINCT TRIM(NumeroDemanda) FROM tblRegistroDemandasJuiciosEjecucion WHERE EstadoRegistro=1
+													)
+							)
+	IF(@NumeroDemanda>0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('NumeroDemanda','NumeroDemanda Ya se encuentra registrado, cantidad de registros: ' + CAST(@NumeroDemanda AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda IN (
+																								SELECT NumeroDemanda 
+																								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																								WHERE TRIM(NumeroDemanda)  in 
+																															(
+																																SELECT DISTINCT TRIM(NumeroDemanda) 
+																																FROM tblRegistroDemandasJuiciosEjecucion 
+																																WHERE EstadoRegistro=1
+																															)
+													)
+	---FFECHA PRESENTACION 
+	----VALIDA QUE LA MENOS VENGAN 10 DIGITOS
+	--DECLARE @FechaPresentacionFormatoCorrecto INT = (	
+	--													SELECT COUNT(*) 
+	--													FROM [dbo].[tblExcelDemandasJuiciosEjecucion]
+	--													WHERE NOT (
+	--																LEN(FechaPresentacion) = 10 AND
+	--																SUBSTRING(FechaPresentacion, 3, 1) = '/' AND
+	--																SUBSTRING(FechaPresentacion, 6, 1) = '/'
+	--																)
+	--												)
+	--IF(@FechaPresentacionFormatoCorrecto>0)
+	--	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaPesentacion','Registros con Formato Incorrecto: ' + CAST(@FechaPresentacionFormatoCorrecto AS VARCHAR(100)) + ' , Formato debe ser DD/MM/AAAA.')
+	--	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (SELECT NumeroDemanda 
+	--																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion]
+	--																									WHERE NOT (
+	--																												LEN(FechaPresentacion) = 10 AND
+	--																												SUBSTRING(FechaPresentacion, 3, 1) = '/' AND
+	--																												SUBSTRING(FechaPresentacion, 6, 1) = '/'
+	--																												)
+	--																								   )
+
+	--- VALIDA QUE SI VIENEN LOS 10 DIGITOS, QUE VENGAN LOS MESES Y DÍAS CORRECTOS
+	--IF (@FechaPresentacionFormatoCorrecto=0)
+	--	BEGIN
+	--		DECLARE @FechaPresentacionmes INT = (SELECT COUNT(*) FROM [dbo].[tblExcelDemandasJuiciosEjecucion] WHERE CAST(SUBSTRING(FechaPresentacion, 4, 2) AS INT)>12)
+	--		IF(@FechaPresentacionmes>0)
+	--			INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaPesentacion','Registros que contienen mes inccorecto :  ' + CAST(@FechaPresentacionmes AS VARCHAR(100)) + ' , Formato debe ser DD/MM/AAAA.')
+	--			UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+	--																											SELECT NumeroDemanda
+	--																											FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+	--																											WHERE CAST(SUBSTRING(FechaPresentacion, 4, 2) AS INT)>12
+	--																											)
+	--		DECLARE @FechaPresentaciondia INT = (SELECT COUNT(*) FROM [dbo].[tblExcelDemandasJuiciosEjecucion] WHERE CAST(SUBSTRING(FechaPresentacion, 1, 2) AS INT)>31)
+	--		IF(@FechaPresentaciondia>0)
+	--			INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaPesentacion','Registros que contienen dia inccorecto: ' + CAST(@FechaPresentaciondia AS VARCHAR(100)) + ' , Formato debe ser DD/MM/AAAA.')
+	--			UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in ( 
+	--																											SELECT NumeroDemanda 
+	--																											FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+	--																											WHERE CAST(SUBSTRING(FechaPresentacion, 1, 2) AS INT)>31
+	--																										)
+
+			
+			--IF(@FechaPresentaciondia=0 AND @FechaPresentaciondia=0 )
+			--	BEGIN
+		-- VALIDA QUE FECHAPRESENTACION NO SEA MAYOR A FECHA REGISTRO (HOY)
+		--DECLARE @FechaPresentacionMayorFechaRegistro INT= (
+		--												SELECT COUNT(*) 
+		--												FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+		--												WHERE CAST(SUBSTRING(FechaPresentacion, 7, 4) + '-' + SUBSTRING(FechaPresentacion, 4, 2) + '-' + SUBSTRING(FechaPresentacion, 1, 2) AS DATE)
+		--												> 
+		--												CAST(GETDATE() AS DATE)
+		--												)
+		--IF(@FechaPresentacionMayorFechaRegistro>0)
+		--INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaPesentacion','FechaPresentacion No puede ser mayor a Fecha de Registro(HOY), Cantidad de Registros: ' + CAST(@FechaPresentacionMayorFechaRegistro AS VARCHAR(100)) + '.')
+		--UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+		--																										SELECT NumeroDemanda 
+		--																										FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+		--																										WHERE CAST(SUBSTRING(FechaPresentacion, 7, 4) + '-' + SUBSTRING(FechaPresentacion, 4, 2) + '-' + SUBSTRING(FechaPresentacion, 1, 2) AS DATE)
+		--																										> 
+		--																										CAST(GETDATE() AS DATE)
+			
+			-- VALIDA QUE FECHAPRESENTACION NO SEA MAYOR A FECHA REGISTRO (HOY)
+			DECLARE @FechaPresentacionMayorFechaRegistro INT = (
+				SELECT COUNT(*) 
+				FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+				WHERE FechaPresentacion > CAST(GETDATE() AS DATE)
+			)
+
+			IF (@FechaPresentacionMayorFechaRegistro > 0)
+			BEGIN
+				INSERT INTO tblInconsistenciasArchivo_Demandas 
+				VALUES (
+					'FechaPresentacion',
+					'FechaPresentacion no puede ser mayor a Fecha de Registro (HOY), Cantidad de Registros: ' 
+					+ CAST(@FechaPresentacionMayorFechaRegistro AS VARCHAR(100)) + '.'
+				)
+
+				UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]
+				SET RegistroError = 1
+				WHERE FechaPresentacion > CAST(GETDATE() AS DATE)
+			END
+
+		--END 
+
+	---FFECHA ACTUACION
+	--VALIDA QUE LA MENOS VENGAN 10 DIGITOS
+	--DECLARE @FechaActuacionFormatoCorrecto INT = (	
+	--													SELECT COUNT(*) 
+	--													FROM [dbo].[tblExcelDemandasJuiciosEjecucion]
+	--													WHERE NOT (
+	--																LEN(FechaActuacion) = 10 AND
+	--																SUBSTRING(FechaActuacion, 3, 1) = '/' AND
+	--																SUBSTRING(FechaActuacion, 6, 1) = '/'
+	--																)
+	--												)
+	--IF(@FechaActuacionFormatoCorrecto>0)
+	--	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaActuacion','Registros con Formato Incorrecto: ' + CAST(@FechaActuacionFormatoCorrecto AS VARCHAR(100)) + ' , Formato debe ser DD/MM/AAAA.')
+	--	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+	--																									SELECT NumeroDemanda
+	--																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion]
+	--																									WHERE NOT (
+	--																												LEN(FechaActuacion) = 10 AND
+	--																												SUBSTRING(FechaActuacion, 3, 1) = '/' AND
+	--																												SUBSTRING(FechaActuacion, 6, 1) = '/'
+	--																												)
+	--																								)
+
+	----- VALIDA QUE SI VIENEN LOS 10 DIGITOS, QUE VENGAN LOS MESES Y DÍAS CORRECTOS
+	--IF (@FechaActuacionFormatoCorrecto=0)
+	--	BEGIN
+	--		DECLARE @FechaActuacionmes INT = (SELECT COUNT(*) FROM [dbo].[tblExcelDemandasJuiciosEjecucion] WHERE CAST(SUBSTRING(FechaActuacion, 4, 2) AS INT)>12)
+	--		IF(@FechaActuacionmes>0)
+	--			INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaActuacion','Registros que contienen mes inccorecto :  ' + CAST(@FechaActuacionmes AS VARCHAR(100)) + ' , Formato debe ser DD/MM/AAAA.')
+	--			UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+	--																											SELECT NumeroDemanda
+	--																											FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+	--																											WHERE CAST(SUBSTRING(FechaActuacion, 4, 2) AS INT)>12
+	--																										)
+																											
+	--		DECLARE @FechaActuaciondia INT = (SELECT COUNT(*) FROM [dbo].[tblExcelDemandasJuiciosEjecucion] WHERE CAST(SUBSTRING(FechaActuacion, 1, 2) AS INT)>31)
+	--		IF(@FechaActuaciondia>0)
+	--			INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaActuacion','Registros que contienen dia inccorecto: ' + CAST(@FechaActuaciondia AS VARCHAR(100)) + ' , Formato debe ser DD/MM/AAAA.')
+	--			UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+	--																											SELECT NumeroDemanda 
+	--																											FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+	--																											WHERE CAST(SUBSTRING(FechaActuacion, 1, 2) AS INT)>31
+	--																										)
+
+			
+	-- VALIDA QUE FECHAActuacion NO SEA MAYOR A FECHA REGISTRO 	
+	--DECLARE @FechaActuacionMayorFechaRegistro INT= (
+	--												SELECT COUNT(*) 
+	--												FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+	--												WHERE CAST(SUBSTRING(FechaActuacion, 7, 4) + '-' + SUBSTRING(FechaActuacion, 4, 2) + '-' + SUBSTRING(FechaActuacion, 1, 2) AS DATE)
+	--												> 
+	--												CAST(GETDATE() AS DATE)
+	--												)
+	--IF(@FechaActuacionMayorFechaRegistro>0)
+	--INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaActuacion','FechaActuacion No puede ser mayor a Fecha de Registro(HOY), Cantidad de Registros: ' + CAST(@FechaActuacionMayorFechaRegistro AS VARCHAR(100)) + '.')
+	--UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+	--																								SELECT NumeroDemanda 
+	--																								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+	--																								WHERE CAST(SUBSTRING(FechaActuacion, 7, 4) + '-' + SUBSTRING(FechaActuacion, 4, 2) + '-' + SUBSTRING(FechaActuacion, 1, 2) AS DATE)
+	--																								> 
+	--																								CAST(GETDATE() AS DATE)
+	--																							)
+
+	--END
+	-- VALIDA QUE FECHAACTUACION NO SEA MAYOR A FECHA REGISTRO (HOY)
+	DECLARE @FechaActuacionMayorFechaRegistro INT = (
+		SELECT COUNT(*) 
+		FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+		WHERE FechaActuacion > CAST(GETDATE() AS DATE)
+	)
+
+	IF (@FechaActuacionMayorFechaRegistro > 0)
+	BEGIN
+		INSERT INTO tblInconsistenciasArchivo_Demandas 
+		VALUES (
+			'FechaActuacion',
+			'FechaActuacion no puede ser mayor a Fecha de Registro (HOY), Cantidad de Registros: ' 
+			+ CAST(@FechaActuacionMayorFechaRegistro AS VARCHAR(100)) + '.'
+		)
+
+		UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]
+		SET RegistroError = 1
+		WHERE FechaActuacion > CAST(GETDATE() AS DATE)
+	END
+
+		--END 
+		--VALIDAR QUE NO HAYAN HABIDO ERRORES EN FECHAPresentacion y FechaActuacion PARA VALIDAR QUE LA FECHA DE ACTUACION NO SEA MENOR A LA FECHA DE PRESENTACION
+		DECLARE @ErroresFechaPresentacionActuacion INT = (SELECT COUNT(*) FROM [dbo].[tblInconsistenciasArchivo_Demandas] WHERE Campo='FechaActuacion' or Campo='FechaPesentacion')
+			IF(@ErroresFechaPresentacionActuacion=0)
+			BEGIN
+				----VALIDAR QUE LA Fecha de Actuación SEA mayor que la Fecha de Presentación.
+				--DECLARE @FechaActuacionMenorFechaPresentacion INT= (
+				--												SELECT COUNT(*) 
+				--												FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+				--												WHERE CAST(SUBSTRING(FechaActuacion, 7, 4) + '-' + SUBSTRING(FechaActuacion, 4, 2) + '-' + SUBSTRING(FechaActuacion, 1, 2) AS DATE)
+				--												<= 
+				--												CAST(SUBSTRING(FechaPresentacion, 7, 4) + '-' + SUBSTRING(FechaPresentacion, 4, 2) + '-' + SUBSTRING(FechaPresentacion, 1, 2) AS DATE)
+				--												)
+				--IF(@FechaActuacionMenorFechaPresentacion>0)
+				--INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('FechaActuacion','FechaActuacion Debe ser mayor a FechaPresentacion, Cantidad de Registros: ' + CAST(@FechaActuacionMenorFechaPresentacion AS VARCHAR(100)) + '.')
+				--UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+				--																								SELECT NumeroDemanda 
+				--																								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+				--																								WHERE CAST(SUBSTRING(FechaActuacion, 7, 4) + '-' + SUBSTRING(FechaActuacion, 4, 2) + '-' + SUBSTRING(FechaActuacion, 1, 2) AS DATE)
+				--																								<= 
+				--																								CAST(SUBSTRING(FechaPresentacion, 7, 4) + '-' + SUBSTRING(FechaPresentacion, 4, 2) + '-' + SUBSTRING(FechaPresentacion, 1, 2) AS DATE)
+				--																							)
+				-- VALIDAR QUE LA FechaActuacion SEA mayor que la FechaPresentacion
+			DECLARE @FechaActuacionMenorFechaPresentacion INT = (
+				SELECT COUNT(*) 
+				FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+				WHERE FechaActuacion <= FechaPresentacion
+			)
+
+			IF (@FechaActuacionMenorFechaPresentacion > 0)
+			BEGIN
+				INSERT INTO tblInconsistenciasArchivo_Demandas 
+				VALUES (
+					'FechaActuacion',
+					'FechaActuacion debe ser mayor a FechaPresentacion. Cantidad de registros: ' 
+					+ CAST(@FechaActuacionMenorFechaPresentacion AS VARCHAR(100)) + '.'
+				)
+
+				UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]
+				SET RegistroError = 1
+				WHERE FechaActuacion <= FechaPresentacion
+			END
+			END
+
+			
+		
+
+	------------############## VALIDAR QUE LOS CAMPOS DE LISTAS DESPLEGABLES SEAN CORRECTOS.... #################################
+
+	DECLARE @Empresa INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE empresa not in (
+														SELECT DISTINCT empresa FROM tblEmpresas WHERE activo=1
+													)
+							)
+	IF(@Empresa>0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('Empresa','Empresa No registrada en el Mantenimiento de Empresas, cantida de registros: ' + CAST(@Empresa AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda 
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE empresa not in (
+																															SELECT DISTINCT empresa FROM tblEmpresas WHERE activo=1
+																														)
+																								)
+
+
+	DECLARE @Zona INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE Zona not in (
+														SELECT DISTINCT Zona FROM tblZonas
+													)
+							)
+	IF(@Zona>0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('Zona','Zona No registrada en el Mantenimiento de Zonas, cantida de registros: ' + CAST(@Zona AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE Zona not in (
+																															SELECT DISTINCT Zona FROM tblZonas
+																														)
+																								)		
+
+	DECLARE @NaturalezaDemanda INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE NaturalezaDemanda not in (
+														SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblNaturalezaDemanda WHERE Activo=1
+													)
+							)
+	IF(@NaturalezaDemanda>0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('NaturalezaDemanda','NaturalezaDemanda No registrada en el Mantenimiento de Naturaleza de Demandas, cantida de registros: ' + CAST(@NaturalezaDemanda AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE NaturalezaDemanda not in (
+																															SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblNaturalezaDemanda WHERE Activo=1
+																														)
+																								)
+	
+	DECLARE @TipoDemandante INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE TipoDemandante not in (
+														SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblTipoDemandante WHERE Activo=1
+													)
+							)
+	IF(@TipoDemandante>0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('TipoDemandante','TipoDemandante No registrado en el Mantenimiento de Tipo de Demandante, cantida de registros: ' + CAST(@TipoDemandante AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE TipoDemandante not in (
+																															SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblTipoDemandante WHERE Activo=1
+																														)
+																								)
+
+
+	DECLARE @TipoDemanda INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE TipoDemanda not in (
+														SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblTipoDemanda WHERE Activo=1
+													)
+							)
+	IF(@TipoDemanda >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('TipoDemanda','TipoDemanda No registrada en el Mantenimiento de Tipo de Demanda, cantida de registros: ' + CAST(@TipoDemanda AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																										SELECT NumeroDemanda
+																										FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																										WHERE TipoDemanda not in (
+																																SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblTipoDemanda WHERE Activo=1
+																																)
+																								)
+
+	DECLARE @JuzgadoDemanda INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE JuzgadoDemanda not in (
+														SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblJuzgadoDemanda WHERE Activo=1
+													)
+							)
+	IF(@JuzgadoDemanda >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('JuzgadoDemanda','JuzgadoDemanda No registrado en el Mantenimiento de Tipo de Juzgado donde se Presentó la Demanda, cantida de registros: ' + CAST(@JuzgadoDemanda AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE JuzgadoDemanda not in (
+																															SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblJuzgadoDemanda WHERE Activo=1
+																														)
+																								)
+
+	DECLARE @Moneda INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE moneda not in (
+														SELECT DISTINCT moneda FROM tblMonedas
+													)
+							)
+	IF(@Moneda >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('TipoMoneda','Moneda No registrado en el Mantenimiento de Tipo de Monedas, cantida de registros: ' + CAST(@Moneda AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE moneda not in (
+																															SELECT DISTINCT moneda FROM tblMonedas
+																														)
+																								)
+	
+
+	DECLARE @ResultadoPrimera INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE ResultadoPrimera not in (
+														SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblResultadoPrimeraInstancia WHERE Activo=1
+													)
+							)
+	IF(@ResultadoPrimera >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('ResultadoPrimeraInstancia','ResultadoPrimeraInstancia No registrado en el Mantenimiento de Resultado de la Primera Instancia, cantida de registros: ' + CAST(@ResultadoPrimera AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE ResultadoPrimera not in (
+																															SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblResultadoPrimeraInstancia WHERE Activo=1
+																														)
+																								)
+
+	DECLARE @ResultadoSegunda INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE ResultadoSegunda not in (
+														SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblResultadoSegundaInstancia WHERE Activo=1
+													)
+							)
+	IF(@ResultadoSegunda >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('ResultadoSegundaInstancia','ResultadoSegundaInstancia No registrado en el Mantenimiento de Resultado de la Segunda Instancia, cantida de registros: ' + CAST(@ResultadoSegunda AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda 
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE ResultadoSegunda not in (
+																															SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblResultadoSegundaInstancia WHERE Activo=1
+																														)
+																								)
+	DECLARE @DemandaAsociadaRiesgoCredito INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE DemandaAsociadaRiesgoCredito not in (
+														SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblDemandaAsociadaRiesgoCredito WHERE Activo=1
+													)
+							)
+	IF(@DemandaAsociadaRiesgoCredito >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('DemandaAsociadaRiesgoCredito','DemandaAsociadaRiesgoCredito No registrado en el Mantenimiento de Demanda Asociada al Riesgo de Crédito, cantida de registros: ' + CAST(@DemandaAsociadaRiesgoCredito AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE DemandaAsociadaRiesgoCredito not in (
+																															SELECT DISTINCT TRIM(Convert( varchar(50),Codigo)) + ' ' + Descripcion FROM tblDemandaAsociadaRiesgoCredito WHERE Activo=1
+																														)
+																								)
+
+	DECLARE @TipoGarantia INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE TipoGarantia not in (
+														SELECT DISTINCT Descripcion FROM tblTipoGarantia WHERE Activo=1
+													)
+							)
+	IF(@TipoGarantia >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('TipoGarantia','TipoGarantia No registrado en el Mantenimiento de Tipo de Garantía, cantida de registros: ' + CAST(@TipoGarantia AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																									SELECT NumeroDemanda
+																									FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																									WHERE TipoGarantia not in (
+																															SELECT DISTINCT Descripcion FROM tblTipoGarantia WHERE Activo=1
+																														)
+																								)
+
+	DECLARE @ProbabilidadPerdida INT= (
+								SELECT COUNT(*) 
+								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+								WHERE ProbabilidadPerdida not in (
+														SELECT DISTINCT Descripcion FROM tblProbabilidadPerdida WHERE Activo=1
+													)
+							)
+	IF(@ProbabilidadPerdida >0)
+	INSERT INTO tblInconsistenciasArchivo_Demandas VALUES('ProbabilidadPerdida','ProbabilidadPerdida No registrado en el Mantenimiento de Probabilidad de Pérdida, cantida de registros: ' + CAST(@ProbabilidadPerdida AS VARCHAR(100)) + '.')
+	UPDATE [dbo].[tblExcelDemandasJuiciosEjecucion]  SET RegistroError=1 WHERE NumeroDemanda in (
+																								SELECT NumeroDemanda
+																								FROM [dbo].[tblExcelDemandasJuiciosEjecucion] 
+																								WHERE ProbabilidadPerdida not in (
+																														SELECT DISTINCT Descripcion FROM tblProbabilidadPerdida WHERE Activo=1
+																													)
+																								)
+
+	
+	--INSERTAR EN DEMANDAS Y JUICIOS LOS QUE NO QUEDARON EL NULL
+	INSERT INTO tblRegistroDemandasJuiciosEjecucion
+	
+	SELECT 
+		CAST(GETDATE() AS DATE) AS FechaRegistro, E.empresaid, X.empresa, Z.zonaid,	X.Zona,	X.NumeroDemanda,	X.NumeroExpediente,	
+		X.FechaPresentacion as FechaPresentacion,
+		N.Codigo AS CodigoNaturalezaDemanda, X.NaturalezaDemanda,	X.NombreDemandado,	X.NombreDemandante,	D.Codigo AS CodigoTipoDemandante, X.TipoDemandante,	T.Codigo AS CodigoTipoDemanda,
+		X.TipoDemanda,	X.MotivoDemanda,	X.AccionInstitucion,	J.Codigo AS CodigoJuzgadoDemanda,X.JuzgadoDemanda,	X.NombreJuzgado,	X.MontoDemandado,  m.monedaid, X.moneda,  X.TipoCambio,
+		P.Codigo AS CodigoResultadoPrimera, X.ResultadoPrimera,	X.FechaActuacion as FechaActuacion,
+		S.Codigo AS CodigoResultadoSegunda, X.ResultadoSegunda,	X.MontoGastosLegalesHonorarios,	C.Codigo as CodigoDemandaAsociadaRiesgoCredito, X.DemandaAsociadaRiesgoCredito, G.Id AS IdTipoGarantia,	X.TipoGarantia,	
+		PP.Id AS IdProbabilidadPerdida, X.ProbabilidadPerdida,	X.ProcuradorAsignado, @usuario as usuarioCreador, CAST(GETDATE() AS DATE) as FechaInsercion, 'EN PROCESO', 1 as EstadoResgitro,NULL,NULL,NULL,NULL
+	FROM [dbo].[tblExcelDemandasJuiciosEjecucion] x
+	LEFT JOIN tblEmpresas E
+		ON  E.empresa=X.empresa
+	LEFT JOIN tblZonas Z
+		ON Z.zona=X.Zona
+	LEFT JOIN tblNaturalezaDemanda N
+		ON TRIM(Convert( varchar(50),N.Codigo)) + ' ' + N.Descripcion=X.NaturalezaDemanda
+	LEFT JOIN tblTipoDemandante D
+		ON TRIM(Convert( varchar(50),D.Codigo)) + ' ' + D.Descripcion=X.TipoDemandante
+	LEFT JOIN tblTipoDemanda T
+		ON TRIM(Convert( varchar(50),T.Codigo)) + ' ' + T.Descripcion=X.TipoDemanda
+	LEFT JOIN tblJuzgadoDemanda J
+		ON TRIM(Convert( varchar(50),J.Codigo)) + ' ' + J.Descripcion=X.JuzgadoDemanda
+	LEFT JOIN tblMonedas M
+		ON M.moneda=X.moneda
+	LEFT JOIN tblResultadoPrimeraInstancia P
+		ON TRIM(Convert( varchar(50),P.Codigo)) + ' ' + P.Descripcion=X.ResultadoPrimera
+	LEFT JOIN tblResultadoSegundaInstancia S
+		ON TRIM(Convert( varchar(50),S.Codigo)) + ' ' + S.Descripcion=X.ResultadoPrimera
+	LEFT JOIN tblDemandaAsociadaRiesgoCredito C
+		ON TRIM(Convert( varchar(50),C.Codigo)) + ' ' + C.Descripcion=X.DemandaAsociadaRiesgoCredito
+	LEFT JOIN tblTipoGarantia G
+		ON G.Descripcion=X.TipoGarantia
+	LEFT JOIN tblProbabilidadPerdida PP
+		ON PP.Descripcion=X.ProbabilidadPerdida
+	WHERE X.RegistroError is null
+
+	--RETORNA INCONSISTENCIAS	
+	SELECT * FROM tblInconsistenciasArchivo_Demandas
+	--RETORNA REGISTROS INSERTADOS
+	SELECT * FROM [dbo].[tblExcelDemandasJuiciosEjecucion] WHERE RegistroError =1
+	--RETORNA REGISTROS NO INSERTADOS
+	SELECT * FROM [dbo].[tblExcelDemandasJuiciosEjecucion] WHERE RegistroError IS NULL
 END
-
-
-
-
-
-
-ORDINAL_POSITION	COLUMN_NAME	DATA_TYPE
-1	empresa	varchar
-2	Zona	varchar
-3	NumeroDemanda	varchar
-4	NumeroExpediente	varchar
-5	FechaPresentacion	date
-6	NaturalezaDemanda	varchar
-7	NombreDemandado	varchar
-8	NombreDemandante	varchar
-9	TipoDemandante	varchar
-10	TipoDemanda	varchar
-11	MotivoDemanda	varchar
-12	AccionInstitucion	varchar
-13	JuzgadoDemanda	varchar
-14	NombreJuzgado	varchar
-15	MontoDemandado	decimal
-16	moneda	varchar
-17	TipoCambio	decimal
-18	ResultadoPrimera	varchar
-19	FechaActuacion	date
-20	ResultadoSegunda	varchar
-21	MontoGastosLegalesHonorarios	decimal
-22	DemandaAsociadaRiesgoCredito	varchar
-23	TipoGarantia	varchar
-24	ProbabilidadPerdida	varchar
-25	ProcuradorAsignado	varchar
-26	RegistroError	bit
