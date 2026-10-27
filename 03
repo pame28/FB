@@ -1,4 +1,75 @@
-SELECT ORDINAL_POSITION, COLUMN_NAME, DATA_TYPE
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_NAME = 'tblExcelDemandasJuiciosEjecucion'
-ORDER BY ORDINAL_POSITION;
+USE [PerdidasOperativas_DESA]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_ReporteDemandaJuicioEjecucion]    Script Date: 27/10/2026 12:09:51 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- ===================================================================================== --
+-- Author:		Valeria López                                                            --
+-- Description:	Consulta Reporte Demanda y Juicios en Ejecucion.  --
+-- ===================================================================================== --
+
+ALTER PROCEDURE [dbo].[usp_ReporteDemandaJuicioEjecucion] --'2025-1-1', '2025-7-1'
+	@fecha_inicio DATE = NULL
+	,@fecha_fin DATE = NULL
+AS
+BEGIN
+
+    SET NOCOUNT ON;
+
+	IF(@fecha_inicio IS NOT NULL AND @fecha_fin IS NOT NULL)
+	BEGIN
+		SELECT 
+		Id_RegistroDemanda, 
+		NumeroDemanda, 
+		NaturalezaDemanda, 
+		REPLACE(CONVERT(DATE,FechaPresentacion), '-', '/') AS FechaPresentacion,
+		NombreDemandado,
+		NombreDemandante, 
+		MontoDemandado, 
+		TipoGarantia,
+		ProcuradorAsignado, 
+		MotivoDemanda, 
+		JuzgadoDemanda, 
+		AccionInstitucion,
+		Zona, 
+		FechaActuacion, 
+		ProbabilidadPerdida 
+		FROM tblRegistroDemandasJuiciosEjecucion 
+	WHERE CONVERT(DATE,FechaPresentacion) BETWEEN @fecha_inicio AND @fecha_fin
+	END
+END
+
+
+
+
+
+
+ORDINAL_POSITION	COLUMN_NAME	DATA_TYPE
+1	empresa	varchar
+2	Zona	varchar
+3	NumeroDemanda	varchar
+4	NumeroExpediente	varchar
+5	FechaPresentacion	date
+6	NaturalezaDemanda	varchar
+7	NombreDemandado	varchar
+8	NombreDemandante	varchar
+9	TipoDemandante	varchar
+10	TipoDemanda	varchar
+11	MotivoDemanda	varchar
+12	AccionInstitucion	varchar
+13	JuzgadoDemanda	varchar
+14	NombreJuzgado	varchar
+15	MontoDemandado	decimal
+16	moneda	varchar
+17	TipoCambio	decimal
+18	ResultadoPrimera	varchar
+19	FechaActuacion	date
+20	ResultadoSegunda	varchar
+21	MontoGastosLegalesHonorarios	decimal
+22	DemandaAsociadaRiesgoCredito	varchar
+23	TipoGarantia	varchar
+24	ProbabilidadPerdida	varchar
+25	ProcuradorAsignado	varchar
+26	RegistroError	bit
