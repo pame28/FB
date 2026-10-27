@@ -1,27 +1,19 @@
-Es que fijate que, yo considero lo estamos entendiendo mal +
-
-Criterio 01: El usuario administrador debe tener asignado por default todos los reportes del menú de "Reportes" con el submenú "Reportes - Internos" y "Reportes - CNBS"  detallar los reportes internos y CNBS.													
-Este ta bien
-
-Criterio 02: La opción del menú de "Reportes" con el submenú "Reportes - Internos" y "Reportes - CNBS", no debe permitir asignarse al usuario Gestor. Cuando el usuario administrador intente agregar alguno de estos reportes al usuario gestor, deberá mostrar un mensaje en rojo con el detalle "NO SE PUEDE ASIGNAR ESTE REPORTE YA QUE EL USUARIO DESTINO NO ES ADMINISTRADOR"													
-Este se refiere que no se va a poder asignar el menu de reportes.. no necesariamente los submenu, comprnedes?
-
-Ciritetio 03: Dentro del menú "Usuarios" > "Mantenimiento a Usuario" > "Agregar accesos a Usuario" (disponible únicamente para el administrador), se debe excluir la asignación de accesos a los reportes CNBS  (los 14 reportes detallados en criterio 1) cuando se trate del usuario Gestor.													
-El submenu(que tambien se puede asignar9 (te dejaré una imagen de ocmo lo ve el usuario, porque el usuario puede soli asignar Reposrtes.CNBS)
-
-Criterio 04: Renombrar el nombre del menú "Reportes CNBS" para el usuario Gestor, por el nombre "Registro de Información CNBS". Esto no debe afectar los usuarios que actualmente ya tienen accesos asignados.													
-Este creo que si lo entendiste bien
-
-Criterio 05:Se debe mantener la funcionalidad actual de asignación  para que desde el menú "Usuarios" > "Mantenimiento a Usuario" > "Agregar accesos a usuario", el usuario administrador podrá agregar los diferentes reportes, para que el gestor registre la información en el menú "Registro de Información CNBS". 													
-
-Criterio 06: Se debe mantener la funcionalidad actual de asignación  para que desde el menú "Usuarios > Mantenimiento a Usuario > Agregar accesos a usuario", el administrador podrá asignar los permisos para que el usuario Gestor genere reportes desde el menú "Reportes Detallados". Estos reportes incluirán únicamente la información previamente registrada por dicho usuario.													
-Pues yo revisé y solo salen de un solo usuaurio.
-
-Criterio 07: Se debe mantener la funcionalidad actual en la que El usuario Gestor únicamente podrá visualizar la información registrada por su mismo usuario, al momento de generar o consultar el reporte asignado.													
-Creo que tiene que ver con el item anterior
-
-Criterio 08: Se solicita agregar un icono a la par del menú de "Reportes" para el usuario administrador (ver referencia del icono 1 en el prototipado).													
-Crea tu el icon que sea 24x24
+UPDATE Menu
+SET Acceso = 'Registro de Información CNBS'
+WHERE idMenu = 7;
 
 
-dime paso a paso que hacer, si necesitas aclarar ciertas cosas antes lo hacemos
+
+SELECT u.usuario, u.privilegioid
+FROM tblAccesoExtra ae JOIN tblUsuarios u ON u.usuarioid = ae.UsuarioId
+WHERE ae.idMenu = 7 AND u.privilegioid <> 2;
+
+
+
+
+SELECT u.usuario, u.nombreenlace, m.idMenu, m.Acceso
+FROM tblAccesoExtra ae
+JOIN tblUsuarios u ON u.usuarioid = ae.UsuarioId
+JOIN Menu m ON m.idMenu = ae.idMenu
+WHERE u.privilegioid = 2
+  AND (m.idMenu IN (6, 1022) OR m.padre = 1022);
