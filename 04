@@ -1,153 +1,382 @@
-Vayamos en orden.. primero hagamos que se vean bien los catalogs
+// Quita tildes, mayúsculas y espacios extra: "Zona 2 Local " = "zona 2 local"
+export const normalizeText = (value) =>
+  String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-Mira asi es listar areas.. este es el response:
-{
-    "code": 200,
-    "message": "OK",
-    "data": [
-        {
-            "id": 1,
-            "name": "HN - Agencias"
-        },
-        {
-            "id": 2,
-            "name": "HN - Contact Center"
-        },
-        {
-            "id": 3,
-            "name": "HN - Tecnología"
-        }
-    ]
+
+
+
+
+import { Briefcase, Building2, MapPin, Store } from "lucide-react";
+import { catalogServices } from "../../../../api/catalogService";
+
+/**
+ * Configuración de cada catálogo.
+ * fields: campos del formulario y columnas de la tabla.
+ *   type: "text" (por defecto) | "number" | "select"
+ *   required: obligatorio
+ *   unique: no permite valores repetidos (ignora tildes y mayúsculas)
+ *   options: solo para "select" → [{ value, label }]
+ * feminine: para los textos ("Nueva área" / "Nuevo puesto").
+ */
+export const CATALOG_CONFIGS = {
+  areas: {
+    title: "Áreas",
+    subtitle: "Áreas de la compañía a las que pertenecen los usuarios.",
+    singular: "área",
+    plural: "áreas",
+    feminine: true,
+    icon: Building2,
+    service: catalogServices.areas,
+    fields: [
+      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. HN - Agencias" },
+    ],
+  },
+
+  branches: {
+    title: "Agencias",
+    subtitle: "Agencias y sucursales de la compañía.",
+    singular: "agencia",
+    plural: "agencias",
+    feminine: true,
+    icon: Store,
+    service: catalogServices.branches,
+    fields: [
+      { name: "code", label: "Código", type: "number", unique: true, width: 120, placeholder: "Ej. 1" },
+      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Agencia Torre del País" },
+    ],
+  },
+
+  locations: {
+    title: "Ubicaciones",
+    subtitle: "Zonas y ubicaciones generales asignadas a los usuarios.",
+    singular: "ubicación",
+    plural: "ubicaciones",
+    feminine: true,
+    icon: MapPin,
+    service: catalogServices.locations,
+    fields: [
+      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Zona 1 Foránea" },
+      {
+        name: "type",
+        label: "Tipo",
+        type: "select",
+        required: true,
+        width: 140,
+        // ⚠️ Confirmar con backend si el POST/PUT recibe el texto ("Zone") o un número
+        options: [
+          { value: "Zone", label: "Zona" },
+          { value: "General", label: "General" },
+        ],
+      },
+    ],
+  },
+
+  positions: {
+    title: "Puestos",
+    subtitle: "Perfiles de puesto de los colaboradores.",
+    singular: "puesto",
+    plural: "puestos",
+    feminine: false,
+    icon: Briefcase,
+    service: catalogServices.positions,
+    fields: [
+      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Cajero" },
+    ],
+  },
+};
+
+
+
+
+
+
+
+
+
+import { useEffect, useState } from "react";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { Modal } from "../../../../shared/components";
+import { normalizeText } from "../../../../helpers/format";
+import styles from "../../../Pages.module.css";
+
+const FORM_ID = "catalog-form";
+
+// "Name" (backend) → "name" (formulario)
+const mapApiErrors = (errors = {}) =>
+  Object.fromEntries(
+    Object.entries(errors).map(([key, msg]) => [key.charAt(0).toLowerCase() + key.slice(1), msg])
+  );
+
+const toValues = (fields, item) =>
+  Object.fromEntries(fields.map((f) => [f.name, item?.[f.name] ?? ""]));
+
+const validate = (fields, values, items, currentId) => {
+  const errors = {};
+
+  fields.forEach((f) => {
+    const value = String(values[f.name] ?? "").trim();
+
+    if (f.required && !value) {
+      errors[f.name] = `${f.label} es obligatorio.`;
+      return;
+    }
+
+    if (f.type === "number" && value && (!Number.isInteger(Number(value)) || Number(value) < 0)) {
+      errors[f.name] = `${f.label} debe ser un número entero positivo.`;
+      return;
+    }
+
+    // Duplicados: compara sin tildes ni mayúsculas y excluye el registro que se está editando
+    if (f.unique && value) {
+      const duplicate = items.find(
+        (it) => it.id !== currentId && normalizeText(it[f.name]) === normalizeText(value)
+      );
+      if (duplicate) errors[f.name] = `Ya existe un registro con ese ${f.label.toLowerCase()} (ID ${duplicate.id}).`;
+    }
+  });
+
+  return errors;
+};
+
+const toBody = (fields, values) =>
+  Object.fromEntries(
+    fields.map((f) => {
+      const raw = values[f.name];
+      if (f.type === "number") return [f.name, raw === "" || raw === null ? null : Number(raw)];
+      if (f.type === "select") return [f.name, raw];
+      return [f.name, String(raw ?? "").trim()];
+    })
+  );
+
+export function CatalogFormModal({ open, item, items = [], config, onClose, onSaved }) {
+  const { singular, plural, feminine, fields, service } = config;
+  const isEdit = Boolean(item);
+  const e = feminine ? "a" : "o";
+
+  const [values, setValues] = useState({});
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setValues(toValues(fields, item));
+      setErrors({});
+      setSubmitError("");
+    }
+  }, [open, item, fields]);
+
+  const handleChange = (ev) => {
+    const { name, value } = ev.target;
+    setValues((v) => ({ ...v, [name]: value }));
+    setErrors((err) => ({ ...err, [name]: undefined }));
+  };
+
+  const handleSubmit = async (ev) => {
+    ev.preventDefault();
+    const found = validate(fields, values, items, item?.id);
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+
+    setSaving(true);
+    setSubmitError("");
+    const body = toBody(fields, values);
+
+    try {
+      const saved = isEdit ? await service.update(item.id, body) : await service.create(body);
+      onSaved(saved ?? { ...item, ...body }, isEdit);
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.errors) setErrors(mapApiErrors(data.errors));
+      setSubmitError(
+        err.noAccess
+          ? `No tienes permiso para ${isEdit ? "editar" : "crear"} ${plural}.`
+          : data?.message ?? "No se pudo guardar. Intenta de nuevo."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClose = () => { if (!saving) onClose(); };
+
+  const renderInput = (f, index) => {
+    const common = {
+      id: `catalog-${f.name}`,
+      name: f.name,
+      value: values[f.name] ?? "",
+      onChange: handleChange,
+      "aria-invalid": !!errors[f.name],
+      autoFocus: index === 0,
+    };
+
+    if (f.type === "select") {
+      return (
+        <select {...common} className={`${styles.select} ${errors[f.name] ? styles.invalid : ""}`}>
+          <option value="">Selecciona una opción</option>
+          {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      );
+    }
+
+    return (
+      <input
+        {...common}
+        type={f.type === "number" ? "number" : "text"}
+        min={f.type === "number" ? 0 : undefined}
+        inputMode={f.type === "number" ? "numeric" : undefined}
+        className={`${styles.input} ${errors[f.name] ? styles.invalid : ""}`}
+        placeholder={f.placeholder}
+        autoComplete="off"
+      />
+    );
+  };
+
+  return (
+    <Modal
+      open={open}
+      size="sm"
+      title={isEdit ? `Editar ${singular}` : `Nuev${e} ${singular}`}
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving}>
+            {saving && <Loader2 size={18} className={styles.spin} />}
+            {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Guardar"}
+          </button>
+        </>
+      }
+    >
+      <form id={FORM_ID} className={styles.form} style={{ gridTemplateColumns: "1fr" }} onSubmit={handleSubmit} noValidate>
+        {submitError && (
+          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ marginBottom: 0 }}>
+            <AlertCircle size={18} />
+            <p>{submitError}</p>
+          </div>
+        )}
+
+        {isEdit && (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="catalog-id">
+              ID <span className={styles.readOnlyTag}>SOLO LECTURA</span>
+            </label>
+            <input id="catalog-id" className={styles.input} value={item.id} readOnly />
+          </div>
+        )}
+
+        {fields.map((f, index) => (
+          <div key={f.name} className={styles.field}>
+            <label className={styles.label} htmlFor={`catalog-${f.name}`}>
+              {f.label}
+              {f.required && <span className={styles.required}>*</span>}
+            </label>
+            {renderInput(f, index)}
+            {errors[f.name] && <span className={styles.fieldError}>{errors[f.name]}</span>}
+          </div>
+        ))}
+      </form>
+    </Modal>
+  );
 }
 
 
 
-el de Ubicaciones/zonas/locations
-{
-    "code": 200,
-    "message": "OK",
-    "data": [
-        {
-            "id": 7,
-            "name": "1",
-            "type": "General"
-        },
-        {
-            "id": 1,
-            "name": "Zona 1 Foránea",
-            "type": "Zone"
-        },
-        {
-            "id": 2,
-            "name": "Zona 1 Local",
-            "type": "Zone"
-        },
-        {
-            "id": 3,
-            "name": "Zona 2 Foránea",
-            "type": "Zone"
-        },
-        {
-            "id": 4,
-            "name": "Zona 2 Local",
-            "type": "Zone"
-        },
-        {
-            "id": 6,
-            "name": "Zona 2 Local",
-            "type": "Zone"
-        },
-        {
-            "id": 5,
-            "name": "Zona 3 Foránea",
-            "type": "Zone"
-        },
-        {
-            "id": 8,
-            "name": "ZONA1",
-            "type": "General"
+
+
+
+
+
+
+import { normalizeText } from "../../../../helpers/format";
+
+
+
+
+  const filtered = useMemo(() => {
+    const q = normalizeText(search);
+    const list = q
+      ? items.filter((it) =>
+          String(it.id).includes(q) || fields.some((f) => normalizeText(it[f.name]).includes(q)))
+      : items;
+    return [...list].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "es"));
+  }, [items, search, fields]);
+
+
+
+
+
+
+
+
+
+  const dash = <span className={styles.muted}>—</span>;
+
+  const columns = [
+    {
+      key: "id",
+      header: "ID",
+      width: 80,
+      render: (it) => <span className={styles.mono}>{it.id}</span>,
+    },
+    ...fields.map((f) => ({
+      key: f.name,
+      header: f.label,
+      width: f.width,
+      render: (it) => {
+        const value = it[f.name];
+        if (value === null || value === undefined || value === "") return dash;
+        if (f.type === "number") return <span className={styles.mono}>{value}</span>;
+        if (f.type === "select") {
+          const label = f.options.find((o) => o.value === value)?.label ?? value;
+          return <span className={`${styles.tag} ${styles.tagBlue}`}>{label}</span>;
         }
-    ]
-}
+        if (f.name === "name") return <span className={styles.cellMain}>{value}</span>;
+        return value;
+      },
+    })),
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "right",
+      width: 120,
+      render: (it) => (
+        <div className={styles.rowActions}>
+          <button type="button" className={styles.iconBtn} title="Editar"
+            aria-label={`Editar ${it.name}`} onClick={() => setForm({ open: true, item: it })}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
+            aria-label={`Eliminar ${it.name}`} onClick={() => openDelete(it)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
 
 
 
 
 
-El de puestos/positions
 
-{
-    "code": 200,
-    "message": "OK",
-    "data": [
-        {
-            "id": 1005,
-            "name": "1"
-        },
-        {
-            "id": 1,
-            "name": "Cajero"
-        },
-        {
-            "id": 4,
-            "name": "Oficial de Innovación"
-        },
-        {
-            "id": 3,
-            "name": "Oficial de Innovacion Tecnologica"
-        },
-        {
-            "id": 5,
-            "name": "Oficial de Innovación Tecnológica"
-        },
-        {
-            "id": 2,
-            "name": "Oficial de Innovación Tecnológica 2"
-        }
-    ]
-}
+
+
+
+      <CatalogFormModal
+        open={form.open}
+        item={form.item}
+        items={items}
+        config={config}
+        onClose={() => setForm({ open: false, item: null })}
+        onSaved={handleSaved}
+      />
 
 
 
 
 
-El de agencias / branches
 
-{
-    "code": 200,
-    "message": "OK",
-    "data": [
-        {
-            "id": 5,
-            "code": null,
-            "name": "4"
-        },
-        {
-            "id": 1,
-            "code": null,
-            "name": "Agencia Torre"
-        },
-        {
-            "id": 4,
-            "code": 1,
-            "name": "AGENCIA TORRE DEL PAIS"
-        },
-        {
-            "id": 6,
-            "code": null,
-            "name": "FIDE"
-        },
-        {
-            "id": 7,
-            "code": null,
-            "name": "IJUJI"
-        }
-    ]
-}
-
-
-
-
-
-Te los mando asi porque en la tabla no se ven los ID 
