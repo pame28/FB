@@ -1,11 +1,410 @@
-Necesito que me ayudes a modificar esta plantilla. Basicamente terminar de hacer que se vea bien cool y nos diferenciemos. 
+import { createContext } from "react";
 
-El area es Innovacion Tecnologoca
-
-Y lo que queremos anunciar es lo siguiente:
-El objetivo es informar que hay un proceso automático que realiza los desbloqueos de usuarios de Directorio Activo y de AS400.
-por lo que cuando un colaborador regresa de vacaciones ya puede hacer uso de su dispositivo sin tener que ingresar la solicitud de habilitación de usuario por regreso de vacaciones
+export const ToastContext = createContext(null);
 
 
 
-Redactalo bien cool que todo usuario pueda entender, como una super buena noticia. Y sin que deje de ser formal del todo ... sabes que .. hazme dos propuestas, una buen cool y diferente y la otra siguiendo mucho la plantilla
+
+import { useContext } from "react";
+import { ToastContext } from "./ToastContext";
+
+/**
+ * const toast = useToast();
+ * toast.success("Título", "Mensaje opcional");
+ * toast.error(...)  toast.warning(...)  toast.info(...)
+ */
+export const useToast = () => {
+  const ctx = useContext(ToastContext);
+  if (!ctx) throw new Error("useToast debe usarse dentro de <ToastProvider>");
+  return ctx;
+};
+
+
+
+
+
+
+
+
+
+import { useCallback, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AlertCircle, CheckCircle2, Info, TriangleAlert, X } from "lucide-react";
+import { ToastContext } from "./ToastContext";
+import styles from "./Toast.module.css";
+
+const ICONS = { success: CheckCircle2, error: AlertCircle, warning: TriangleAlert, info: Info };
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+export function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+  const nextId = useRef(0);
+
+  const remove = useCallback((id) => {
+    setToasts((list) => list.filter((t) => t.id !== id));
+  }, []);
+
+  // Marca el toast como "saliendo" para animarlo; al terminar la animación se elimina
+  const dismiss = useCallback((id) => {
+    if (prefersReducedMotion()) return remove(id);
+    setToasts((list) => list.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+  }, [remove]);
+
+  const show = useCallback(({ type = "success", title, message, duration = 4500 }) => {
+    const id = ++nextId.current;
+    setToasts((list) => [...list, { id, type, title, message, duration }]);
+    return id;
+  }, []);
+
+  const api = useMemo(() => ({
+    show,
+    dismiss,
+    success: (title, message, opts) => show({ ...opts, type: "success", title, message }),
+    error: (title, message, opts) => show({ ...opts, type: "error", title, message }),
+    warning: (title, message, opts) => show({ ...opts, type: "warning", title, message }),
+    info: (title, message, opts) => show({ ...opts, type: "info", title, message }),
+  }), [show, dismiss]);
+
+  return (
+    <ToastContext.Provider value={api}>
+      {children}
+      {createPortal(
+        <div className={styles.viewport} aria-live="polite">
+          {toasts.map((t) => (
+            <ToastItem key={t.id} toast={t} onDismiss={dismiss} onRemove={remove} />
+          ))}
+        </div>,
+        document.body
+      )}
+    </ToastContext.Provider>
+  );
+}
+
+function ToastItem({ toast, onDismiss, onRemove }) {
+  const [paused, setPaused] = useState(false);
+  const Icon = ICONS[toast.type] ?? Info;
+
+  return (
+    <div
+      className={`${styles.toast} ${styles[toast.type]} ${toast.leaving ? styles.leaving : ""}`}
+      role={toast.type === "error" ? "alert" : "status"}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onAnimationEnd={(e) => {
+        // Solo cuenta la animación del propio toast (no la de la barra)
+        if (e.target === e.currentTarget && toast.leaving) onRemove(toast.id);
+      }}
+    >
+      <div className={styles.iconWrap}>
+        <Icon size={20} strokeWidth={2.4} />
+      </div>
+
+      <div className={styles.body}>
+        <p className={styles.title}>{toast.title}</p>
+        {toast.message && <p className={styles.message}>{toast.message}</p>}
+      </div>
+
+      <button type="button" className={styles.close} onClick={() => onDismiss(toast.id)} aria-label="Cerrar notificación">
+        <X size={16} />
+      </button>
+
+      {/* Barra de tiempo: al terminar, se cierra el toast */}
+      {!toast.leaving && (
+        <span
+          className={styles.progress}
+          style={{ animationDuration: `${toast.duration}ms`, animationPlayState: paused ? "paused" : "running" }}
+          onAnimationEnd={(e) => {
+            e.stopPropagation();
+            onDismiss(toast.id);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+/* Contenedor: arriba a la derecha, debajo del navbar */
+.viewport {
+  position: fixed;
+  top: calc(var(--navbar-h, 80px) + 16px);
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 12px 17px 14px;
+  border-radius: 14px;
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(0, 30, 60, 0.28), 0 2px 6px rgba(0, 30, 60, 0.12);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: slideIn 0.4s cubic-bezier(0.21, 1.02, 0.73, 1) both;
+}
+
+/* Variantes */
+.success { background: linear-gradient(135deg, #23a26d 0%, #0f6e56 100%); }
+.error   { background: linear-gradient(135deg, #d64545 0%, #a32d2d 100%); }
+.info    { background: linear-gradient(135deg, #0c5aba 0%, #003964 100%); }
+.warning { background: linear-gradient(135deg, #ffc000 0%, #f2a900 100%); color: #3d2a00; }
+
+/* Ícono en círculo translúcido */
+.iconWrap {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+.iconWrap svg { animation: pop 0.5s 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+.body { flex: 1; min-width: 0; padding-top: 1px; }
+
+.title { margin: 0; font-size: 14.5px; font-weight: 800; line-height: 1.35; }
+.message { margin: 2px 0 0; font-size: 13px; line-height: 1.45; opacity: 0.9; }
+
+.close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.close:hover { opacity: 1; background: rgba(255, 255, 255, 0.18); }
+.close:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+
+/* Barra de tiempo restante */
+.progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.6);
+  transform-origin: left;
+  animation-name: shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+.warning .progress { background: rgba(61, 42, 0, 0.35); }
+
+.leaving { animation: slideOut 0.28s ease forwards; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(110%) scale(0.95); }
+}
+@keyframes slideOut {
+  to { opacity: 0; transform: translateX(110%) scale(0.95); }
+}
+@keyframes shrink {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@keyframes pop {
+  0% { transform: scale(0) rotate(-45deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* Celular: ocupa el ancho de la pantalla */
+@media (max-width: 600px) {
+  .viewport { left: 16px; right: 16px; width: auto; top: calc(var(--navbar-h, 80px) + 12px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, .leaving, .iconWrap svg { animation: none; }
+}
+
+
+
+
+
+
+
+
+
+
+
+export { ToastProvider } from "./ToastProvider";
+export { useToast } from "./useToast";
+
+
+
+
+
+
+export { ToastProvider, useToast } from "./Toast";
+
+
+
+
+
+
+
+
+import { BrowserRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { store } from './store/store'
+import { AppRouter } from './routes/AppRouter'
+import { ToastProvider } from './shared/components'
+
+export const App = () => (
+  <Provider store={store}>
+    <BrowserRouter>
+      <ToastProvider>
+        <AppRouter />
+      </ToastProvider>
+    </BrowserRouter>
+  </Provider>
+)
+
+
+
+
+
+
+
+
+
+.noteBox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--bp-blue-digital) 25%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bp-blue-digital) 7%, white);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+  color: var(--bp-blue-expert);
+}
+.noteBox svg { flex-shrink: 0; margin-top: 2px; color: var(--bp-blue-fin); }
+
+
+
+
+
+
+
+
+import { Can, ConfirmDialog, Datatable, useToast } from "../../../shared/components";
+
+
+
+
+
+
+
+
+
+
+  // Sincronización
+  const toast = useToast();
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState("");
+
+
+
+
+
+
+
+  const openSyncConfirm = () => {
+    setSyncError("");
+    setSyncConfirmOpen(true);
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncError("");
+    try {
+      await usersService.syncAs400();
+      setSyncConfirmOpen(false);
+      toast.success(
+        "Sincronización realizada exitosamente",
+        "Los datos de los usuarios se actualizaron desde AS400."
+      );
+      if (lastRequest.current) loadUsers(lastRequest.current); // refresca lo que estaba en pantalla
+    } catch (err) {
+      setSyncError(err.noAccess
+        ? "No tienes permiso para sincronizar con AS400."
+        : err.response?.data?.message ?? "No se pudo sincronizar con AS400. Intenta de nuevo.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+
+
+
+
+
+
+
+
+
+            <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={openSyncConfirm} disabled={syncing}>
+
+
+
+
+
+
+
+
+      {/* ---------- Confirmación: sincronizar AS400 ---------- */}
+      <ConfirmDialog
+        open={syncConfirmOpen}
+        icon={RefreshCw}
+        title="Sincronizar con AS400"
+        message="Esta acción actualizará los datos de usuarios desde AS400: código de empleado, código de cajero, nombre y agencia."
+        detail={
+          <div className={styles.noteBox}>
+            <Info size={16} />
+            <p>No se duplicarán registros existentes. Los usuarios actualizados reflejarán los cambios sin necesidad de cerrar sesión.</p>
+          </div>
+        }
+        cancelText="Cancelar"
+        confirmText={syncing ? "Sincronizando..." : <><RefreshCw size={16} /> Iniciar sincronización</>}
+        loading={syncing}
+        error={syncError}
+        onConfirm={handleSync}
+        onCancel={() => setSyncConfirmOpen(false)}
+      />
+
+
+
+
+
+
