@@ -1,382 +1,226 @@
-// Quita tildes, mayúsculas y espacios extra: "Zona 2 Local " = "zona 2 local"
-export const normalizeText = (value) =>
-  String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+Un administrador de área solo puede ver y gestionar los equipos, líderes y miembros que pertenecen a su misma área. No puede ver ni 
+acceder a información de otras áreas
+Si un equipo no tiene miembros, la tarjeta debe indicar claramente que no hay miembros y mostrar la opción de agregar.
+Usuario a designar como líder Selección única (radio) Perfiles autorizados del área 
+seleccionada -
+Equipo destino (mover miembro) Lista desplegable Equipos de la misma área distintos al 
+equipo actual -
+Motivo Lista desplegable Traslado / Cambio de líder / 
+Restructuración / Solicitud -
+Fecha efectiva Fecha DD/MM/AAAA — por defecto fecha de 
+hoy -
+Confirmar eliminación Elimina el equipo y desvincular a todos sus miembros
+Cambiar líder Abre modal para asignar un nuevo líder al equipo
+Confirmar cambio de líder Guarda el nuevo líder del equipo y registra en auditoría
+BOTONES
+Nombre de la Acción Descripción
+Gestión de líderes Navega a la pantalla donde se designan y quitan líderes por área
+Nuevo equipo Abre el flujo de 3 pasos para crear un equipo nuevo
+Confirmar (quitar líder) Confirma la remoción del rol de líder y registra en auditoría
+Editar equipo (ícono lápiz) Abre el modal de edición con el nombre del equipo precargado
+Eliminar equipo (ícono basurero) Muestra modal de confirmación antes de eliminar el equipo
+Confirmar designación Confirma que el usuario seleccionado recibirá el rol de líder
+Quitar rol de líder Inicia el proceso para remover el rol de líder a un usuario
+Designar líder Abre el modal para asignar rol de líder a un usuario del área
+Guardar equipo Guarda el equipo nuevo o los cambios de edición
+Agregar (miembros) Abre modal para seleccionar y agregar miembros al equipo
+Confirmar (agregar miembros)
+Los usuarios de un área solo aparecen disponibles en equipos de su área. No pueden visualizar usuarios de otras áreas.
+Al ingresar al módulo, el sistema muestra todos los equipos del área del administrador organizados
+Cada tarjeta debe mostrar el área del equipo, el nombre del equipo, el líder asignado y la lista de miembros con su estatus.
+Cancelar Cierra cualquier modal sin guardar cambios
+Volver a equipos Regresa desde Gestión de líderes a la vista principal de equipos
+Agrega los usuarios seleccionados al equipo
+Mover a otro equipo (ícono flechas) Abre modal para trasladar un miembro a otro equipo de la misma 
+área
+Confirmar traslado Ejecuta el movimiento del miembro al equipo destino y registra en 
+auditoría
+Remover del equipo (ícono X) Inicia el proceso de remoción de un miembro. Requiere motivo
+Confirmar remoción Desvincula al miembro del equipo y registra en auditoría
+Si no existen equipos creados para el área, el sistema debe mostrar un mensaje indicando que no hay equipos registrados.
+Versión: 6.0
+
+ El sistema debe registrar en auditoría la creación del equipo indicando el usuario que ejecutó la acción, el nombre del equipo, el área, el líder 
+asignado si aplica, los miembros iniciales y la fecha y hora.
+El administrador puede editar el nombre del equipo en cualquier momento.
+Al guardar los cambios, el sistema debe mostrar el mensaje "Equipo guardado correctamente"
+El sistema debe registrar en auditoría la edición indicando el usuario que ejecutó la acción, el equipo modificado, los campos actualizados y la 
+fecha y hora.
+El sistema debe solicitar confirmación antes de eliminar un equipo
+El modal de confirmación debe advertir que los miembros quedarán sin equipo asignado al eliminarlo.
+Al confirmar, el equipo desaparece del grid y sus miembros quedan desvinculados
+El sistema debe mostrar el mensaje "Equipo eliminado correctamente"
+ El sistema debe registrar en auditoría la eliminación indicando el usuario que ejecutó la acción, el equipo eliminado, el área, los miembros 
+afectados y la fecha y hora.
+El administrador puede cambiar el líder de un equipo existente desde la tarjeta del equipo
+Solo se muestran como opciones los líderes disponibles del área del equipo
+Al confirmar el cambio, el sistema debe mostrar el mensaje "Líder actualizado correctamente".
+El sistema debe registrar en auditoría el cambio indicando el usuario que ejecutó la acción, el equipo, el líder anterior, el nuevo líder y la 
+fecha y hora.
+El administrador puede agregar uno o varios miembros a un equipo existente desde la tarjeta del equipo.
+Solo se muestran usuarios activos del área del equipo que no estén ya asignados a ese equipo.
+ El administrador de un área no puede ver ni seleccionar usuarios de otras áreas al agregar miembros
+Al confirmar, los nuevos miembros aparecen inmediatamente en la tarjeta del equipo.
+El sistema debe mostrar el mensaje "Miembros agregados correctamente".
+El sistema debe registrar en auditoría la incorporación indicando el usuario que ejecutó la acción, el equipo, los miembros agregados y la 
+fecha y hora.
+El administrador puede mover un miembro de un equipo a otro equipo de la misma área
+El campo motivo es obligatorio para confirmar el traslado.
+Al confirmar, el miembro queda registrado en el equipo destino y desaparece del equipo origen.
+El sistema debe advertir esta situación antes de confirmar la acción.
+El sistema debe mostrar el mensaje "Permiso de líder quitado correctamente" al completar la acción
+El sistema debe registrar en auditoría la remoción del permiso indicando el usuario que ejecutó la acción, el usuario afectado, el área y la 
+fecha y hora.
+Al iniciar la creación de un equipo, el sistema solicita únicamente el nombre del equipo.
+El nombre del equipo es obligatorio. No se puede avanzar sin completarlo
+El sistema muestra únicamente los líderes disponibles que pertenezcan al área
+Los líderes que ya tienen un equipo asignado se muestran deshabilitados e indican que no están disponibles.
+El administrador puede continuar sin asignar un líder y hacerlo posteriormente desde la tarjeta del equipo.
+El sistema muestra únicamente los usuarios activos que pertenezcan al área
+El administrador puede seleccionar uno o varios miembros para el equipo
+El administrador puede continuar sin agregar miembros y hacerlo posteriormente desde la tarjeta del equipo.
+Al confirmar la creación, el sistema debe mostrar el mensaje "Equipo creado correctamente" y el equipo debe aparecer inmediatamente en 
+el grid.
+El sistema debe mostrar el mensaje "Miembro trasladado correctamente"
+El sistema debe registrar en auditoría el traslado indicando el usuario que ejecutó la acción, el miembro, el equipo origen, el equipo destino, 
+el motivo y la fecha y hora.
+El administrador puede remover un miembro de un equipo desde la tarjeta del equipo.
+El acceso a Gestión de líderes está disponible únicamente desde la funcionalidad Mantenimiento de líder
+El administrador puede designar como líder a cualquier usuario activo con perfil autorizado dentro de su área
+Al designar un líder, ese usuario pasa a estar disponible como opción al crear o editar equipos del área correspondiente.
+El sistema debe mostrar el mensaje "Líder designado correctamente" al completar la acción.
+El sistema debe registrar en auditoría la designación indicando el usuario que ejecutó la acción, el usuario designado como líder, el área y la 
+fecha y hora.
+El administrador puede quitar el permiso de líder a cualquier usuario que lo tenga asignado dentro de su área.
+Al quitar el permiso de líder, el usuario deja de aparecer como opción al crear o editar equipos.
+Si el usuario tiene un equipo asignado actualmente, ese equipo no se elimina pero queda sin líder disponible hasta que se designe uno nuevo.
+
+El sistema debe registrar en auditoría la remoción indicando el usuario que ejecutó la acción, el equipo, el miembro removido, el motivo y la 
+fecha y hora.
+Prototipo
+ El campo motivo es obligatorio para confirmar la remoción
+Al confirmar, el miembro queda desvinculado del equipo sin ser eliminado del sistema
+Al designar un usuario como líder de equipo, automáticamente pasa a tener el rol de "Coach"
+Un equipo puede tener más de un líder de equipo
+Un usuario solo puede estar asignado a un equipo
+
+
+
+import styles from '../../Pages.module.css';
+
+export const MantenimientoLiderPage = () => (
+  <header className={styles.header}>
+    <div>
+      <span className={styles.eyebrow}>Mantenimientos</span>
+      <h1 className={styles.title}>Mantenimiento de Líder</h1>
+    </div>
+  </header>
+);
 
 
 
 
 
-import { Briefcase, Building2, MapPin, Store } from "lucide-react";
-import { catalogServices } from "../../../../api/catalogService";
 
-/**
- * Configuración de cada catálogo.
- * fields: campos del formulario y columnas de la tabla.
- *   type: "text" (por defecto) | "number" | "select"
- *   required: obligatorio
- *   unique: no permite valores repetidos (ignora tildes y mayúsculas)
- *   options: solo para "select" → [{ value, label }]
- * feminine: para los textos ("Nueva área" / "Nuevo puesto").
- */
-export const CATALOG_CONFIGS = {
-  areas: {
-    title: "Áreas",
-    subtitle: "Áreas de la compañía a las que pertenecen los usuarios.",
-    singular: "área",
-    plural: "áreas",
-    feminine: true,
-    icon: Building2,
-    service: catalogServices.areas,
-    fields: [
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. HN - Agencias" },
-    ],
-  },
 
-  branches: {
-    title: "Agencias",
-    subtitle: "Agencias y sucursales de la compañía.",
-    singular: "agencia",
-    plural: "agencias",
-    feminine: true,
-    icon: Store,
-    service: catalogServices.branches,
-    fields: [
-      { name: "code", label: "Código", type: "number", unique: true, width: 120, placeholder: "Ej. 1" },
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Agencia Torre del País" },
-    ],
-  },
+ENDPOINTS:
 
-  locations: {
-    title: "Ubicaciones",
-    subtitle: "Zonas y ubicaciones generales asignadas a los usuarios.",
-    singular: "ubicación",
-    plural: "ubicaciones",
-    feminine: true,
-    icon: MapPin,
-    service: catalogServices.locations,
-    fields: [
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Zona 1 Foránea" },
-      {
-        name: "type",
-        label: "Tipo",
-        type: "select",
-        required: true,
-        width: 140,
-        // ⚠️ Confirmar con backend si el POST/PUT recibe el texto ("Zone") o un número
-        options: [
-          { value: "Zone", label: "Zona" },
-          { value: "General", label: "General" },
-        ],
-      },
-    ],
-  },
+Teams
 
-  positions: {
-    title: "Puestos",
-    subtitle: "Perfiles de puesto de los colaboradores.",
-    singular: "puesto",
-    plural: "puestos",
-    feminine: false,
-    icon: Briefcase,
-    service: catalogServices.positions,
-    fields: [
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Cajero" },
-    ],
-  },
-};
+
+GET
+/api/teams
+Obtiene el listado de equipos.
 
 
 
+POST
+/api/teams
+Crea un nuevo equipo.
+
+Request:
+
+{
+  "name": "string",
+  "leaderUserIds": [
+    "string"
+  ],
+  "memberUserIds": [
+    "string"
+  ],
+  "companyAreaId": 0
+}
+
+GET
+/api/teams/available/leaders
+Obtiene los líderes disponibles que no pertenecen a ningún equipo.
 
 
 
+GET
+/api/teams/available/members
+Obtiene los miembros disponibles excluyendo los ya asignados a un equipo, y a los que ya tienen un equipo asignado.
 
 
 
-import { useEffect, useState } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
-import { Modal } from "../../../../shared/components";
-import { normalizeText } from "../../../../helpers/format";
-import styles from "../../../Pages.module.css";
+GET
+/api/teams/{id}
+Obtiene un equipo por su identificador.
 
-const FORM_ID = "catalog-form";
 
-// "Name" (backend) → "name" (formulario)
-const mapApiErrors = (errors = {}) =>
-  Object.fromEntries(
-    Object.entries(errors).map(([key, msg]) => [key.charAt(0).toLowerCase() + key.slice(1), msg])
-  );
 
-const toValues = (fields, item) =>
-  Object.fromEntries(fields.map((f) => [f.name, item?.[f.name] ?? ""]));
-
-const validate = (fields, values, items, currentId) => {
-  const errors = {};
-
-  fields.forEach((f) => {
-    const value = String(values[f.name] ?? "").trim();
-
-    if (f.required && !value) {
-      errors[f.name] = `${f.label} es obligatorio.`;
-      return;
-    }
-
-    if (f.type === "number" && value && (!Number.isInteger(Number(value)) || Number(value) < 0)) {
-      errors[f.name] = `${f.label} debe ser un número entero positivo.`;
-      return;
-    }
-
-    // Duplicados: compara sin tildes ni mayúsculas y excluye el registro que se está editando
-    if (f.unique && value) {
-      const duplicate = items.find(
-        (it) => it.id !== currentId && normalizeText(it[f.name]) === normalizeText(value)
-      );
-      if (duplicate) errors[f.name] = `Ya existe un registro con ese ${f.label.toLowerCase()} (ID ${duplicate.id}).`;
-    }
-  });
-
-  return errors;
-};
-
-const toBody = (fields, values) =>
-  Object.fromEntries(
-    fields.map((f) => {
-      const raw = values[f.name];
-      if (f.type === "number") return [f.name, raw === "" || raw === null ? null : Number(raw)];
-      if (f.type === "select") return [f.name, raw];
-      return [f.name, String(raw ?? "").trim()];
-    })
-  );
-
-export function CatalogFormModal({ open, item, items = [], config, onClose, onSaved }) {
-  const { singular, plural, feminine, fields, service } = config;
-  const isEdit = Boolean(item);
-  const e = feminine ? "a" : "o";
-
-  const [values, setValues] = useState({});
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-
-  useEffect(() => {
-    if (open) {
-      setValues(toValues(fields, item));
-      setErrors({});
-      setSubmitError("");
-    }
-  }, [open, item, fields]);
-
-  const handleChange = (ev) => {
-    const { name, value } = ev.target;
-    setValues((v) => ({ ...v, [name]: value }));
-    setErrors((err) => ({ ...err, [name]: undefined }));
-  };
-
-  const handleSubmit = async (ev) => {
-    ev.preventDefault();
-    const found = validate(fields, values, items, item?.id);
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-
-    setSaving(true);
-    setSubmitError("");
-    const body = toBody(fields, values);
-
-    try {
-      const saved = isEdit ? await service.update(item.id, body) : await service.create(body);
-      onSaved(saved ?? { ...item, ...body }, isEdit);
-    } catch (err) {
-      const data = err.response?.data;
-      if (data?.errors) setErrors(mapApiErrors(data.errors));
-      setSubmitError(
-        err.noAccess
-          ? `No tienes permiso para ${isEdit ? "editar" : "crear"} ${plural}.`
-          : data?.message ?? "No se pudo guardar. Intenta de nuevo."
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleClose = () => { if (!saving) onClose(); };
-
-  const renderInput = (f, index) => {
-    const common = {
-      id: `catalog-${f.name}`,
-      name: f.name,
-      value: values[f.name] ?? "",
-      onChange: handleChange,
-      "aria-invalid": !!errors[f.name],
-      autoFocus: index === 0,
-    };
-
-    if (f.type === "select") {
-      return (
-        <select {...common} className={`${styles.select} ${errors[f.name] ? styles.invalid : ""}`}>
-          <option value="">Selecciona una opción</option>
-          {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      );
-    }
-
-    return (
-      <input
-        {...common}
-        type={f.type === "number" ? "number" : "text"}
-        min={f.type === "number" ? 0 : undefined}
-        inputMode={f.type === "number" ? "numeric" : undefined}
-        className={`${styles.input} ${errors[f.name] ? styles.invalid : ""}`}
-        placeholder={f.placeholder}
-        autoComplete="off"
-      />
-    );
-  };
-
-  return (
-    <Modal
-      open={open}
-      size="sm"
-      title={isEdit ? `Editar ${singular}` : `Nuev${e} ${singular}`}
-      onClose={handleClose}
-      footer={
-        <>
-          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving}>
-            {saving && <Loader2 size={18} className={styles.spin} />}
-            {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Guardar"}
-          </button>
-        </>
-      }
-    >
-      <form id={FORM_ID} className={styles.form} style={{ gridTemplateColumns: "1fr" }} onSubmit={handleSubmit} noValidate>
-        {submitError && (
-          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ marginBottom: 0 }}>
-            <AlertCircle size={18} />
-            <p>{submitError}</p>
-          </div>
-        )}
-
-        {isEdit && (
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="catalog-id">
-              ID <span className={styles.readOnlyTag}>SOLO LECTURA</span>
-            </label>
-            <input id="catalog-id" className={styles.input} value={item.id} readOnly />
-          </div>
-        )}
-
-        {fields.map((f, index) => (
-          <div key={f.name} className={styles.field}>
-            <label className={styles.label} htmlFor={`catalog-${f.name}`}>
-              {f.label}
-              {f.required && <span className={styles.required}>*</span>}
-            </label>
-            {renderInput(f, index)}
-            {errors[f.name] && <span className={styles.fieldError}>{errors[f.name]}</span>}
-          </div>
-        ))}
-      </form>
-    </Modal>
-  );
+PUT
+/api/teams/{id}
+Actualiza un equipo existente.
+Request:
+{
+  "name": "string",
+  "leaderUserIds": [
+    "string"
+  ],
+  "companyAreaId": 0
 }
 
 
+DELETE
+/api/teams/{id}
+Elimina un equipo.
+
+
+
+POST
+/api/teams/transfer-members
+Traslada miembros de un equipo a otro.
+Request:
+{
+  "sourceTeamId": 0,
+  "targetTeamId": 0,
+  "memberUserIds": [
+    "string"
+  ],
+  "reason": "string"
+}
+
+
+POST
+/api/teams/{teamId}/members
+Agrega nuevos miembros a un equipo.
+Request:
+{
+  "teamId": 0,
+  "memberUserIds": [
+    "string"
+  ]
+}
+
+
+DELETE
+/api/teams/{teamId}/members/{memberUserId}
+Quita un miembro específico de un equipo.
+Dos parametros: teAMiD y memberUserId 
 
 
 
 
-
-
-
-import { normalizeText } from "../../../../helpers/format";
-
-
-
-
-  const filtered = useMemo(() => {
-    const q = normalizeText(search);
-    const list = q
-      ? items.filter((it) =>
-          String(it.id).includes(q) || fields.some((f) => normalizeText(it[f.name]).includes(q)))
-      : items;
-    return [...list].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "es"));
-  }, [items, search, fields]);
-
-
-
-
-
-
-
-
-
-  const dash = <span className={styles.muted}>—</span>;
-
-  const columns = [
-    {
-      key: "id",
-      header: "ID",
-      width: 80,
-      render: (it) => <span className={styles.mono}>{it.id}</span>,
-    },
-    ...fields.map((f) => ({
-      key: f.name,
-      header: f.label,
-      width: f.width,
-      render: (it) => {
-        const value = it[f.name];
-        if (value === null || value === undefined || value === "") return dash;
-        if (f.type === "number") return <span className={styles.mono}>{value}</span>;
-        if (f.type === "select") {
-          const label = f.options.find((o) => o.value === value)?.label ?? value;
-          return <span className={`${styles.tag} ${styles.tagBlue}`}>{label}</span>;
-        }
-        if (f.name === "name") return <span className={styles.cellMain}>{value}</span>;
-        return value;
-      },
-    })),
-    {
-      key: "actions",
-      header: "Acciones",
-      align: "right",
-      width: 120,
-      render: (it) => (
-        <div className={styles.rowActions}>
-          <button type="button" className={styles.iconBtn} title="Editar"
-            aria-label={`Editar ${it.name}`} onClick={() => setForm({ open: true, item: it })}>
-            <Pencil size={16} />
-          </button>
-          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
-            aria-label={`Eliminar ${it.name}`} onClick={() => openDelete(it)}>
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ),
-    },
-  ];
-
-
-
-
-
-
-
-
-
-
-      <CatalogFormModal
-        open={form.open}
-        item={form.item}
-        items={items}
-        config={config}
-        onClose={() => setForm({ open: false, item: null })}
-        onSaved={handleSaved}
-      />
-
-
-
-
-
+Te adjunté imagenes del diseño
 
