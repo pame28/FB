@@ -1,65 +1,73 @@
-      toast.success("Cambios guardados", `La información de ${fullName(updated)} se actualizó correctamente.`);
+Bien, ahora ayudame con esta pantalla (te adjunto imagen del diseño) y te dejo por aqui los criterios:
+ El sistema debe permitir al usuario autenticado acceder a la opción Editar perfil desde el módulo Mantenimiento
+Al ingresar, el sistema debe mostrar únicamente la información del usuario en sesión
+El sistema debe mostrar los siguientes campos del perfil:
+- Código de empleado
+- Código de cajero
+- Nombre
+- Zona
+- Correo
+- Agencia
+- Ubicación
+- Estatus
+
+Todos los campos deben mostrarse con su valor actual cargado
+
+Los siguientes campos deben mostrarse en modo solo lectura (no editables):
+- Código de empleado
+- Código de cajero
+- Perfil del puesto
+- Nombre
+- Coach asignado
+- Zona
+- Agencia
+- Ubicación
+- Correo
+
+El campo Estatus debe mostrarse solo lectura en Editar perfi
 
 
 
+ENDPOINT:
 
+GET
+/api/logged-user
+Obtiene el id, nombre y rol del usuario autenticado según el id contenido en el JWT.
 
-
-  const handleSaved = (user, isEdit) => {
-    setForm({ open: false, user: null });
-    toast.success(
-      isEdit ? "Usuario actualizado" : "Usuario creado",
-      isEdit
-        ? `Los datos de ${fullName(user)} se actualizaron correctamente.`
-        : `${fullName(user)} se agregó al sistema.`
-    );
-    setReloadKey((k) => k + 1);
-  };
-
-
-
-
-
-
-
-
-      toast.success("Usuario eliminado", `${fullName(toDelete)} se eliminó del sistema.`);
-
-
-
-
-
-
-
-
-
-
-  // Exporta TODOS los usuarios filtrados (no solo la página actual)
-  const handleExport = async (type) => {
-    const label = type === "excel" ? "Excel" : "PDF";
-    setExporting(type);
-    try {
-      const exportRequest = { ...request, pageNumber: 1, pageSize: Math.max(result.totalCount, 1) };
-      const response = type === "excel"
-        ? await usersService.exportExcel(exportRequest)
-        : await usersService.exportPdf(exportRequest);
-      downloadBlob(response, type === "excel" ? "usuarios.xlsx" : "usuarios.pdf");
-      toast.success(`${label} generado`, `Se exportaron ${result.totalCount} usuarios.`);
-    } catch (err) {
-      const apiMessage = await readBlobError(err);
-      toast.error(
-        `No se pudo exportar a ${label}`,
-        err.noAccess ? "No tienes permiso para exportar usuarios." : apiMessage ?? "Intenta de nuevo en unos momentos."
-      );
-    } finally {
-      setExporting(null);
+Response:
+{
+    "code": 200,
+    "message": "OK",
+    "data": {
+        "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
+        "firstName": "Orlando",
+        "lastName": "Medina",
+        "fullName": "ORLANDO MEDINA",
+        "userName": "usr_prucert11",
+        "email": "orlandom@banpais.hn",
+        "tellerCode": null,
+        "employeeCode": null,
+        "employeeBranchUbication": null,
+        "userEnabled": false,
+        "status": 1,
+        "companyPositionId": 1,
+        "companyPosition": "Cajero",
+        "companyLocationId": 1,
+        "companyLocation": "Zona 1 Foránea",
+        "companyBranchId": 4,
+        "companyBranch": "AGENCIA TORRE DEL PAIS",
+        "companyAreaId": 1,
+        "companyArea": "HN - Agencias",
+        "roleId": 1,
+        "role": "Super Administrador"
     }
-  };
+}
 
 
 
+POST
+/api/logged-user/sync/as400
+Sincroniza la información AS400 del usuario autenticado usando el cajero asociado a su UserName.
 
 
-
-
-
+No requiere parametros solo el token
