@@ -1,1 +1,251 @@
-Access to XMLHttpRequest at 'https://apifeedbackcolaboradoresde.banpais.hn/api/teams/1002' from origin 'http://localhost:5173' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+import { ArrowLeftRight, Pencil, Plus, Trash2, UserCheck, Users, UserX, X } from "lucide-react";
+import { initials, statusTone, userSubtitle } from "./teamUtils";
+import t from "./Teams.module.css";
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+export function TeamCard({ team, onEdit, onDelete, onChangeLeaders, onAddMembers, onMoveMember, onRemoveMember }) {
+  const leaderCount = team.leaders.length;
+  const memberCount = team.members.length;
+
+  return (
+    <article className={t.card} aria-label={team.name}>
+      {/* ---------- Encabezado ---------- */}
+      <header className={t.cardHead}>
+        {team.areaName ? <span className={t.areaTag}>{team.areaName}</span> : <span />}
+        <div className={t.cardActions}>
+          <button type="button" className={t.iconBtn} title="Editar equipo"
+            aria-label={`Editar ${team.name}`} onClick={() => onEdit(team)}>
+            <Pencil size={15} />
+          </button>
+          <button type="button" className={`${t.iconBtn} ${t.iconBtnDanger}`} title="Eliminar equipo"
+            aria-label={`Eliminar ${team.name}`} onClick={() => onDelete(team)}>
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </header>
+
+      <h3 className={t.teamName}>{team.name}</h3>
+      <p className={t.teamMeta}>
+        {plural(leaderCount, "líder", "líderes")} · {plural(memberCount, "miembro", "miembros")}
+      </p>
+
+      {/* ---------- Líderes ---------- */}
+      <section className={t.leaderPanel} aria-label="Líderes del equipo">
+        <div className={t.panelHead}>
+          <span className={t.panelLabel}><UserCheck size={14} /> Líderes</span>
+          <button type="button" className={t.pillBtn} onClick={() => onChangeLeaders(team)}>
+            {leaderCount ? "Cambiar" : "Asignar"}
+          </button>
+        </div>
+
+        {leaderCount === 0 ? (
+          <div className={t.noLeader}>
+            <UserX size={16} /> Este equipo aún no tiene líder
+          </div>
+        ) : (
+          <ul className={t.leaderList}>
+            {team.leaders.map((l) => (
+              <li key={l.id} className={t.leaderItem}>
+                <span className={t.leaderAvatar}>{initials(l.name)}</span>
+                <span className={t.personText}>
+                  <span className={t.personName}>{l.name}</span>
+                  {l.position && <span className={t.personSub}>{l.position}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ---------- Miembros ---------- */}
+      <div className={t.sectionHead}>
+        <span className={t.sectionLabel}><Users size={14} /> Miembros ({memberCount})</span>
+        <button type="button" className={t.addBtn} onClick={() => onAddMembers(team)}>
+          <Plus size={14} strokeWidth={2.6} /> Agregar
+        </button>
+      </div>
+
+      {memberCount === 0 ? (
+        <div className={t.emptyMembers}>
+          <Users size={22} />
+          <span>Este equipo aún no tiene miembros.</span>
+        </div>
+      ) : (
+        <ul className={t.memberList}>
+          {team.members.map((m) => {
+            const sub = userSubtitle(m);
+            return (
+              <li key={m.id} className={t.member}>
+                <div className={t.person}>
+                  <span className={t.avatar}>{initials(m.name)}</span>
+                  <span className={t.personText}>
+                    <span className={t.personName}>{m.name}</span>
+                    {sub && <span className={t.personSub}>{sub}</span>}
+                  </span>
+                </div>
+                <div className={t.memberTools}>
+                  {m.status && <span className={`${t.status} ${t[statusTone(m.status)]}`}>{m.status}</span>}
+                  <button type="button" className={`${t.iconBtn} ${t.iconBtnSm}`} title="Mover a otro equipo"
+                    aria-label={`Mover a ${m.name} a otro equipo`} onClick={() => onMoveMember(team, m)}>
+                    <ArrowLeftRight size={14} />
+                  </button>
+                  <button type="button" className={`${t.iconBtn} ${t.iconBtnSm} ${t.iconBtnDanger}`} title="Remover del equipo"
+                    aria-label={`Remover a ${m.name} del equipo`} onClick={() => onRemoveMember(team, m)}>
+                    <X size={14} />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+.teamName {
+  margin: 14px 0 2px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--bp-blue-expert);
+}
+
+.teamMeta { margin: 0 0 14px; font-size: 12.5px; font-weight: 600; color: #8592a3; }
+
+
+
+
+
+
+
+
+
+/* ---- Panel de líderes ---- */
+.leaderPanel {
+  padding: 12px 14px 14px;
+  border: 1px solid color-mix(in srgb, var(--bp-blue-expert) 10%, white);
+  border-radius: 14px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--bp-blue-expert) 6%, white) 0%,
+    color-mix(in srgb, var(--bp-blue-digital) 9%, white) 100%
+  );
+}
+
+.panelHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+
+.panelLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bp-blue-expert);
+}
+.panelLabel svg { color: var(--bp-blue-fin); }
+
+.pillBtn {
+  height: 28px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--bp-blue-expert);
+  box-shadow: 0 1px 3px rgba(0, 57, 100, 0.15);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pillBtn:hover { background: var(--bp-blue-expert); color: #fff; }
+.pillBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 2px; }
+
+.leaderList { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+
+.leaderItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 1px 2px rgba(0, 57, 100, 0.06);
+}
+
+.leaderAvatar {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--bp-blue-expert) 0%, var(--bp-blue-fin) 100%);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.noLeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--bp-blue-expert) 20%, white);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7a8f;
+}
+
+
+
+
+
+
+
+
+
+
+
+.sectionLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8592a3;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+  border-radius: 50%;
