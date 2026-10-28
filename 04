@@ -1,145 +1,674 @@
-Ok mira, ya crearon los CRUDS para Areas, Agencias, Ubicaciones, Puestos
-
-Tengo que hacer las pantallas para esos(no hay prototipo) esas van a quedan en el modulo de Administracion
-Company Areas
-
-
-GET
-/api/company-areas
-Obtiene el listado de áreas de la compañía.
+    companyAreas: "api/company-areas",
+    companyBranches: "api/company-branches",
+    companyLocations: "api/company-locations",
+    companyPositions: "api/company-positions",
 
 
 
-POST
-/api/company-areas
-Crea un área de la compañía.
 
-Request:
 
-{
-  "name": "string"
+
+import { apiFeedbackAuthorized } from "./APIS";
+import { endpointsAPI } from "./endpointApi";
+
+// Crea un servicio CRUD para cualquier catálogo con la forma estándar /api/xxx y /api/xxx/{id}
+const createCatalogService = (endpoint) => ({
+  list: async () => {
+    const { data } = await apiFeedbackAuthorized.get(endpoint);
+    const result = data.data;
+    return Array.isArray(result) ? result : result?.items ?? [];
+  },
+
+  create: async (body) => {
+    const { data } = await apiFeedbackAuthorized.post(endpoint, body);
+    return data.data;
+  },
+
+  update: async (id, body) => {
+    const { data } = await apiFeedbackAuthorized.put(`${endpoint}/${id}`, { id, ...body });
+    return data.data;
+  },
+
+  remove: async (id) => {
+    await apiFeedbackAuthorized.delete(`${endpoint}/${id}`);
+  },
+});
+
+export const catalogServices = {
+  areas: createCatalogService(endpointsAPI.companyAreas),
+  branches: createCatalogService(endpointsAPI.companyBranches),
+  locations: createCatalogService(endpointsAPI.companyLocations),
+  positions: createCatalogService(endpointsAPI.companyPositions),
+};
+
+
+
+
+
+
+
+
+
+
+
+import { Briefcase, Building2, MapPin, Store } from "lucide-react";
+import { catalogServices } from "../../../../api/catalogService";
+
+/**
+ * Configuración de cada catálogo.
+ * fields: campos del formulario y columnas de la tabla.
+ *   type: "text" (por defecto) | "number"
+ * feminine: para los textos ("Nueva área" / "Nuevo puesto").
+ */
+export const CATALOG_CONFIGS = {
+  areas: {
+    title: "Áreas",
+    subtitle: "Áreas de la compañía a las que pertenecen los usuarios.",
+    singular: "área",
+    plural: "áreas",
+    feminine: true,
+    icon: Building2,
+    service: catalogServices.areas,
+    fields: [
+      { name: "name", label: "Nombre", required: true, placeholder: "Ej. HN - Agencias" },
+    ],
+  },
+
+  branches: {
+    title: "Agencias",
+    subtitle: "Agencias y sucursales de la compañía.",
+    singular: "agencia",
+    plural: "agencias",
+    feminine: true,
+    icon: Store,
+    service: catalogServices.branches,
+    fields: [
+      { name: "code", label: "Código", type: "number", required: true, width: 140, placeholder: "Ej. 4" },
+      { name: "name", label: "Nombre", required: true, placeholder: "Ej. Agencia Torre del País" },
+    ],
+  },
+
+  locations: {
+    title: "Ubicaciones",
+    subtitle: "Zonas geográficas asignadas a los usuarios.",
+    singular: "ubicación",
+    plural: "ubicaciones",
+    feminine: true,
+    icon: MapPin,
+    service: catalogServices.locations,
+    fields: [
+      { name: "name", label: "Nombre", required: true, placeholder: "Ej. Zona 1 Foránea" },
+    ],
+  },
+
+  positions: {
+    title: "Puestos",
+    subtitle: "Perfiles de puesto de los colaboradores.",
+    singular: "puesto",
+    plural: "puestos",
+    feminine: false,
+    icon: Briefcase,
+    service: catalogServices.positions,
+    fields: [
+      { name: "name", label: "Nombre", required: true, placeholder: "Ej. Cajero" },
+    ],
+  },
+};
+
+
+
+
+
+
+
+
+
+
+import { useEffect, useState } from "react";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { Modal } from "../../../../shared/components";
+import styles from "../../../Pages.module.css";
+
+const FORM_ID = "catalog-form";
+
+// "Name" (backend) → "name" (formulario)
+const mapApiErrors = (errors = {}) =>
+  Object.fromEntries(
+    Object.entries(errors).map(([key, msg]) => [key.charAt(0).toLowerCase() + key.slice(1), msg])
+  );
+
+const toValues = (fields, item) =>
+  Object.fromEntries(fields.map((f) => [f.name, item?.[f.name] ?? ""]));
+
+const validate = (fields, values) => {
+  const errors = {};
+  fields.forEach((f) => {
+    const value = String(values[f.name] ?? "").trim();
+    if (f.required && !value) {
+      errors[f.name] = `${f.label} es obligatorio.`;
+    } else if (f.type === "number" && value && (!Number.isInteger(Number(value)) || Number(value) < 0)) {
+      errors[f.name] = `${f.label} debe ser un número entero positivo.`;
+    }
+  });
+  return errors;
+};
+
+const toBody = (fields, values) =>
+  Object.fromEntries(
+    fields.map((f) => [f.name, f.type === "number" ? Number(values[f.name]) : String(values[f.name]).trim()])
+  );
+
+export function CatalogFormModal({ open, item, config, onClose, onSaved }) {
+  const { singular, feminine, fields, service } = config;
+  const isEdit = Boolean(item);
+  const e = feminine ? "a" : "o";
+
+  const [values, setValues] = useState({});
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setValues(toValues(fields, item));
+      setErrors({});
+      setSubmitError("");
+    }
+  }, [open, item, fields]);
+
+  const handleChange = (ev) => {
+    const { name, value } = ev.target;
+    setValues((v) => ({ ...v, [name]: value }));
+    setErrors((err) => ({ ...err, [name]: undefined }));
+  };
+
+  const handleSubmit = async (ev) => {
+    ev.preventDefault();
+    const found = validate(fields, values);
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+
+    setSaving(true);
+    setSubmitError("");
+    const body = toBody(fields, values);
+
+    try {
+      const saved = isEdit ? await service.update(item.id, body) : await service.create(body);
+      onSaved(saved ?? { ...item, ...body }, isEdit);
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.errors) setErrors(mapApiErrors(data.errors));
+      setSubmitError(
+        err.noAccess
+          ? `No tienes permiso para ${isEdit ? "editar" : "crear"} ${config.plural}.`
+          : data?.message ?? "No se pudo guardar. Intenta de nuevo."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClose = () => { if (!saving) onClose(); };
+
+  return (
+    <Modal
+      open={open}
+      size="sm"
+      title={`${isEdit ? "Editar" : `Nuev${e}`} ${singular}`}
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving}>
+            {saving && <Loader2 size={18} className={styles.spin} />}
+            {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Guardar"}
+          </button>
+        </>
+      }
+    >
+      <form id={FORM_ID} className={styles.form} style={{ gridTemplateColumns: "1fr" }} onSubmit={handleSubmit} noValidate>
+        {submitError && (
+          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ marginBottom: 0 }}>
+            <AlertCircle size={18} />
+            <p>{submitError}</p>
+          </div>
+        )}
+
+        {fields.map((f, index) => (
+          <div key={f.name} className={styles.field}>
+            <label className={styles.label} htmlFor={`catalog-${f.name}`}>
+              {f.label}
+              {f.required && <span className={styles.required}>*</span>}
+            </label>
+            <input
+              id={`catalog-${f.name}`}
+              name={f.name}
+              type={f.type === "number" ? "number" : "text"}
+              min={f.type === "number" ? 0 : undefined}
+              inputMode={f.type === "number" ? "numeric" : undefined}
+              className={`${styles.input} ${errors[f.name] ? styles.invalid : ""}`}
+              placeholder={f.placeholder}
+              value={values[f.name] ?? ""}
+              onChange={handleChange}
+              aria-invalid={!!errors[f.name]}
+              autoFocus={index === 0}
+              autoComplete="off"
+            />
+            {errors[f.name] && <span className={styles.fieldError}>{errors[f.name]}</span>}
+          </div>
+        ))}
+      </form>
+    </Modal>
+  );
 }
 
 
 
 
 
-GET
-/api/company-areas/{id}
-Obtiene un área de la compañía por su identificador.
 
 
 
-PUT
-/api/company-areas/{id}
-Actualiza un área de la compañía.
 
 
 
-DELETE
-/api/company-areas/{id}
-Elimina un área de la compañía.
 
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ConfirmDialog, Datatable, useToast } from "../../../../shared/components";
+import { CatalogFormModal } from "./CatalogFormModal";
+import styles from "../../../Pages.module.css";
 
-Company Branches
+const PAGE_SIZE = 10;
 
+// Quita tildes y mayúsculas para buscar: "foranea" encuentra "Foránea"
+const normalize = (value) =>
+  String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-GET
-/api/company-branches
-Obtiene el listado de sucursales de la compañía.
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
+export function CatalogCrudPage({ config }) {
+  const { title, subtitle, singular, plural, feminine, icon: Icon, service, fields } = config;
+  const e = feminine ? "a" : "o";
+  const article = feminine ? "la" : "el";
 
+  const toast = useToast();
 
-POST
-/api/company-branches
-Crea una sucursal de la compañía.
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-request:
-{
-  "code": 0,
-  "name": "string"
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  const [form, setForm] = useState({ open: false, item: null });
+
+  const [toDelete, setToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  /* ---------- Carga ---------- */
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setItems(await service.list());
+    } catch (err) {
+      setError(err.noAccess
+        ? `No tienes permiso para ver ${plural}.`
+        : `No se pudo cargar el listado de ${plural}.`);
+    } finally {
+      setLoading(false);
+    }
+  }, [service, plural]);
+
+  useEffect(() => { load(); }, [load]);
+
+  /* ---------- Búsqueda, orden y paginación (en el navegador) ---------- */
+  const filtered = useMemo(() => {
+    const q = normalize(search.trim());
+    const list = q
+      ? items.filter((it) => fields.some((f) => normalize(it[f.name]).includes(q)))
+      : items;
+    return [...list].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "es"));
+  }, [items, search, fields]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const rows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  /* ---------- Acciones ---------- */
+  const handleSaved = (item, isEdit) => {
+    setForm({ open: false, item: null });
+    toast.success(
+      `${capitalize(singular)} ${isEdit ? "actualizad" : "cread"}${e}`,
+      `"${item.name}" se ${isEdit ? "actualizó" : "agregó"} correctamente.`
+    );
+    load();
+  };
+
+  const openDelete = (item) => {
+    setDeleteError("");
+    setToDelete(item);
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await service.remove(toDelete.id);
+      toast.success(`${capitalize(singular)} eliminad${e}`, `"${toDelete.name}" se eliminó correctamente.`);
+      setToDelete(null);
+      load();
+    } catch (err) {
+      setDeleteError(err.noAccess
+        ? `No tienes permiso para eliminar ${plural}.`
+        : err.response?.data?.message
+          ?? `No se pudo eliminar. Es posible que ${article} ${singular} esté asignad${e} a uno o más usuarios.`);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /* ---------- Columnas ---------- */
+  const columns = [
+    ...fields.map((f) => ({
+      key: f.name,
+      header: f.label,
+      width: f.width,
+      render: (it) => {
+        const value = it[f.name];
+        if (value === null || value === undefined || value === "") return <span className={styles.muted}>—</span>;
+        if (f.type === "number") return <span className={styles.mono}>{value}</span>;
+        if (f.name === "name") return <span className={styles.cellMain}>{value}</span>;
+        return value;
+      },
+    })),
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "right",
+      width: 120,
+      render: (it) => (
+        <div className={styles.rowActions}>
+          <button type="button" className={styles.iconBtn} title="Editar"
+            aria-label={`Editar ${it.name}`} onClick={() => setForm({ open: true, item: it })}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
+            aria-label={`Eliminar ${it.name}`} onClick={() => openDelete(it)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div className={styles.headerIcon}>
+            <Icon size={26} />
+          </div>
+          <div>
+            <span className={styles.eyebrow}>Administración</span>
+            <h1 className={styles.title}>{title}</h1>
+            <p className={styles.subtitle}>{subtitle}</p>
+          </div>
+        </div>
+
+        <div className={styles.actions}>
+          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
+            onClick={() => setForm({ open: true, item: null })}>
+            <Plus size={18} /> Nuev{e} {singular}
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>
+            {error}{" "}
+            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={load}>
+              Reintentar
+            </button>
+          </p>
+        </div>
+      )}
+
+      <section className={styles.panel}>
+        <div className={styles.toolbar}>
+          <label className={styles.search}>
+            <Search size={16} />
+            <input className={styles.input} placeholder={`Buscar ${plural}...`} value={search}
+              onChange={(ev) => { setSearch(ev.target.value); setPage(1); }}
+              aria-label={`Buscar ${plural}`} />
+          </label>
+          {!loading && (
+            <span className={styles.count}>
+              {filtered.length} {filtered.length === 1 ? singular : plural}
+            </span>
+          )}
+        </div>
+
+        <Datatable
+          columns={columns}
+          rows={rows}
+          loading={loading}
+          emptyMessage={search
+            ? `No hay resultados para "${search}".`
+            : `Aún no hay ${plural} registrad${e}s.`}
+          pagination={{
+            page: currentPage,
+            pageSize: PAGE_SIZE,
+            totalCount: filtered.length,
+            totalPages,
+            onPageChange: setPage,
+          }}
+        />
+      </section>
+
+      <CatalogFormModal
+        open={form.open}
+        item={form.item}
+        config={config}
+        onClose={() => setForm({ open: false, item: null })}
+        onSaved={handleSaved}
+      />
+
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        danger
+        title={`¿Eliminar ${singular}?`}
+        message="Esta acción no se puede deshacer."
+        detail={toDelete && (
+          <div className={styles.personChip}>
+            <div className={styles.personAvatar}><Icon size={18} /></div>
+            <div className={styles.personInfo}>
+              <span className={styles.personName}>{toDelete.name}</span>
+              {toDelete.code != null && <span className={styles.personMeta}>Código: {toDelete.code}</span>}
+            </div>
+          </div>
+        )}
+        confirmText={deleting ? "Eliminando..." : "Sí, eliminar"}
+        loading={deleting}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      />
+    </>
+  );
 }
 
 
-GET
-/api/company-branches/{id}
-Obtiene una sucursal de la compañía por su identificador.
 
 
 
-PUT
-/api/company-branches/{id}
-Actualiza una sucursal de la compañía.
-
-
-DELETE
-/api/company-branches/{id}
-Elimina una sucursal de la compañía.
-
-
-Company Locations
-
-
-GET
-/api/company-locations
-Obtiene el listado de ubicaciones de la compañía.
 
 
 
-POST
-/api/company-locations
-Crea una ubicación de la compañía.
+
+import { CatalogCrudPage } from "./CatalogCrudPage";
+import { CATALOG_CONFIGS } from "./catalogConfigs";
+
+export const AreasPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.areas} />;
+export const AgenciasPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.branches} />;
+export const UbicacionesPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.locations} />;
+export const PuestosPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.positions} />;
 
 
 
-GET
-/api/company-locations/{id}
-Obtiene una ubicación de la compañía por su identificador.
 
 
 
-PUT
-/api/company-locations/{id}
-Actualiza una ubicación de la compañía.
 
 
 
-DELETE
-/api/company-locations/{id}
-Elimina una ubicación de la compañía.
 
 
-Company Positions
-
-
-GET
-/api/company-positions
-Obtiene el listado de puestos de la compañía.
+import {
+  ShieldCheck, Wrench, GraduationCap, ArrowLeftRight, BarChart3,
+  FileText, Search, Award, Users, User, UserCog, KeyRound, Eye,
+  Building2, Store, MapPin, Briefcase,
+} from "lucide-react";
 
 
 
-POST
-/api/company-positions
-Crea un puesto de la compañía.
 
 
 
-GET
-/api/company-positions/{id}
-Obtiene un puesto de la compañía por su identificador.
+
+import { AreasPage, AgenciasPage, UbicacionesPage, PuestosPage } from "../pages/modules/administration/catalogs/CatalogPages";
 
 
 
-PUT
-/api/company-positions/{id}
-Actualiza un puesto de la compañía.
 
 
 
-DELETE
-/api/company-positions/{id}
-Elimina un puesto de la compañía.
+      {
+        key: "areas",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Áreas",
+        description: "Administra las áreas de la compañía.",
+        icon: Building2,
+        path: "areas",
+        component: AreasPage,
+      },
+      {
+        key: "agencias",
+        pageId: null,
+        label: "Agencias",
+        description: "Administra las agencias y sucursales.",
+        icon: Store,
+        path: "agencias",
+        component: AgenciasPage,
+      },
+      {
+        key: "ubicaciones",
+        pageId: null,
+        label: "Ubicaciones",
+        description: "Administra las zonas asignadas a los usuarios.",
+        icon: MapPin,
+        path: "ubicaciones",
+        component: UbicacionesPage,
+      },
+      {
+        key: "puestos",
+        pageId: null,
+        label: "Puestos",
+        description: "Administra los perfiles de puesto.",
+        icon: Briefcase,
+        path: "puestos",
+        component: PuestosPage,
+      },
 
 
 
-ayudame a realozarlos porfa
+
+
+
+
+
+
+
+
+
+import { useEffect, useState } from "react";
+import { apiFeedbackAuthorized } from "../api/APIS";
+import { endpointsAPI } from "../api/endpointApi";
+
+const fetchList = async (endpoint, name, mapItem) => {
+  try {
+    const { data } = await apiFeedbackAuthorized.get(endpoint);
+    const list = Array.isArray(data.data) ? data.data : data.data?.items ?? [];
+    return { items: list.map(mapItem), warning: null };
+  } catch (error) {
+    return {
+      items: [],
+      warning: error.noAccess
+        ? `No tienes acceso al catálogo de ${name}.`
+        : `No se pudo cargar el catálogo de ${name}.`,
+    };
+  }
+};
+
+const byLabel = (a, b) => String(a.label).localeCompare(String(b.label), "es");
+
+export const useCatalogs = () => {
+  const [catalogs, setCatalogs] = useState({ roles: [], areas: [], positions: [], warnings: [] });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([
+      fetchList(endpointsAPI.roles, "roles", (r) => ({
+        value: r.id,
+        label: r.roleName ?? r.name,
+        description: r.roleDescription ?? r.description,
+        modules: (r.modules ?? []).map((m) => ({
+          id: m.id,
+          name: m.moduleName,
+          pages: (m.pages ?? []).map((p) => ({
+            id: p.id,
+            name: p.pageName,
+            permissions: (p.permissions ?? []).map((x) => x.permissionName),
+          })),
+        })),
+      })),
+      fetchList(endpointsAPI.companyAreas, "áreas", (a) => ({
+        value: a.id,
+        label: a.name,
+        description: a.description ?? "",
+      })),
+      fetchList(endpointsAPI.companyPositions, "puestos", (p) => ({
+        value: p.id,
+        label: p.name,
+      })),
+    ]).then(([roles, areas, positions]) => {
+      if (cancelled) return;
+      setCatalogs({
+        roles: roles.items,
+        areas: areas.items.sort(byLabel),
+        positions: positions.items.sort(byLabel),
+        warnings: [roles.warning, areas.warning, positions.warning].filter(Boolean),
+      });
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  return catalogs;
+};
+
+
+
+
+
+
+
+
+
