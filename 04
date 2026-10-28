@@ -70,4 +70,18 @@ POST
 Sincroniza la información AS400 del usuario autenticado usando el cajero asociado a su UserName.
 
 
+
+
+import styles from '../../Pages.module.css';
+
+export const EditarPerfilPage = () => (
+  <header className={styles.header}>
+    <div>
+      <span className={styles.eyebrow}>Mantenimientos</span>
+      <h1 className={styles.title}>Editar Perfil</h1>
+    </div>
+  </header>
+);
+
+
 No requiere parametros solo el token
