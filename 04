@@ -1,226 +1,95 @@
-Un administrador de área solo puede ver y gestionar los equipos, líderes y miembros que pertenecen a su misma área. No puede ver ni 
-acceder a información de otras áreas
-Si un equipo no tiene miembros, la tarjeta debe indicar claramente que no hay miembros y mostrar la opción de agregar.
-Usuario a designar como líder Selección única (radio) Perfiles autorizados del área 
-seleccionada -
-Equipo destino (mover miembro) Lista desplegable Equipos de la misma área distintos al 
-equipo actual -
-Motivo Lista desplegable Traslado / Cambio de líder / 
-Restructuración / Solicitud -
-Fecha efectiva Fecha DD/MM/AAAA — por defecto fecha de 
-hoy -
-Confirmar eliminación Elimina el equipo y desvincular a todos sus miembros
-Cambiar líder Abre modal para asignar un nuevo líder al equipo
-Confirmar cambio de líder Guarda el nuevo líder del equipo y registra en auditoría
-BOTONES
-Nombre de la Acción Descripción
-Gestión de líderes Navega a la pantalla donde se designan y quitan líderes por área
-Nuevo equipo Abre el flujo de 3 pasos para crear un equipo nuevo
-Confirmar (quitar líder) Confirma la remoción del rol de líder y registra en auditoría
-Editar equipo (ícono lápiz) Abre el modal de edición con el nombre del equipo precargado
-Eliminar equipo (ícono basurero) Muestra modal de confirmación antes de eliminar el equipo
-Confirmar designación Confirma que el usuario seleccionado recibirá el rol de líder
-Quitar rol de líder Inicia el proceso para remover el rol de líder a un usuario
-Designar líder Abre el modal para asignar rol de líder a un usuario del área
-Guardar equipo Guarda el equipo nuevo o los cambios de edición
-Agregar (miembros) Abre modal para seleccionar y agregar miembros al equipo
-Confirmar (agregar miembros)
-Los usuarios de un área solo aparecen disponibles en equipos de su área. No pueden visualizar usuarios de otras áreas.
-Al ingresar al módulo, el sistema muestra todos los equipos del área del administrador organizados
-Cada tarjeta debe mostrar el área del equipo, el nombre del equipo, el líder asignado y la lista de miembros con su estatus.
-Cancelar Cierra cualquier modal sin guardar cambios
-Volver a equipos Regresa desde Gestión de líderes a la vista principal de equipos
-Agrega los usuarios seleccionados al equipo
-Mover a otro equipo (ícono flechas) Abre modal para trasladar un miembro a otro equipo de la misma 
-área
-Confirmar traslado Ejecuta el movimiento del miembro al equipo destino y registra en 
-auditoría
-Remover del equipo (ícono X) Inicia el proceso de remoción de un miembro. Requiere motivo
-Confirmar remoción Desvincula al miembro del equipo y registra en auditoría
-Si no existen equipos creados para el área, el sistema debe mostrar un mensaje indicando que no hay equipos registrados.
-Versión: 6.0
-
- El sistema debe registrar en auditoría la creación del equipo indicando el usuario que ejecutó la acción, el nombre del equipo, el área, el líder 
-asignado si aplica, los miembros iniciales y la fecha y hora.
-El administrador puede editar el nombre del equipo en cualquier momento.
-Al guardar los cambios, el sistema debe mostrar el mensaje "Equipo guardado correctamente"
-El sistema debe registrar en auditoría la edición indicando el usuario que ejecutó la acción, el equipo modificado, los campos actualizados y la 
-fecha y hora.
-El sistema debe solicitar confirmación antes de eliminar un equipo
-El modal de confirmación debe advertir que los miembros quedarán sin equipo asignado al eliminarlo.
-Al confirmar, el equipo desaparece del grid y sus miembros quedan desvinculados
-El sistema debe mostrar el mensaje "Equipo eliminado correctamente"
- El sistema debe registrar en auditoría la eliminación indicando el usuario que ejecutó la acción, el equipo eliminado, el área, los miembros 
-afectados y la fecha y hora.
-El administrador puede cambiar el líder de un equipo existente desde la tarjeta del equipo
-Solo se muestran como opciones los líderes disponibles del área del equipo
-Al confirmar el cambio, el sistema debe mostrar el mensaje "Líder actualizado correctamente".
-El sistema debe registrar en auditoría el cambio indicando el usuario que ejecutó la acción, el equipo, el líder anterior, el nuevo líder y la 
-fecha y hora.
-El administrador puede agregar uno o varios miembros a un equipo existente desde la tarjeta del equipo.
-Solo se muestran usuarios activos del área del equipo que no estén ya asignados a ese equipo.
- El administrador de un área no puede ver ni seleccionar usuarios de otras áreas al agregar miembros
-Al confirmar, los nuevos miembros aparecen inmediatamente en la tarjeta del equipo.
-El sistema debe mostrar el mensaje "Miembros agregados correctamente".
-El sistema debe registrar en auditoría la incorporación indicando el usuario que ejecutó la acción, el equipo, los miembros agregados y la 
-fecha y hora.
-El administrador puede mover un miembro de un equipo a otro equipo de la misma área
-El campo motivo es obligatorio para confirmar el traslado.
-Al confirmar, el miembro queda registrado en el equipo destino y desaparece del equipo origen.
-El sistema debe advertir esta situación antes de confirmar la acción.
-El sistema debe mostrar el mensaje "Permiso de líder quitado correctamente" al completar la acción
-El sistema debe registrar en auditoría la remoción del permiso indicando el usuario que ejecutó la acción, el usuario afectado, el área y la 
-fecha y hora.
-Al iniciar la creación de un equipo, el sistema solicita únicamente el nombre del equipo.
-El nombre del equipo es obligatorio. No se puede avanzar sin completarlo
-El sistema muestra únicamente los líderes disponibles que pertenezcan al área
-Los líderes que ya tienen un equipo asignado se muestran deshabilitados e indican que no están disponibles.
-El administrador puede continuar sin asignar un líder y hacerlo posteriormente desde la tarjeta del equipo.
-El sistema muestra únicamente los usuarios activos que pertenezcan al área
-El administrador puede seleccionar uno o varios miembros para el equipo
-El administrador puede continuar sin agregar miembros y hacerlo posteriormente desde la tarjeta del equipo.
-Al confirmar la creación, el sistema debe mostrar el mensaje "Equipo creado correctamente" y el equipo debe aparecer inmediatamente en 
-el grid.
-El sistema debe mostrar el mensaje "Miembro trasladado correctamente"
-El sistema debe registrar en auditoría el traslado indicando el usuario que ejecutó la acción, el miembro, el equipo origen, el equipo destino, 
-el motivo y la fecha y hora.
-El administrador puede remover un miembro de un equipo desde la tarjeta del equipo.
-El acceso a Gestión de líderes está disponible únicamente desde la funcionalidad Mantenimiento de líder
-El administrador puede designar como líder a cualquier usuario activo con perfil autorizado dentro de su área
-Al designar un líder, ese usuario pasa a estar disponible como opción al crear o editar equipos del área correspondiente.
-El sistema debe mostrar el mensaje "Líder designado correctamente" al completar la acción.
-El sistema debe registrar en auditoría la designación indicando el usuario que ejecutó la acción, el usuario designado como líder, el área y la 
-fecha y hora.
-El administrador puede quitar el permiso de líder a cualquier usuario que lo tenga asignado dentro de su área.
-Al quitar el permiso de líder, el usuario deja de aparecer como opción al crear o editar equipos.
-Si el usuario tiene un equipo asignado actualmente, ese equipo no se elimina pero queda sin líder disponible hasta que se designe uno nuevo.
-
-El sistema debe registrar en auditoría la remoción indicando el usuario que ejecutó la acción, el equipo, el miembro removido, el motivo y la 
-fecha y hora.
-Prototipo
- El campo motivo es obligatorio para confirmar la remoción
-Al confirmar, el miembro queda desvinculado del equipo sin ser eliminado del sistema
-Al designar un usuario como líder de equipo, automáticamente pasa a tener el rol de "Coach"
-Un equipo puede tener más de un líder de equipo
-Un usuario solo puede estar asignado a un equipo
-
-
-
-import styles from '../../Pages.module.css';
-
-export const MantenimientoLiderPage = () => (
-  <header className={styles.header}>
-    <div>
-      <span className={styles.eyebrow}>Mantenimientos</span>
-      <h1 className={styles.title}>Mantenimiento de Líder</h1>
-    </div>
-  </header>
-);
-
-
-
-
-
-
-
-ENDPOINTS:
-
-Teams
-
-
-GET
-/api/teams
-Obtiene el listado de equipos.
-
-
-
-POST
-/api/teams
-Crea un nuevo equipo.
-
-Request:
-
 {
-  "name": "string",
-  "leaderUserIds": [
-    "string"
-  ],
-  "memberUserIds": [
-    "string"
-  ],
-  "companyAreaId": 0
+    "code": 200,
+    "message": "OK",
+    "data": [
+        {
+            "id": 1002,
+            "name": "Equipo 1",
+            "leaders": [
+                {
+                    "leaderUserId": "03bfecc1-1129-49f2-b948-59934c7a78f7",
+                    "leaderUserFullName": "ORLANDO MEDINA"
+                }
+            ],
+            "members": [
+                {
+                    "memberUserId": "0528ecc7-59ab-4a02-a4ff-b042b6760bfb",
+                    "memberUserFullName": "JACKELINE RAQUEL VARELA VASQUEZ"
+                },
+                {
+                    "memberUserId": "07cda533-af24-444e-b155-7a54a5813a12",
+                    "memberUserFullName": "CRISTHIAN JHONATAN PABON"
+                },
+                {
+                    "memberUserId": "088420d1-9d1a-4492-aa89-d911c94ab286",
+                    "memberUserFullName": "JUNIOR DAVID SAGASTUME GONZALES"
+                }
+            ],
+            "companyAreaId": 1,
+            "companyAreaName": "HN - Agencias"
+        }
+    ]
 }
+
+
 
 GET
 /api/teams/available/leaders
 Obtiene los líderes disponibles que no pertenecen a ningún equipo.
+Este requiere dos parametros: companyAreaId y status .. ambos son int
 
 
-
-GET
-/api/teams/available/members
-Obtiene los miembros disponibles excluyendo los ya asignados a un equipo, y a los que ya tienen un equipo asignado.
-
-
-
-GET
-/api/teams/{id}
-Obtiene un equipo por su identificador.
-
-
-
-PUT
-/api/teams/{id}
-Actualiza un equipo existente.
-Request:
+Response:
 {
-  "name": "string",
-  "leaderUserIds": [
-    "string"
-  ],
-  "companyAreaId": 0
+    "code": 200,
+    "message": "OK",
+    "data": [
+        {
+            "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
+            "fullName": "ORLANDO MEDINA",
+            "userStatus": "Activo",
+            "userCompanyLocation": "",
+            "userCompanyBranch": "",
+            "userCompanyPosition": ""
+        }
+    ]
 }
 
 
-DELETE
-/api/teams/{id}
-Elimina un equipo.
 
 
 
-POST
-/api/teams/transfer-members
-Traslada miembros de un equipo a otro.
-Request:
+
+
+
+https://apifeedbackcolaboradoresde.banpais.hn/api/teams/available/members?status=1&companyAreaId=1
+Este requiere dos parametros: companyAreaId y status .. ambos son int
+Reposne:
 {
-  "sourceTeamId": 0,
-  "targetTeamId": 0,
-  "memberUserIds": [
-    "string"
-  ],
-  "reason": "string"
+    "code": 200,
+    "message": "OK",
+    "data": [
+        {
+            "id": "67982d14-3e13-481a-8b04-4e5bfbad79b2",
+            "fullName": "",
+            "userStatus": "Activo",
+            "userCompanyLocation": "",
+            "userCompanyBranch": "",
+            "userCompanyPosition": ""
+        }
+    ]
 }
 
 
-POST
-/api/teams/{teamId}/members
-Agrega nuevos miembros a un equipo.
-Request:
-{
-  "teamId": 0,
-  "memberUserIds": [
-    "string"
-  ]
-}
-
-
-DELETE
-/api/teams/{teamId}/members/{memberUserId}
-Quita un miembro específico de un equipo.
-Dos parametros: teAMiD y memberUserId 
 
 
 
 
-Te adjunté imagenes del diseño
+
+
+
+
+
+
+
 
