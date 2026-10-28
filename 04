@@ -1,87 +1,320 @@
-Bien, ahora ayudame con esta pantalla (te adjunto imagen del diseño) y te dejo por aqui los criterios:
- El sistema debe permitir al usuario autenticado acceder a la opción Editar perfil desde el módulo Mantenimiento
-Al ingresar, el sistema debe mostrar únicamente la información del usuario en sesión
-El sistema debe mostrar los siguientes campos del perfil:
-- Código de empleado
-- Código de cajero
-- Nombre
-- Zona
-- Correo
-- Agencia
-- Ubicación
-- Estatus
-
-Todos los campos deben mostrarse con su valor actual cargado
-
-Los siguientes campos deben mostrarse en modo solo lectura (no editables):
-- Código de empleado
-- Código de cajero
-- Perfil del puesto
-- Nombre
-- Coach asignado
-- Zona
-- Agencia
-- Ubicación
-- Correo
-
-El campo Estatus debe mostrarse solo lectura en Editar perfi
+    loggedUser: "api/logged-user",
+    loggedUserSyncAs400: "api/logged-user/sync/as400",
 
 
 
-ENDPOINT:
 
-GET
-/api/logged-user
-Obtiene el id, nombre y rol del usuario autenticado según el id contenido en el JWT.
 
-Response:
-{
-    "code": 200,
-    "message": "OK",
-    "data": {
-        "id": "03bfecc1-1129-49f2-b948-59934c7a78f7",
-        "firstName": "Orlando",
-        "lastName": "Medina",
-        "fullName": "ORLANDO MEDINA",
-        "userName": "usr_prucert11",
-        "email": "orlandom@banpais.hn",
-        "tellerCode": null,
-        "employeeCode": null,
-        "employeeBranchUbication": null,
-        "userEnabled": false,
-        "status": 1,
-        "companyPositionId": 1,
-        "companyPosition": "Cajero",
-        "companyLocationId": 1,
-        "companyLocation": "Zona 1 Foránea",
-        "companyBranchId": 4,
-        "companyBranch": "AGENCIA TORRE DEL PAIS",
-        "companyAreaId": 1,
-        "companyArea": "HN - Agencias",
-        "roleId": 1,
-        "role": "Super Administrador"
-    }
+import { apiFeedbackAuthorized } from "./APIS";
+import { endpointsAPI } from "./endpointApi";
+
+// Perfil del usuario en sesión (el id sale del token)
+export const profileService = {
+  get: async () => {
+    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.loggedUser);
+    return data.data;
+  },
+
+  syncAs400: async () => {
+    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.loggedUserSyncAs400);
+    return data;
+  },
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const ZONES = [
+  "Zona 1 Foránea",
+  "Zona 1 Local",
+  "Zona 2 Foránea",
+  "Zona 2 Local",
+  "Zona 3 Foránea",
+  "Zona 3 Local",
+];
+
+// Ubicación = employeeBranchUbication.
+// ⚠️ Confirmar con backend qué número es cada opción.
+export const UBICATIONS = [
+  { value: 0, label: "Lobby" },
+  { value: 1, label: "Ventanilla" },
+];
+
+export const ubicationLabel = (value) =>
+  UBICATIONS.find((u) => u.value === value)?.label ?? "";
+
+export const isCashier = (user) =>
+  (user?.companyPosition ?? "").trim().toLowerCase() === "cajero";
+
+
+
+
+
+
+
+
+
+
+import { ZONES, UBICATIONS, isCashier } from "./userConstants";
+
+
+
+
+
+
+
+
+
+
+/* ---- Campos de solo lectura con contenido (ej. estatus con color) ---- */
+.readOnlyBox {
+  display: flex;
+  align-items: center;
+  background-color: #f6f8fb;
+  cursor: default;
+}
+
+/* ---- Esqueleto de carga para campos ---- */
+.fieldSkeleton {
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, #eef1f5 25%, #f6f8fb 50%, #eef1f5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+.labelSkeleton { width: 40%; height: 12px; border-radius: 6px; background: #eef1f5; }
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
 
 
 
-POST
-/api/logged-user/sync/as400
-Sincroniza la información AS400 del usuario autenticado usando el cajero asociado a su UserName.
 
 
 
 
-import styles from '../../Pages.module.css';
 
-export const EditarPerfilPage = () => (
-  <header className={styles.header}>
-    <div>
-      <span className={styles.eyebrow}>Mantenimientos</span>
-      <h1 className={styles.title}>Editar Perfil</h1>
+
+  .fieldSkeleton { animation: none; }
+
+
+
+
+
+
+
+
+
+
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, Info, RefreshCw, TriangleAlert, UserRound } from "lucide-react";
+import { Can, ConfirmDialog, useToast } from "../../../shared/components";
+import { profileService } from "../../../api/profileService";
+import { statusLabelFromValue } from "../../../api/usersService";
+import { toTitleCase } from "../../../helpers/format";
+import { isCashier, ubicationLabel } from "./userConstants";
+import styles from "../../Pages.module.css";
+
+const statusClass = (status) =>
+  status === "Activo" ? styles.statusActive
+    : status === "Inactivo" ? styles.statusInactive
+      : styles.statusWarning;
+
+// Campo de solo lectura: muestra el valor o "—" si viene vacío
+function ReadOnlyField({ id, label, value, children }) {
+  return (
+    <div className={styles.field}>
+      <label className={styles.label} htmlFor={id}>
+        {label} <span className={styles.readOnlyTag}>SOLO LECTURA</span>
+      </label>
+      {children ?? <input id={id} className={styles.input} value={value || "—"} readOnly />}
     </div>
-  </header>
-);
+  );
+}
+
+function FieldSkeleton() {
+  return (
+    <div className={styles.field}>
+      <span className={styles.labelSkeleton} />
+      <span className={styles.fieldSkeleton} />
+    </div>
+  );
+}
+
+export const EditarPerfilPage = () => {
+  const toast = useToast();
+
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState("");
+
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setProfile(await profileService.get());
+    } catch (err) {
+      setError(err.noAccess
+        ? "No tienes permiso para ver tu perfil."
+        : "No se pudo cargar tu información. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  const openSync = () => {
+    setSyncError("");
+    setSyncOpen(true);
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncError("");
+    try {
+      await profileService.syncAs400();
+      setSyncOpen(false);
+      toast.success("Perfil sincronizado", "Tu información se actualizó desde AS400.");
+      await loadProfile();
+    } catch (err) {
+      setSyncError(err.noAccess
+        ? "No tienes permiso para sincronizar tu perfil."
+        : err.response?.data?.message ?? "No se pudo sincronizar con AS400. Intenta de nuevo.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Valores ya formateados para mostrar
+  const status = profile ? statusLabelFromValue(profile.status) : "";
+  const cashier = isCashier(profile);
+  const name = profile
+    ? toTitleCase(profile.fullName || `${profile.firstName ?? ""} ${profile.lastName ?? ""}`)
+    : "";
+
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Mantenimientos</span>
+          <h1 className={styles.title}>Editar perfil</h1>
+          <p className={styles.subtitle}>Consulta y actualiza tu propia información de perfil.</p>
+        </div>
+
+        <Can permission="edit.loggeduserinfo">
+          <div className={styles.actions}>
+            <button type="button" className={`${styles.btn} ${styles.btnOutline}`}
+              onClick={openSync} disabled={loading || !profile}>
+              <RefreshCw size={18} /> Sincronizar perfil
+            </button>
+          </div>
+        </Can>
+      </header>
+
+      <div className={styles.banner}>
+        <UserRound size={18} />
+        <p>
+          Solo puedes ver y modificar tu propia información. No es posible buscar ni seleccionar
+          otros usuarios desde aquí.
+        </p>
+      </div>
+
+      {error ? (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>
+            {error}{" "}
+            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={loadProfile}>
+              Reintentar
+            </button>
+          </p>
+        </div>
+      ) : (
+        <section className={styles.card} style={{ marginTop: 0 }} aria-busy={loading}>
+          <h2 className={styles.cardTitle}>Mi información</h2>
+
+          <div className={styles.form}>
+            {loading || !profile ? (
+              Array.from({ length: 10 }, (_, i) => <FieldSkeleton key={i} />)
+            ) : (
+              <>
+                <ReadOnlyField id="employeeCode" label="Código de empleado" value={profile.employeeCode} />
+                <ReadOnlyField id="tellerCode" label="Código de cajero" value={profile.tellerCode} />
+
+                <ReadOnlyField id="name" label="Nombre" value={name} />
+                <ReadOnlyField id="position" label="Perfil del puesto" value={profile.companyPosition} />
+
+                {/* ⚠️ /api/logged-user todavía no devuelve el coach asignado */}
+                <ReadOnlyField id="coach" label="Coach asignado" value={profile.coachName ?? "Sin asignar"} />
+                <ReadOnlyField id="zone" label="Zona" value={profile.companyLocation} />
+
+                <ReadOnlyField id="branch" label="Agencia"
+                  value={profile.companyBranch ? toTitleCase(profile.companyBranch) : ""} />
+                <ReadOnlyField id="ubication" label="Ubicación"
+                  value={cashier ? ubicationLabel(profile.employeeBranchUbication) : "No aplica (solo cajeros)"} />
+
+                <ReadOnlyField id="email" label="Correo" value={profile.email} />
+                <ReadOnlyField id="status" label="Estatus">
+                  <div id="status" className={`${styles.input} ${styles.readOnlyBox}`}>
+                    {status
+                      ? <span className={`${styles.statusPlain} ${statusClass(status)}`}>{status}</span>
+                      : "—"}
+                  </div>
+                </ReadOnlyField>
+              </>
+            )}
+          </div>
+
+          <div className={`${styles.banner} ${styles.bannerWarning}`} style={{ margin: "24px 0 0" }}>
+            <TriangleAlert size={18} />
+            <p>
+              Todos los campos de este perfil son de <strong>solo lectura</strong>. Para actualizar tu
+              información, usa el botón <strong>Sincronizar perfil</strong> para sincronizar con AS400.
+            </p>
+          </div>
+        </section>
+      )}
+
+      <ConfirmDialog
+        open={syncOpen}
+        icon={RefreshCw}
+        title="Sincronizar mi perfil"
+        message="Se actualizará tu información con los datos registrados en AS400."
+        detail={
+          <div className={styles.noteBox}>
+            <Info size={16} />
+            <p>Se usará el cajero asociado a tu usuario de red. Los cambios se verán al terminar, sin cerrar sesión.</p>
+          </div>
+        }
+        cancelText="Cancelar"
+        confirmText={syncing ? "Sincronizando..." : <><RefreshCw size={16} /> Iniciar sincronización</>}
+        loading={syncing}
+        error={syncError}
+        onConfirm={handleSync}
+        onCancel={() => setSyncOpen(false)}
+      />
+    </>
+  );
+};
 
 
-No requiere parametros solo el token
+
+
+
+
