@@ -1,57 +1,28 @@
-      {/* Líderes */}
-      <div className={`${t.sectionHead} ${t.sectionHeadTop}`}>
-        <span className={t.sectionLabel}>Líderes ({team.leaders.length})</span>
-        <button type="button" className={t.smallBtn} onClick={() => onChangeLeaders(team)}>
-          {team.leaders.length ? "Cambiar líder" : "Asignar líder"}
-        </button>
-      </div>
+Recuerdas que en lapgina de mantenimiento de lideres el boton de Gezstion de Lideres quedó bloqueado, bueno. Ya creé la  ueva pagina que vamos a usar está dentro de mantenimientos se llama GestionLideresPages.jsx
 
-      <div className={t.leadersBox}>
-        {team.leaders.length === 0 ? (
-          <span className={t.noLeader}><UserX size={18} /> Sin líder asignado</span>
-        ) : (
-          team.leaders.map((l) => (
-            <div key={l.id} className={t.person}>
-              <span className={`${t.avatar} ${t.avatarLeader}`}>{initials(l.name)}</span>
-              <span className={t.personText}>
-                <span className={t.personName}>{l.name}</span>
-                {l.position && <span className={t.personSub}>{l.position}</span>}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
+Te adjunté las imagenes del prototipo. Estos son los endpoints que vamos a utilizar:
+
+GET
+/api/users
+Obtiene el listado de usuarios con filtros opcionales por estado y liderazgo.
 
 
+PUT
+/api/users/{id}/leader
+Activa o desactiva el flag de líder de un usuario.
+Parameters
+Try it out
+Name	Description
+id *
+string
+(path)
 
 
+Request body
 
-
-
-
-/* ---- Líderes ---- */
-.leadersBox {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid #eef1f5;
-  border-radius: 12px;
-  background: #f8fafc;
+application/json
+Example Value
+Schema
+{
+  "isLeader": true
 }
-
-.noLeader { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: #8592a3; }
-
-/* El primer encabezado de la tarjeta no necesita espacio arriba */
-.sectionHeadTop { margin-top: 0; }
-
-
-
-
-
-
-
-
-
-
-  .leadersBox { flex-wrap: wrap; }
