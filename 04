@@ -1,149 +1,26 @@
-      {/* Nombre del equipo + botón de líderes */}
-      <div className={t.titleRow}>
-        <h3 className={t.teamName}>{team.name}</h3>
+      <h3 className={t.teamName}>{team.name}</h3>
+
+      {/* Líderes: etiqueta a la izquierda, botón a la derecha (igual que Miembros) */}
+      <div className={`${t.sectionHead} ${t.leadersHead}`}>
+        <span className={t.sectionLabel}>Líderes ({team.leaders.length})</span>
         <button type="button" className={`${t.cardBtn} ${t.cardBtnOutline}`} onClick={() => onChangeLeaders(team)}>
           <UserCog size={14} />
           {team.leaders.length ? "Cambiar líder" : "Asignar líder"}
         </button>
       </div>
 
-      {/* Líderes */}
-      <span className={`${t.sectionLabel} ${t.leadersLabel}`}>Líderes ({team.leaders.length})</span>
-
-      <div className={t.leadersBox}>
-        {team.leaders.length === 0 ? (
-          <span className={t.noLeader}><UserX size={18} /> Sin líder asignado</span>
-        ) : (
-          <div className={t.leaderList}>
-            {team.leaders.map((l) => (
-              <div key={l.id} className={t.person}>
-                <span className={`${t.avatar} ${t.avatarLeader}`}>{initials(l.name)}</span>
-                <span className={t.personText}>
-                  <span className={t.personName}>{l.name}</span>
-                  <span className={t.personSub}>Líder del equipo</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Nombre del equipo con el botón "Cambiar líder" a la derecha */
-.titleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 14px 0 6px;
-}
 
 .teamName {
-  margin: 0;
-  min-width: 0;
+  margin: 14px 0 10px;
   font-size: 18px;
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--bp-blue-expert);
 }
 
-/* "LÍDERES (2)" debajo del nombre */
-.leadersLabel { display: block; margin-bottom: 8px; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.leadersBox {
-  padding: 4px 12px;
-  border: 1px solid #eef1f5;
-  border-radius: 12px;
-  background: #f8fafc;
-}
-.leadersBox > .noLeader { padding: 10px 0; }
-
-/* Máximo 2 líderes visibles; si hay más, aparece la barra de desplazamiento */
-.leaderList {
-  --leader-row: 54px;
-  max-height: calc(var(--leader-row) * 2);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #c3ccd9 transparent;
-}
-.leaderList > * { min-height: var(--leader-row); }
-.leaderList > * + * { border-top: 1px solid #e6ebf1; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Máximo 3 miembros visibles; si hay más, aparece la barra de desplazamiento */
-.memberList {
-  --member-row: 56px;
-  max-height: calc(var(--member-row) * 3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #c3ccd9 transparent;
-}
-
-.member {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: var(--member-row);
-  padding: 0 4px 0 2px;
-  border-top: 1px solid #f1f4f8;
-}
-.member:first-child { border-top: none; }
-
-
-
-
-
-
-
-
-
-  .titleRow { flex-wrap: wrap; }
+/* Encabezado de líderes: menos espacio arriba porque va justo después del nombre */
+.leadersHead { margin: 0 0 8px; }
