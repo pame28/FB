@@ -1,28 +1,95 @@
-Recuerdas que en lapgina de mantenimiento de lideres el boton de Gezstion de Lideres quedó bloqueado, bueno. Ya creé la  ueva pagina que vamos a usar está dentro de mantenimientos se llama GestionLideresPages.jsx
-
-Te adjunté las imagenes del prototipo. Estos son los endpoints que vamos a utilizar:
-
-GET
-/api/users
-Obtiene el listado de usuarios con filtros opcionales por estado y liderazgo.
+        <button type="button" className={`${t.cardBtn} ${t.cardBtnOutline}`} onClick={() => onChangeLeaders(team)}>
+          <UserCog size={14} />
+          {team.leaders.length ? "Cambiar líder" : "Asignar líder"}
+        </button>
 
 
-PUT
-/api/users/{id}/leader
-Activa o desactiva el flag de líder de un usuario.
-Parameters
-Try it out
-Name	Description
-id *
-string
-(path)
 
 
-Request body
 
-application/json
-Example Value
-Schema
-{
-  "isLeader": true
+
+
+        <button type="button" className={`${t.cardBtn} ${t.cardBtnPrimary}`} onClick={() => onAddMembers(team)}>
+          <Plus size={14} strokeWidth={2.6} /> Agregar
+        </button>
+
+
+
+
+
+
+
+
+
+/* Botones de la tarjeta: misma base, solo cambia el color */
+.cardBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
+.cardBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 2px; }
+
+.cardBtnOutline { background: #fff; border-color: #d9e0ea; color: var(--bp-blue-expert); }
+.cardBtnOutline:hover { background: #f2f5f9; border-color: #c3ccd9; }
+
+.cardBtnPrimary {
+  background: var(--bp-yellow-opt);
+  color: var(--bp-blue-expert);
+  box-shadow: 0 2px 6px rgba(255, 192, 0, 0.3);
+}
+.cardBtnPrimary:hover { transform: translateY(-1px); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.leadersBox {
+  display: flex;
+  align-items: center;          /* el botón queda centrado respecto a todos los líderes */
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #eef1f5;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.leaderList { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+
+/* Línea fina entre líderes, igual que entre miembros */
+.leaderList > * + * {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e6ebf1;
+}
+
+
+
+
+
+
+
+
+
+  .cardBtnPrimary:hover { transform: none; }
