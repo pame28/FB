@@ -1,7 +1,32 @@
+      {/* Nombre del equipo + botón de líderes */}
+      <div className={t.titleRow}>
+        <h3 className={t.teamName}>{team.name}</h3>
         <button type="button" className={`${t.cardBtn} ${t.cardBtnOutline}`} onClick={() => onChangeLeaders(team)}>
           <UserCog size={14} />
           {team.leaders.length ? "Cambiar líder" : "Asignar líder"}
         </button>
+      </div>
+
+      {/* Líderes */}
+      <span className={`${t.sectionLabel} ${t.leadersLabel}`}>Líderes ({team.leaders.length})</span>
+
+      <div className={t.leadersBox}>
+        {team.leaders.length === 0 ? (
+          <span className={t.noLeader}><UserX size={18} /> Sin líder asignado</span>
+        ) : (
+          <div className={t.leaderList}>
+            {team.leaders.map((l) => (
+              <div key={l.id} className={t.person}>
+                <span className={`${t.avatar} ${t.avatarLeader}`}>{initials(l.name)}</span>
+                <span className={t.personText}>
+                  <span className={t.personName}>{l.name}</span>
+                  <span className={t.personSub}>Líder del equipo</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
 
 
@@ -9,9 +34,6 @@
 
 
 
-        <button type="button" className={`${t.cardBtn} ${t.cardBtnPrimary}`} onClick={() => onAddMembers(team)}>
-          <Plus size={14} strokeWidth={2.6} /> Agregar
-        </button>
 
 
 
@@ -21,35 +43,32 @@
 
 
 
-/* Botones de la tarjeta: misma base, solo cambia el color */
-.cardBtn {
-  display: inline-flex;
+
+/* Nombre del equipo con el botón "Cambiar líder" a la derecha */
+.titleRow {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex-shrink: 0;
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 12.5px;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 6px;
+}
+
+.teamName {
+  margin: 0;
+  min-width: 0;
+  font-size: 18px;
   font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-.cardBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 2px; }
-
-.cardBtnOutline { background: #fff; border-color: #d9e0ea; color: var(--bp-blue-expert); }
-.cardBtnOutline:hover { background: #f2f5f9; border-color: #c3ccd9; }
-
-.cardBtnPrimary {
-  background: var(--bp-yellow-opt);
+  letter-spacing: -0.01em;
   color: var(--bp-blue-expert);
-  box-shadow: 0 2px 6px rgba(255, 192, 0, 0.3);
 }
-.cardBtnPrimary:hover { transform: translateY(-1px); }
+
+/* "LÍDERES (2)" debajo del nombre */
+.leadersLabel { display: block; margin-bottom: 8px; }
+
+
+
+
+
 
 
 
@@ -65,25 +84,59 @@
 
 
 .leadersBox {
-  display: flex;
-  align-items: center;          /* el botón queda centrado respecto a todos los líderes */
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px;
+  padding: 4px 12px;
   border: 1px solid #eef1f5;
   border-radius: 12px;
   background: #f8fafc;
 }
+.leadersBox > .noLeader { padding: 10px 0; }
 
-.leaderList { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+/* Máximo 2 líderes visibles; si hay más, aparece la barra de desplazamiento */
+.leaderList {
+  --leader-row: 54px;
+  max-height: calc(var(--leader-row) * 2);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c3ccd9 transparent;
+}
+.leaderList > * { min-height: var(--leader-row); }
+.leaderList > * + * { border-top: 1px solid #e6ebf1; }
 
-/* Línea fina entre líderes, igual que entre miembros */
-.leaderList > * + * {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #e6ebf1;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Máximo 3 miembros visibles; si hay más, aparece la barra de desplazamiento */
+.memberList {
+  --member-row: 56px;
+  max-height: calc(var(--member-row) * 3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c3ccd9 transparent;
 }
 
+.member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--member-row);
+  padding: 0 4px 0 2px;
+  border-top: 1px solid #f1f4f8;
+}
+.member:first-child { border-top: none; }
 
 
 
@@ -92,4 +145,5 @@
 
 
 
-  .cardBtnPrimary:hover { transform: none; }
+
+  .titleRow { flex-wrap: wrap; }
