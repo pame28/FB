@@ -1,31 +1,7 @@
-.teamName {
-  margin: 14px 0 6px;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: var(--bp-blue-expert);
-}
-
-/* Doble clase para que gane sobre .sectionHead sin importar el orden del archivo */
-.sectionHead.leadersHead { margin: 0 0 8px; }
+Recuerdas el boletin que realizamos recientemente? Tenemos que hacer otro. Te dejo la plamtilla de powerpoint que debemos usar .... 
 
 
+Tenemos que informar sobre el portal de Guia Telefonica Y podemos colocar algo como dale clic aqui y que lo redirija a la pagina .. esta es la url:https://guiatelefonica.banpais.hn/consulta-guia
 
 
-
-
-
-/* Se ve 1 líder; con 2 o más aparece la barra de desplazamiento */
-.leaderList {
-  --leader-row: 54px;
-  max-height: var(--leader-row);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #c3ccd9 transparent;
-}
-.leaderList > * {
-  min-height: var(--leader-row);
-  margin: 0;
-  padding: 0;
-}
-.leaderList > * + * { border-top: 1px solid #e6ebf1; }
+Lo dejo a tu creatividad .. luego lo lo paso aqui a mi powerpoint .. lo que si me pidieron es colocar un screeshot del portal :c
