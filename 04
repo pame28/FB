@@ -1,11 +1,140 @@
-/* Cuando un .btn es un enlace (<Link>), que se vea igual que un botón */
-.btn,
-.btn:hover,
-.btn:focus {
-  text-decoration: none;
+      <h3 className={t.teamName} title={team.name}>{team.name}</h3>
+
+
+
+
+      <ul className={t.memberList}>
+        {team.members.map((m) => {
+          const sub = userSubtitle(m);
+          return (
+            <li key={m.id} className={t.member}>
+              <div className={t.person}>
+                <span className={t.avatar}>{initials(m.name)}</span>
+                <span className={t.personText}>
+                  <span className={t.personName}>{m.name}</span>
+                  {sub && <span className={t.personSub}>{sub}</span>}
+                </span>
+              </div>
+              <div className={t.memberTools}>
+                {m.status && <span className={`${t.status} ${t[statusTone(m.status)]}`}>{m.status}</span>}
+                <button type="button" className={`${t.iconBtn} ${t.iconBtnSm}`} title="Mover a otro equipo"
+                  aria-label={`Mover a ${m.name} a otro equipo`} onClick={() => onMoveMember(team, m)}>
+                  <ArrowLeftRight size={14} />
+                </button>
+                <button type="button" className={`${t.iconBtn} ${t.iconBtnSm} ${t.iconBtnDanger}`} title="Remover del equipo"
+                  aria-label={`Remover a ${m.name} del equipo`} onClick={() => onRemoveMember(team, m)}>
+                  <X size={14} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+
+        {/* Casillas para completar 3 filas: todas las tarjetas miden lo mismo */}
+        {Array.from({ length: Math.max(0, 3 - team.members.length) }, (_, i) => (
+          <li key={`slot-${i}`} className={t.slotItem}>
+            <button
+              type="button"
+              className={t.memberSlot}
+              onClick={() => onAddMembers(team)}
+              tabIndex={i === 0 ? 0 : -1}
+              aria-label="Agregar miembro"
+            >
+              <span className={t.slotIcon}><Plus size={14} strokeWidth={2.4} /></span>
+              {i === 0 && (team.members.length === 0 ? "Sin miembros · agrega el primero" : "Agregar miembro")}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+
+
+
+
+
+
+
+
+
+.leadersBox > .noLeader { min-height: 54px; padding: 0; }
+
+
+
+
+
+
+
+
+/* ---- Casillas para completar 3 filas de miembros ---- */
+.slotItem {
+  display: flex;
+  align-items: center;
+  min-height: var(--member-row);
+  padding: 0 4px 0 2px;
+  border-top: 1px solid #f1f4f8;
 }
 
-a.btnOutline:hover,
-a.btnPrimary:hover {
-  color: var(--bp-blue-expert);
+.memberSlot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px 0 4px;
+  border: 1.5px dashed #d9e0ea;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  color: #a3adbb;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
+.memberSlot:hover {
+  border-color: var(--bp-yellow-opt);
+  background: #fffbeb;
+  color: #8a5a00;
+}
+.memberSlot:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 2px; }
+
+.slotIcon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed currentColor;
+  border-radius: 50%;
+}
+
+
+
+
+
+
+
+
+
+
+
