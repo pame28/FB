@@ -1,3 +1,14 @@
+import styles from '../../Pages.module.css';
+
+export const PermisosRolPage = () => (
+  <header className={styles.header}>
+    <div>
+      <span className={styles.eyebrow}>Administración</span>
+      <h1 className={styles.title}>Permisos por rol</h1>
+    </div>
+  </header>
+);
+
 Por los momentos Ayudame a diseñar esta pantalla, aun no tenemos completo del lado del baclend 
 Pero para los roles ...
 el endpoint que se usará es este..
