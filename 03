@@ -1,8 +1,64 @@
-<br />
-<asp:GridView ID="gvErroresCarga" runat="server" AutoGenerateColumns="True" Visible="False"
-    CellPadding="4" ForeColor="#333333" GridLines="None"
-    BorderColor="#6992BA" BorderStyle="Solid" BorderWidth="2px">
-    <HeaderStyle BackColor="#5D7B9D" Font-Bold="True" ForeColor="White" />
-    <RowStyle BackColor="#F7F6F3" ForeColor="#333333" />
-    <AlternatingRowStyle BackColor="White" ForeColor="#284775" />
-</asp:GridView>
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ git add Frontend/
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ git commit -m "Agregando Gestion de Lideres"
+[master 89923d7] Agregando Gestion de Lideres
+ 2 files changed, 485 insertions(+)
+ create mode 100644 FrontEnd/portal-coaching/src/pages/modules/management/GestionLideresPage.jsx
+ create mode 100644 FrontEnd/portal-coaching/src/pages/modules/management/leaders/DesignateLeaderModal.jsx
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ git push origin master
+To http://gitlabde.banpais.hn/lilianam/SistemaFeedbackColaboradores.git
+ ! [rejected]        master -> master (fetch first)
+error: failed to push some refs to 'http://gitlabde.banpais.hn/lilianam/SistemaFeedbackColaboradores.git'
+hint: Updates were rejected because the remote contains work that you do not
+hint: have locally. This is usually caused by another repository pushing to
+hint: the same ref. If you want to integrate the remote changes, use
+hint: 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ ^C
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ git pull origin master --rebase
+error: cannot pull with rebase: You have unstaged changes.
+error: Please commit or stash them.
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ ^C
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ git status
+On branch master
+Your branch is ahead of 'origin/master' by 1 commit.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   FrontEnd/portal-coaching/src/api/usersService.js
+        modified:   FrontEnd/portal-coaching/src/pages/Pages.module.css
+        modified:   FrontEnd/portal-coaching/src/pages/modules/management/MantenimientoLiderPage.jsx
+        modified:   FrontEnd/portal-coaching/src/pages/modules/management/leaders/TeamCard.jsx
+        modified:   FrontEnd/portal-coaching/src/pages/modules/management/leaders/Teams.module.css
+        modified:   FrontEnd/portal-coaching/src/pages/modules/management/leaders/teamUtils.js
+        modified:   FrontEnd/portal-coaching/src/routes/AppRouter.jsx
+        modified:   FrontEnd/portal-coaching/src/routes/routesConfig.jsx
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$ ^C
+
+80730@80730-BP1 MINGW64 ~/Desktop/Projects/2026/BH-59681 Sistema de Feedback/SistemaFeedbackColaboradores (master)
+$
+
+
+
+
+
+Ayudame por favooor no quiero perder nadaaa
