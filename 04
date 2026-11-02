@@ -1,4 +1,4 @@
-Por los momentos Ayudame a diseñar esta pantalla, aun no tenemos la funcionalidad del todo en el backend. 
+Por los momentos Ayudame a diseñar esta pantalla, aun no tenemos completo del lado del baclend 
 Pero para los roles ...
 el endpoint que se usará es este..
 
@@ -7,3 +7,171 @@ el endpoint que se usará es este..
 GET
 /api/roles
 Obtiene el listado de roles con sus modulos, paginas y permisos asignados.
+
+
+mira el response
+
+{
+    "code": 200,
+    "message": "OK",
+    "data": [
+        {
+            "id": 1,
+            "roleName": "Super Administrador",
+            "roleDescription": null,
+            "modules": [
+                {
+                    "id": 2,
+                    "moduleName": "Administración",
+                    "moduleDescription": null,
+                    "pages": [
+                        {
+                            "id": 2,
+                            "pageName": "Asignar roles a usuarios",
+                            "pageDescription": "Usuarios y Roles",
+                            "permissions": [
+                                {
+                                    "id": 1,
+                                    "permissionName": "crud.users",
+                                    "permissionDescription": "Asignar roles a usuarios"
+                                },
+                                {
+                                    "id": 2,
+                                    "permissionName": "delete.users",
+                                    "permissionDescription": "Eliminar roles de usuarios"
+                                },
+                                {
+                                    "id": 3,
+                                    "permissionName": "read.usersroles",
+                                    "permissionDescription": "Ver listado de usuarios y roles asignados"
+                                },
+                                {
+                                    "id": 15,
+                                    "permissionName": "Roles.Read",
+                                    "permissionDescription": "ver roles"
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "id": 3,
+                    "moduleName": "Mantenimiento",
+                    "moduleDescription": null,
+                    "pages": [
+                        {
+                            "id": 3,
+                            "pageName": "Mantenimiento a usuarios",
+                            "pageDescription": null,
+                            "permissions": [
+                                {
+                                    "id": 4,
+                                    "permissionName": "filter.usersroles",
+                                    "permissionDescription": "Buscar y filtrar usuarios del sistema"
+                                },
+                                {
+                                    "id": 5,
+                                    "permissionName": "edit.users",
+                                    "permissionDescription": "Editar datos de usuarios(zona, correo, agencia, estatus)"
+                                },
+                                {
+                                    "id": 6,
+                                    "permissionName": "read.users",
+                                    "permissionDescription": "Cargar todos los usuarios del sistema"
+                                },
+                                {
+                                    "id": 7,
+                                    "permissionName": "syncas400.users",
+                                    "permissionDescription": "Sincronizar información con AS400"
+                                }
+                            ]
+                        },
+                        {
+                            "id": 4,
+                            "pageName": "Editar perfil",
+                            "pageDescription": null,
+                            "permissions": [
+                                {
+                                    "id": 8,
+                                    "permissionName": "read.loggeduserinfo",
+                                    "permissionDescription": "Ver mi propio perfil (solo lectura)"
+                                },
+                                {
+                                    "id": 9,
+                                    "permissionName": "edit.loggeduserinfo",
+                                    "permissionDescription": "Editar mis datos (zona, correo, agencia, ubicación)"
+                                }
+                            ]
+                        },
+                        {
+                            "id": 5,
+                            "pageName": "Mantenimiento de líder",
+                            "pageDescription": null,
+                            "permissions": [
+                                {
+                                    "id": 10,
+                                    "permissionName": "filter.users",
+                                    "permissionDescription": "Buscar y filtrar líderes"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "roleName": "Administrador operativo",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 3,
+            "roleName": "Coach",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 4,
+            "roleName": "Colaborador",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 5,
+            "roleName": "Mantenimiento",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 7,
+            "roleName": "Traslados",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 8,
+            "roleName": "Indicadores",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 9,
+            "roleName": "Reporteria",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 10,
+            "roleName": "Consulta",
+            "roleDescription": null,
+            "modules": []
+        },
+        {
+            "id": 11,
+            "roleName": "Certificación",
+            "roleDescription": null,
+            "modules": []
+        }
+    ]
+}
