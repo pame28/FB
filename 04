@@ -1,7 +1,46 @@
-Recuerdas el boletin que realizamos recientemente? Tenemos que hacer otro. Te dejo la plamtilla de powerpoint que debemos usar .... 
+Ayudane a desarrikkar ek boton Gestion de lideres ya creé la pagina dentro de managemente llaamda GestioLideresPage.jsx(te adjunto las imagenes del prototipo)
 
 
-Tenemos que informar sobre el portal de Guia Telefonica Y podemos colocar algo como dale clic aqui y que lo redirija a la pagina .. esta es la url:https://guiatelefonica.banpais.hn/consulta-guia
+Estos son los ednpoints que usa:
+GET
+/api/users
+Obtiene el listado de usuarios con filtros opcionales por estado y liderazgo.
+
+Parameters
+Try it out
+Name	Description
+status
+integer($int32)
+(query)
+status
+isLeader
+boolean
+(query)
+
+--
 
 
-Lo dejo a tu creatividad .. luego lo lo paso aqui a mi powerpoint .. lo que si me pidieron es colocar un screeshot del portal :c
+
+
+
+
+
+PUT
+/api/users/{id}/leader
+Activa o desactiva el flag de líder de un usuario.
+
+Parameters
+Cancel
+Name	Description
+id *
+string
+(path)
+id
+Request body
+
+application/json
+Edit Value
+Schema
+{
+  "isLeader": true
+}
