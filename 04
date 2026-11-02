@@ -1,1 +1,9 @@
-ñ              {i === 0 && team.members.length === 0 ? "Sin miembros · agrega el primero" : "Agregar miembro"}
+Por los momentos Ayudame a diseñar esta pantalla, aun no tenemos la funcionalidad del todo en el backend. 
+Pero para los roles ...
+el endpoint que se usará es este..
+
+
+
+GET
+/api/roles
+Obtiene el listado de roles con sus modulos, paginas y permisos asignados.
