@@ -1,188 +1,648 @@
-import styles from '../../Pages.module.css';
+import { apiFeedbackAuthorized } from "./APIS";
+import { endpointsAPI } from "./endpointApi";
 
-export const PermisosRolPage = () => (
-  <header className={styles.header}>
-    <div>
-      <span className={styles.eyebrow}>Administración</span>
-      <h1 className={styles.title}>Permisos por rol</h1>
-    </div>
-  </header>
-);
+export const rolesService = {
+  list: async () => {
+    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.roles);
+    return data.data ?? [];
+  },
 
-Por los momentos Ayudame a diseñar esta pantalla, aun no tenemos completo del lado del baclend 
-Pero para los roles ...
-el endpoint que se usará es este..
-
-
-
-GET
-/api/roles
-Obtiene el listado de roles con sus modulos, paginas y permisos asignados.
+  // ⚠️ Endpoint pendiente de backend: ajustar ruta y cuerpo cuando lo definan
+  updatePermissions: async (roleId, permissionIds) => {
+    const { data } = await apiFeedbackAuthorized.put(`${endpointsAPI.roles}/${roleId}/permissions`, { permissionIds });
+    return data.data;
+  },
+};
 
 
-mira el response
 
-{
-    "code": 200,
-    "message": "OK",
-    "data": [
-        {
-            "id": 1,
-            "roleName": "Super Administrador",
-            "roleDescription": null,
-            "modules": [
-                {
-                    "id": 2,
-                    "moduleName": "Administración",
-                    "moduleDescription": null,
-                    "pages": [
-                        {
-                            "id": 2,
-                            "pageName": "Asignar roles a usuarios",
-                            "pageDescription": "Usuarios y Roles",
-                            "permissions": [
-                                {
-                                    "id": 1,
-                                    "permissionName": "crud.users",
-                                    "permissionDescription": "Asignar roles a usuarios"
-                                },
-                                {
-                                    "id": 2,
-                                    "permissionName": "delete.users",
-                                    "permissionDescription": "Eliminar roles de usuarios"
-                                },
-                                {
-                                    "id": 3,
-                                    "permissionName": "read.usersroles",
-                                    "permissionDescription": "Ver listado de usuarios y roles asignados"
-                                },
-                                {
-                                    "id": 15,
-                                    "permissionName": "Roles.Read",
-                                    "permissionDescription": "ver roles"
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
-                    "id": 3,
-                    "moduleName": "Mantenimiento",
-                    "moduleDescription": null,
-                    "pages": [
-                        {
-                            "id": 3,
-                            "pageName": "Mantenimiento a usuarios",
-                            "pageDescription": null,
-                            "permissions": [
-                                {
-                                    "id": 4,
-                                    "permissionName": "filter.usersroles",
-                                    "permissionDescription": "Buscar y filtrar usuarios del sistema"
-                                },
-                                {
-                                    "id": 5,
-                                    "permissionName": "edit.users",
-                                    "permissionDescription": "Editar datos de usuarios(zona, correo, agencia, estatus)"
-                                },
-                                {
-                                    "id": 6,
-                                    "permissionName": "read.users",
-                                    "permissionDescription": "Cargar todos los usuarios del sistema"
-                                },
-                                {
-                                    "id": 7,
-                                    "permissionName": "syncas400.users",
-                                    "permissionDescription": "Sincronizar información con AS400"
-                                }
-                            ]
-                        },
-                        {
-                            "id": 4,
-                            "pageName": "Editar perfil",
-                            "pageDescription": null,
-                            "permissions": [
-                                {
-                                    "id": 8,
-                                    "permissionName": "read.loggeduserinfo",
-                                    "permissionDescription": "Ver mi propio perfil (solo lectura)"
-                                },
-                                {
-                                    "id": 9,
-                                    "permissionName": "edit.loggeduserinfo",
-                                    "permissionDescription": "Editar mis datos (zona, correo, agencia, ubicación)"
-                                }
-                            ]
-                        },
-                        {
-                            "id": 5,
-                            "pageName": "Mantenimiento de líder",
-                            "pageDescription": null,
-                            "permissions": [
-                                {
-                                    "id": 10,
-                                    "permissionName": "filter.users",
-                                    "permissionDescription": "Buscar y filtrar líderes"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "id": 2,
-            "roleName": "Administrador operativo",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 3,
-            "roleName": "Coach",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 4,
-            "roleName": "Colaborador",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 5,
-            "roleName": "Mantenimiento",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 7,
-            "roleName": "Traslados",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 8,
-            "roleName": "Indicadores",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 9,
-            "roleName": "Reporteria",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 10,
-            "roleName": "Consulta",
-            "roleDescription": null,
-            "modules": []
-        },
-        {
-            "id": 11,
-            "roleName": "Certificación",
-            "roleDescription": null,
-            "modules": []
-        }
-    ]
+
+
+
+
+
+
+
+
+/* =========================================================
+   Permisos por rol
+   ========================================================= */
+
+/* ---- Contenedor: roles a la izquierda, detalle a la derecha ---- */
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 520px;
+  border: 1px solid #e6ebf1;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
 }
+
+/* ---- Lista de roles ---- */
+.rolesPane { padding: 14px 10px; border-right: 1px solid #eef1f5; background: #fbfcfe; }
+
+.paneLabel {
+  padding: 4px 12px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a3adbb;
+}
+
+.roleList { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+.roleBtn {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  color: #3d4b5f;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.roleBtn:hover { background: #f2f5f9; color: var(--bp-blue-expert); }
+
+.roleBtnActive {
+  background: color-mix(in srgb, var(--bp-blue-expert) 7%, white);
+  font-weight: 800;
+  color: var(--bp-blue-expert);
+}
+.roleBtnActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--bp-yellow-opt);
+}
+
+.roleName { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roleMeta { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.countBadge {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #e8eef5;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #5b6b80;
+}
+.roleBtnActive .countBadge { background: var(--bp-blue-expert); color: #fff; }
+
+.dirtyDot { width: 8px; height: 8px; border-radius: 50%; background: var(--bp-yellow-opt); }
+
+/* ---- Detalle del rol ---- */
+.detail { display: flex; flex-direction: column; min-width: 0; padding: 18px 22px 22px; }
+
+.detailHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.detailTitle { margin: 0; font-size: 19px; font-weight: 800; color: var(--bp-blue-expert); }
+.detailDesc { margin: 2px 0 0; font-size: 13.5px; color: #8592a3; }
+.activeCount { flex-shrink: 0; padding-top: 4px; font-size: 12.5px; font-weight: 700; color: #8592a3; }
+
+/* ---- Pestañas de módulos ---- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 16px;
+  border-bottom: 1px solid #e6ebf1;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #8592a3;
+  cursor: pointer;
+}
+.tab:hover { color: var(--bp-blue-expert); }
+.tabActive { color: var(--bp-blue-expert); }
+.tabActive::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--bp-yellow-opt);
+}
+.tabActive .countBadge { background: var(--bp-blue-expert); color: #fff; }
+
+.tab:focus-visible,
+.roleBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: -2px; }
+
+/* ---- Secciones (una por página) ---- */
+.sections { display: flex; flex-direction: column; gap: 22px; margin-top: 18px; }
+
+.sectionHead { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.sectionTitle {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bp-blue-expert);
+}
+.sectionDesc { margin: 2px 0 0; font-size: 12.5px; color: #8592a3; }
+
+.bulkBtn {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--bp-blue);
+  cursor: pointer;
+}
+.bulkBtn:hover { text-decoration: underline; }
+
+/* ---- Filas de permisos ---- */
+.permList { margin: 0; padding: 0; list-style: none; border: 1px solid #eef1f5; border-radius: 12px; overflow: hidden; }
+.permList > li + li { border-top: 1px solid #f1f4f8; }
+
+.permRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.permRow:hover { background: #f8fafc; }
+
+.permText { display: flex; flex-direction: column; min-width: 0; }
+.permName { font-size: 14px; font-weight: 600; color: #3d4b5f; }
+.permKey { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: #a3adbb; }
+
+.permState { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.permLabel { width: 82px; text-align: right; font-size: 12.5px; font-weight: 700; color: #a3adbb; }
+.permOn { color: var(--bp-green); }
+.changed { width: 7px; height: 7px; border-radius: 50%; background: var(--bp-yellow-opt); }
+
+.emptyDetail { padding: 48px 16px; text-align: center; font-size: 14px; color: #8592a3; }
+
+/* ---- Carga ---- */
+.skeleton {
+  grid-column: 1 / -1;
+  min-height: 520px;
+  background: linear-gradient(90deg, #f3f5f8 25%, #fafbfc 50%, #f3f5f8 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ---- Barra flotante "Cambios sin guardar" ---- */
+.saveBar {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 18px;
+  border-radius: 14px;
+  background: var(--bp-blue-expert);
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(0, 30, 60, 0.3);
+  animation: barIn 0.25s cubic-bezier(0.21, 1.02, 0.73, 1);
+}
+.saveBarText { display: flex; align-items: center; gap: 10px; margin-right: 6px; font-size: 13.5px; font-weight: 700; }
+.saveBarText svg { color: var(--bp-yellow-opt); }
+
+.barGhost,
+.barPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.barGhost { border: 1px solid rgba(255, 255, 255, 0.25); background: transparent; color: #fff; }
+.barGhost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+.barPrimary { border: none; background: var(--bp-yellow-opt); color: var(--bp-blue-expert); }
+.barGhost:disabled,
+.barPrimary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@keyframes barIn { from { opacity: 0; transform: translateY(16px); } }
+
+/* ---- Responsive: la lista de roles se vuelve un select ---- */
+.mobileRoleSelect { display: none; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .rolesPane { display: none; }
+  .mobileRoleSelect { display: block; margin-bottom: 14px; }
+  .detail { padding: 16px; }
+  .saveBar { left: 16px; right: 16px; bottom: 16px; }
+  .saveBarText { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton, .saveBar { animation: none; }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, Check, CircleDot, Loader2 } from "lucide-react";
+import { useToast } from "../../../shared/components";
+import { rolesService } from "../../../api/rolesService";
+import styles from "../../Pages.module.css";
+import p from "./Permissions.module.css";
+
+/* ============================================================
+   Helpers de datos
+   ============================================================ */
+const byId = (a, b) => a.id - b.id;
+
+// Arma el catálogo completo (módulo → página → permiso) juntando los permisos de todos los roles
+const buildCatalog = (roles) => {
+  const modules = new Map();
+
+  roles.forEach((r) =>
+    (r.modules ?? []).forEach((m) => {
+      if (!modules.has(m.id)) modules.set(m.id, { id: m.id, name: m.moduleName, pages: new Map() });
+      const mod = modules.get(m.id);
+
+      (m.pages ?? []).forEach((pg) => {
+        if (!mod.pages.has(pg.id)) {
+          mod.pages.set(pg.id, { id: pg.id, name: pg.pageName, description: pg.pageDescription ?? "", permissions: new Map() });
+        }
+        const page = mod.pages.get(pg.id);
+        (pg.permissions ?? []).forEach((x) =>
+          page.permissions.set(x.id, { id: x.id, key: x.permissionName, label: x.permissionDescription || x.permissionName })
+        );
+      });
+    })
+  );
+
+  return [...modules.values()].sort(byId).map((m) => ({
+    ...m,
+    pages: [...m.pages.values()].sort(byId).map((pg) => ({
+      ...pg,
+      permissions: [...pg.permissions.values()].sort(byId),
+    })),
+  }));
+};
+
+const toRole = (r) => ({
+  id: r.id,
+  name: r.roleName ?? "",
+  description: r.roleDescription ?? "",
+  original: (r.modules ?? []).flatMap((m) => (m.pages ?? []).flatMap((pg) => (pg.permissions ?? []).map((x) => x.id))),
+});
+
+const sameIds = (a, b) => a.length === b.length && a.every((id) => b.includes(id));
+
+/* ============================================================
+   Página
+   ============================================================ */
+export const PermisosRolPage = () => {
+  const toast = useToast();
+
+  const [roles, setRoles] = useState([]);
+  const [catalog, setCatalog] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [selectedId, setSelectedId] = useState(null);
+  const [moduleId, setModuleId] = useState(null);
+
+  // drafts: { [roleId]: [permissionIds] } solo para los roles con cambios
+  const [drafts, setDrafts] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  /* ---------- Carga ---------- */
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await rolesService.list();
+      const mapped = data.map(toRole);
+      setRoles(mapped);
+      setCatalog(buildCatalog(data));
+      setSelectedId((id) => (mapped.some((r) => r.id === id) ? id : mapped[0]?.id ?? null));
+      setDrafts({});
+    } catch (err) {
+      setError(err.noAccess
+        ? "No tienes permiso para ver los roles."
+        : "No se pudieron cargar los roles. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Selecciona la primera pestaña cuando llega el catálogo
+  useEffect(() => {
+    if (catalog.length && !catalog.some((m) => m.id === moduleId)) setModuleId(catalog[0].id);
+  }, [catalog, moduleId]);
+
+  const dirtyIds = Object.keys(drafts).map(Number);
+
+  // Avisa si se intenta cerrar o recargar con cambios pendientes
+  useEffect(() => {
+    if (dirtyIds.length === 0) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirtyIds.length]);
+
+  /* ---------- Estado del rol seleccionado ---------- */
+  const permsOf = (role) => new Set(drafts[role.id] ?? role.original);
+
+  const selected = roles.find((r) => r.id === selectedId);
+  const current = selected ? permsOf(selected) : new Set();
+  const original = new Set(selected?.original ?? []);
+  const activeModule = catalog.find((m) => m.id === moduleId);
+
+  const moduleCount = (m) =>
+    m.pages.reduce((n, pg) => n + pg.permissions.filter((x) => current.has(x.id)).length, 0);
+
+  // Guarda el borrador; si queda igual al original, lo quita
+  const applyPerms = (nextSet) => {
+    const next = [...nextSet];
+    setDrafts((d) => {
+      const copy = { ...d };
+      if (sameIds(next, selected.original)) delete copy[selected.id];
+      else copy[selected.id] = next;
+      return copy;
+    });
+  };
+
+  const togglePerm = (id) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    applyPerms(next);
+  };
+
+  const setAllInPage = (page, on) => {
+    const next = new Set(current);
+    page.permissions.forEach((x) => (on ? next.add(x.id) : next.delete(x.id)));
+    applyPerms(next);
+  };
+
+  /* ---------- Guardar / descartar ---------- */
+  const saveAll = async () => {
+    if (dirtyIds.length === 0) return;
+    setSaving(true);
+
+    const results = await Promise.allSettled(
+      dirtyIds.map((id) => rolesService.updatePermissions(id, drafts[id]))
+    );
+    const saved = dirtyIds.filter((_, i) => results[i].status === "fulfilled");
+    const failed = results.find((r) => r.status === "rejected");
+
+    // Los que se guardaron pasan a ser el nuevo "original"; los que fallaron quedan pendientes
+    setRoles((list) => list.map((r) => (saved.includes(r.id) ? { ...r, original: drafts[r.id] } : r)));
+    setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([id]) => !saved.includes(Number(id)))));
+
+    if (!failed) {
+      toast.success("Permisos guardados correctamente", "Los cambios aplican a todos los usuarios con ese rol.");
+    } else {
+      const err = failed.reason;
+      toast.error(
+        saved.length ? "Algunos cambios no se guardaron" : "No se pudieron guardar los cambios",
+        err?.noAccess ? "No tienes permiso para modificar roles." : err?.response?.data?.message ?? "Intenta de nuevo en unos momentos."
+      );
+    }
+    setSaving(false);
+  };
+
+  const discard = () => setDrafts({});
+
+  /* ---------- Render ---------- */
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Administración</span>
+          <h1 className={styles.title}>Permisos por rol</h1>
+          <p className={styles.subtitle}>
+            Define qué acciones puede realizar cada rol. Los cambios afectan a todos los usuarios con ese rol.
+          </p>
+        </div>
+        <div className={styles.actions}>
+          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
+            onClick={saveAll} disabled={dirtyIds.length === 0 || saving}>
+            {saving ? <Loader2 size={18} className={styles.spin} /> : <Check size={18} />}
+            {saving ? "Guardando..." : "Guardar cambios"}
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>
+            {error}{" "}
+            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={load}>Reintentar</button>
+          </p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className={p.layout}><div className={p.skeleton} /></div>
+      ) : roles.length === 0 ? (
+        !error && <div className={styles.empty}>No hay roles registrados.</div>
+      ) : (
+        <div className={p.layout}>
+          {/* ---------- Roles ---------- */}
+          <aside className={p.rolesPane} aria-label="Roles">
+            <div className={p.paneLabel}>Roles</div>
+            <ul className={p.roleList}>
+              {roles.map((r) => {
+                const active = r.id === selectedId;
+                return (
+                  <li key={r.id}>
+                    <button type="button" className={`${p.roleBtn} ${active ? p.roleBtnActive : ""}`}
+                      onClick={() => setSelectedId(r.id)} aria-current={active ? "true" : undefined}>
+                      <span className={p.roleName}>{r.name}</span>
+                      <span className={p.roleMeta}>
+                        {drafts[r.id] && <span className={p.dirtyDot} title="Cambios sin guardar" />}
+                        <span className={p.countBadge}>{permsOf(r).size}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+
+          {/* ---------- Detalle ---------- */}
+          <section className={p.detail}>
+            <select className={`${styles.select} ${p.mobileRoleSelect}`} value={selectedId ?? ""}
+              onChange={(e) => setSelectedId(Number(e.target.value))} aria-label="Rol">
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}{drafts[r.id] ? " •" : ""}</option>
+              ))}
+            </select>
+
+            {selected && (
+              <>
+                <div className={p.detailHead}>
+                  <div>
+                    <h2 className={p.detailTitle}>{selected.name}</h2>
+                    <p className={p.detailDesc}>{selected.description || "Este rol no tiene descripción."}</p>
+                  </div>
+                  <span className={p.activeCount}>
+                    {current.size} {current.size === 1 ? "permiso activo" : "permisos activos"}
+                  </span>
+                </div>
+
+                {catalog.length === 0 ? (
+                  <div className={p.emptyDetail}>Aún no hay módulos con permisos configurados.</div>
+                ) : (
+                  <>
+                    {/* Pestañas de módulos */}
+                    <div className={p.tabs} role="tablist" aria-label="Módulos">
+                      {catalog.map((m) => {
+                        const active = m.id === moduleId;
+                        return (
+                          <button key={m.id} type="button" role="tab" aria-selected={active}
+                            className={`${p.tab} ${active ? p.tabActive : ""}`} onClick={() => setModuleId(m.id)}>
+                            {m.name}
+                            <span className={p.countBadge}>{moduleCount(m)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Una sección por página del módulo */}
+                    <div className={p.sections} role="tabpanel">
+                      {activeModule?.pages.map((page) => {
+                        const allOn = page.permissions.every((x) => current.has(x.id));
+                        return (
+                          <section key={page.id} aria-label={page.name}>
+                            <div className={p.sectionHead}>
+                              <div>
+                                <h3 className={p.sectionTitle}>{page.name}</h3>
+                                {page.description && page.description !== page.name && (
+                                  <p className={p.sectionDesc}>{page.description}</p>
+                                )}
+                              </div>
+                              <button type="button" className={p.bulkBtn} onClick={() => setAllInPage(page, !allOn)}>
+                                {allOn ? "Quitar todos" : "Activar todos"}
+                              </button>
+                            </div>
+
+                            <ul className={p.permList}>
+                              {page.permissions.map((x) => {
+                                const on = current.has(x.id);
+                                const changed = on !== original.has(x.id);
+                                return (
+                                  <li key={x.id}>
+                                    <label className={p.permRow}>
+                                      <span className={p.permText}>
+                                        <span className={p.permName}>{x.label}</span>
+                                        <span className={p.permKey}>{x.key}</span>
+                                      </span>
+                                      <span className={p.permState}>
+                                        {changed && <span className={p.changed} title="Modificado, sin guardar" />}
+                                        <span className={`${p.permLabel} ${on ? p.permOn : ""}`}>
+                                          {on ? "Con acceso" : "Sin acceso"}
+                                        </span>
+                                        <input type="checkbox" role="switch" className={styles.switch}
+                                          checked={on} onChange={() => togglePerm(x.id)} aria-label={x.label} />
+                                      </span>
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      )}
+
+      {/* ---------- Barra flotante ---------- */}
+      {dirtyIds.length > 0 && (
+        <div className={p.saveBar} role="status">
+          <span className={p.saveBarText}>
+            <CircleDot size={16} />
+            Cambios sin guardar{dirtyIds.length > 1 ? ` en ${dirtyIds.length} roles` : ""}
+          </span>
+          <button type="button" className={p.barGhost} onClick={discard} disabled={saving}>Descartar</button>
+          <button type="button" className={p.barPrimary} onClick={saveAll} disabled={saving}>
+            {saving ? <Loader2 size={14} className={styles.spin} /> : <Check size={14} />}
+            Guardar
+          </button>
+        </div>
+      )}
+    </>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+
