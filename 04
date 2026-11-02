@@ -1,23 +1,14 @@
-Ayudane a desarrikkar ek boton Gestion de lideres ya creé la pagina dentro de managemente llaamda GestioLideresPage.jsx(te adjunto las imagenes del prototipo)
+  // GET /api/users?status=&isLeader=  (los parámetros vacíos no se envían)
+  list: async ({ status, isLeader } = {}) => {
+    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.users, { params: { status, isLeader } });
+    return data.data ?? [];
+  },
 
-
-Estos son los ednpoints que usa:
-GET
-/api/users
-Obtiene el listado de usuarios con filtros opcionales por estado y liderazgo.
-
-Parameters
-Try it out
-Name	Description
-status
-integer($int32)
-(query)
-status
-isLeader
-boolean
-(query)
-
---
+  // Activa o quita el rol de líder
+  setLeader: async (id, isLeader) => {
+    const { data } = await apiFeedbackAuthorized.put(`${endpointsAPI.users}/${id}/leader`, { isLeader });
+    return data.data;
+  },
 
 
 
@@ -25,22 +16,651 @@ boolean
 
 
 
-PUT
-/api/users/{id}/leader
-Activa o desactiva el flag de líder de un usuario.
+/** Usuario de GET /api/users → formato de la pantalla */
+export const mapApiUser = (u) => {
+  const fullName = toTitleCase(`${u.firstName ?? ""} ${u.lastName ?? ""}`).trim();
+  return {
+    id: u.id,
+    name: fullName || u.userName || "Sin nombre",
+    code: u.userName ?? "",
+    position: u.companyPosition ?? "",
+    branch: u.companyBranch ?? "",
+    location: u.companyLocation ?? "",
+    areaId: u.companyAreaId ?? null,
+    areaName: u.companyArea ?? "",
+    status: u.status ?? "",
+  };
+};
 
-Parameters
-Cancel
-Name	Description
-id *
-string
-(path)
-id
-Request body
 
-application/json
-Edit Value
-Schema
-{
-  "isLeader": true
+
+
+
+
+
+
+
+
+import { GestionLideresPage } from "../pages/modules/management/GestionLideresPage";
+
+
+
+      {
+        key: "lider",
+        pageId: 5,
+        label: "Mantenimiento de Líder",
+        description: "Administra los líderes y sus equipos.",
+        icon: UserCog,
+        path: "lider",
+        component: MantenimientoLiderPage,
+        // Subpáginas: no salen en el menú, se abren desde la página padre y heredan su permiso
+        children: [
+          {
+            key: "gestion-lideres",
+            label: "Gestión de líderes",
+            path: "gestion-lideres",
+            component: GestionLideresPage,
+          },
+        ],
+      },
+
+
+
+
+
+
+
+
+
+// Agrega a cada página (y subpágina) su ruta completa, ej: "/mantenimientos/lider/gestion-lideres"
+export const MODULES = RAW_MODULES.map((m) => ({
+  ...m,
+  pages: m.pages.map((p) => {
+    const fullPath = `${m.path}/${p.path}`;
+    return {
+      ...p,
+      fullPath,
+      children: (p.children ?? []).map((c) => ({ ...c, fullPath: `${fullPath}/${c.path}` })),
+    };
+  }),
+}));
+
+
+
+
+
+
+
+
+
+export const getBreadcrumb = (pathname) => {
+  const module = MODULES.find((m) => pathname === m.path || pathname.startsWith(`${m.path}/`));
+  if (!module) return [];
+
+  const crumbs = [{ label: module.label, to: module.path }];
+  const page = module.pages.find((p) => pathname === p.fullPath || pathname.startsWith(`${p.fullPath}/`));
+
+  if (page) {
+    crumbs.push({ label: page.label, to: page.fullPath });
+    const child = page.children.find((c) => pathname.startsWith(c.fullPath));
+    if (child) crumbs.push({ label: child.label, to: child.fullPath });
+  }
+  return crumbs;
+};
+
+
+
+
+
+
+
+
+
+
+                {module.pages.map((page) => (
+                    <Fragment key={page.key}>
+                        <Route path={page.fullPath} element={<page.component />} />
+                        {page.children.map((child) => (
+                            <Route key={child.key} path={child.fullPath} element={<child.component />} />
+                        ))}
+                    </Fragment>
+                ))}
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, Check, Info, Loader2, Search } from "lucide-react";
+import { Modal } from "../../../../shared/components";
+import { usersService, USER_STATUS } from "../../../../api/usersService";
+import { initials, mapApiUser, normalize, statusTone, userSubtitle } from "./teamUtils";
+import pages from "../../../Pages.module.css";
+import t from "./Teams.module.css";
+
+const FORM_ID = "designate-leader-form";
+
+export function DesignateLeaderModal({ open, areas, defaultAreaId, onClose, onSaved }) {
+  const [candidates, setCandidates] = useState({ items: [], loading: false, error: "" });
+  const [areaId, setAreaId] = useState("");
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  // Al abrir: reinicia y carga los usuarios activos que aún no son líderes
+  useEffect(() => {
+    if (!open) return;
+    setAreaId(defaultAreaId ? String(defaultAreaId) : "");
+    setQuery("");
+    setSelectedId(null);
+    setErrors({});
+    setSubmitError("");
+
+    let cancelled = false;
+    setCandidates({ items: [], loading: true, error: "" });
+
+    usersService
+      .list({ status: USER_STATUS.ACTIVO, isLeader: false })
+      .then((data) => {
+        if (!cancelled) setCandidates({ items: data.map(mapApiUser), loading: false, error: "" });
+      })
+      .catch((err) => {
+        if (!cancelled) setCandidates({
+          items: [],
+          loading: false,
+          error: err.noAccess ? "No tienes permiso para consultar usuarios." : "No se pudo cargar la lista de usuarios.",
+        });
+      });
+
+    return () => { cancelled = true; };
+  }, [open, defaultAreaId]);
+
+  // Áreas: catálogo + las que traen los usuarios
+  const areaOptions = useMemo(() => {
+    const map = new Map(areas.map((a) => [Number(a.value), a.label]));
+    candidates.items.forEach((u) => {
+      if (u.areaId != null && !map.has(u.areaId)) map.set(u.areaId, u.areaName);
+    });
+    return [...map]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => String(a.label).localeCompare(String(b.label), "es"));
+  }, [areas, candidates.items]);
+
+  // Solo usuarios del área elegida, filtrados por la búsqueda
+  const visible = useMemo(() => {
+    if (!areaId) return [];
+    const q = normalize(query);
+    return candidates.items
+      .filter((u) => u.areaId === Number(areaId))
+      .filter((u) => !q || normalize(`${u.name} ${u.code}`).includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [candidates.items, areaId, query]);
+
+  const changeArea = (value) => {
+    setAreaId(value);
+    setSelectedId(null);
+    setErrors({});
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const found = {};
+    if (!areaId) found.areaId = "Selecciona un área.";
+    if (!selectedId) found.user = "Selecciona el usuario que será líder.";
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+
+    setSaving(true);
+    setSubmitError("");
+    try {
+      await usersService.setLeader(selectedId, true);
+      onSaved();
+    } catch (err) {
+      setSubmitError(err.noAccess
+        ? "No tienes permiso para designar líderes."
+        : err.response?.data?.message ?? "No se pudo designar el líder. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClose = () => { if (!saving) onClose(); };
+
+  const renderList = () => {
+    if (!areaId) return <p className={t.pickEmpty}>Selecciona un área para ver los usuarios disponibles.</p>;
+    if (candidates.loading) return Array.from({ length: 4 }, (_, i) => <div key={i} className={t.pickSkeleton} />);
+    if (candidates.error) return <p className={t.pickEmpty}>{candidates.error}</p>;
+    if (visible.length === 0) {
+      return (
+        <p className={t.pickEmpty}>
+          {query ? `Sin resultados para "${query}".` : "No hay usuarios disponibles para designar en esta área."}
+        </p>
+      );
+    }
+
+    return visible.map((u) => {
+      const sub = userSubtitle(u);
+      const on = selectedId === u.id;
+      return (
+        <label key={u.id} className={`${t.pickItem} ${on ? t.pickItemOn : ""}`}>
+          <input
+            type="radio"
+            name="leader-candidate"
+            className={t.checkbox}
+            checked={on}
+            onChange={() => { setSelectedId(u.id); setErrors((er) => ({ ...er, user: undefined })); }}
+          />
+          <span className={t.avatar}>{initials(u.name)}</span>
+          <span className={t.personText}>
+            <span className={t.personName}>
+              {u.name}
+              {u.code && <span className={t.code}> — {u.code}</span>}
+            </span>
+            {sub && <span className={t.personSub}>{sub}</span>}
+          </span>
+          {u.status && <span className={`${t.status} ${t[statusTone(u.status)]}`}>{u.status}</span>}
+        </label>
+      );
+    });
+  };
+
+  return (
+    <Modal
+      open={open}
+      title="Designar líder"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" className={`${pages.btn} ${pages.btnOutline}`} onClick={handleClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button type="submit" form={FORM_ID} className={`${pages.btn} ${pages.btnPrimary}`} disabled={saving}>
+            {saving ? <Loader2 size={16} className={pages.spin} /> : <Check size={16} />}
+            {saving ? "Designando..." : "Confirmar designación"}
+          </button>
+        </>
+      }
+    >
+      <form id={FORM_ID} onSubmit={handleSubmit} noValidate>
+        <div className={t.infoBox}>
+          <Info size={16} />
+          <p>
+            Solo los perfiles autorizados por negocio pueden ser designados como líderes. El usuario designado
+            aparecerá disponible al crear o editar equipos de su área.
+          </p>
+        </div>
+
+        {submitError && (
+          <div className={`${pages.banner} ${pages.bannerError}`} role="alert">
+            <AlertCircle size={18} />
+            <p>{submitError}</p>
+          </div>
+        )}
+
+        <div className={pages.form} style={{ gridTemplateColumns: "1fr" }}>
+          <div className={pages.field}>
+            <label className={pages.label} htmlFor="designate-area">
+              Área<span className={pages.required}>*</span>
+            </label>
+            <select id="designate-area" className={`${pages.select} ${errors.areaId ? pages.invalid : ""}`}
+              value={areaId} onChange={(e) => changeArea(e.target.value)} aria-invalid={!!errors.areaId}>
+              <option value="">— Selecciona un área —</option>
+              {areaOptions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+            {errors.areaId && <span className={pages.fieldError}>{errors.areaId}</span>}
+          </div>
+
+          <div className={pages.field}>
+            <span className={pages.label}>
+              Usuario a designar como líder<span className={pages.required}>*</span>
+            </span>
+            <div className={t.pick}>
+              <div className={t.search}>
+                <Search size={16} />
+                <input className={pages.input} placeholder="Buscar por nombre o código..." value={query}
+                  onChange={(e) => setQuery(e.target.value)} disabled={!areaId} aria-label="Buscar usuario" />
+              </div>
+              <div className={t.pickList} style={{ maxHeight: 280 }} role="radiogroup" aria-label="Usuario a designar como líder">
+                {renderList()}
+              </div>
+            </div>
+            {errors.user && <span className={pages.fieldError}>{errors.user}</span>}
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { AlertCircle, ChevronLeft, Filter, Info, Plus, Search, TriangleAlert, UserMinus } from "lucide-react";
+import { ConfirmDialog, Datatable, useToast } from "../../../shared/components";
+import { usersService } from "../../../api/usersService";
+import { teamsService } from "../../../api/teamsService";
+import { useCatalogs } from "../../../hooks/useCatalogs";
+import { initials, mapApiUser, normalize } from "./leaders/teamUtils";
+import { DesignateLeaderModal } from "./leaders/DesignateLeaderModal";
+import pages from "../../Pages.module.css";
+import t from "./leaders/Teams.module.css";
+
+const TEAMS_PATH = "/mantenimientos/lider";
+
+const statusClass = (status) =>
+  status === "Activo" ? pages.statusActive
+    : status === "Inactivo" ? pages.statusInactive
+      : pages.statusWarning;
+
+const dash = <span className={pages.muted}>—</span>;
+
+export const GestionLideresPage = () => {
+  const catalogs = useCatalogs();
+  const toast = useToast();
+
+  const [leaders, setLeaders] = useState([]);
+  const [teamsByLeader, setTeamsByLeader] = useState(new Map());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [areaFilter, setAreaFilter] = useState("");
+  const [search, setSearch] = useState("");
+
+  const [designateOpen, setDesignateOpen] = useState(false);
+
+  const [toRemove, setToRemove] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+
+  /* ---------- Carga: líderes + equipos (para la columna "Equipo asignado") ---------- */
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [users, teams] = await Promise.all([
+        usersService.list({ isLeader: true }),
+        teamsService.list().catch(() => []), // si falla, la tabla igual se muestra
+      ]);
+
+      const map = new Map();
+      teams.forEach((tm) =>
+        (tm.leaders ?? []).forEach((l) => {
+          map.set(l.leaderUserId, [...(map.get(l.leaderUserId) ?? []), tm.name]);
+        })
+      );
+
+      setTeamsByLeader(map);
+      setLeaders(users.map(mapApiUser));
+    } catch (err) {
+      setError(err.noAccess
+        ? "No tienes permiso para ver los líderes."
+        : "No se pudo cargar la lista de líderes. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  /* ---------- Áreas: catálogo + las que traen los líderes ---------- */
+  const areaOptions = useMemo(() => {
+    const map = new Map(catalogs.areas.map((a) => [Number(a.value), a.label]));
+    leaders.forEach((u) => {
+      if (u.areaId != null && !map.has(u.areaId)) map.set(u.areaId, u.areaName);
+    });
+    return [...map]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => String(a.label).localeCompare(String(b.label), "es"));
+  }, [catalogs.areas, leaders]);
+
+  /* ---------- Filtrado ---------- */
+  const filtered = useMemo(() => {
+    const q = normalize(search);
+    return leaders
+      .filter((u) => !areaFilter || u.areaId === Number(areaFilter))
+      .filter((u) => !q || normalize(`${u.name} ${u.code}`).includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [leaders, areaFilter, search]);
+
+  /* ---------- Acciones ---------- */
+  const handleDesignated = () => {
+    setDesignateOpen(false);
+    toast.success("Líder designado correctamente");
+    load();
+  };
+
+  const openRemove = (user) => {
+    setRemoveError("");
+    setToRemove(user);
+  };
+
+  const confirmRemove = async () => {
+    setRemoving(true);
+    setRemoveError("");
+    try {
+      await usersService.setLeader(toRemove.id, false);
+      setToRemove(null);
+      toast.success("Permiso de líder quitado correctamente");
+      load();
+    } catch (err) {
+      setRemoveError(err.noAccess
+        ? "No tienes permiso para quitar el rol de líder."
+        : err.response?.data?.message ?? "No se pudo quitar el rol de líder. Intenta de nuevo.");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  /* ---------- Columnas ---------- */
+  const columns = [
+    { key: "code", header: "Código", render: (u) => (u.code ? <span className={pages.mono}>{u.code}</span> : dash) },
+    { key: "name", header: "Nombre completo", render: (u) => <span className={pages.cellMain}>{u.name}</span> },
+    { key: "position", header: "Puesto", render: (u) => u.position || dash },
+    {
+      key: "area",
+      header: "Área",
+      render: (u) => (u.areaName ? <span className={`${pages.tag} ${pages.tagBlue}`}>{u.areaName}</span> : dash),
+    },
+    {
+      key: "team",
+      header: "Equipo asignado",
+      render: (u) => {
+        const teamNames = teamsByLeader.get(u.id);
+        return teamNames?.length
+          ? <span className={pages.cellMain}>{teamNames.join(", ")}</span>
+          : <span className={pages.muted}>Sin equipo asignado</span>;
+      },
+    },
+    {
+      key: "status",
+      header: "Estado",
+      render: (u) => (u.status ? <span className={`${pages.statusPlain} ${statusClass(u.status)}`}>{u.status}</span> : dash),
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "right",
+      render: (u) => (
+        <div className={pages.rowActions}>
+          <button type="button" className={`${pages.iconBtn} ${pages.iconBtnDanger}`} title="Quitar rol de líder"
+            aria-label={`Quitar rol de líder a ${u.name}`} onClick={() => openRemove(u)}>
+            <UserMinus size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  /* ---------- Render ---------- */
+  return (
+    <>
+      <Link to={TEAMS_PATH} className={pages.back}>
+        <ChevronLeft size={16} /> Volver a equipos
+      </Link>
+
+      <header className={pages.pageHeader}>
+        <div>
+          <span className={pages.eyebrow}>Mantenimiento de líder</span>
+          <h1 className={pages.title}>Gestión de líderes</h1>
+          <p className={pages.subtitle}>
+            Designa qué usuarios tienen rol de líder por área. Solo los usuarios marcados como líderes aparecerán
+            disponibles al crear equipos.
+          </p>
+        </div>
+
+        <div className={pages.actions}>
+          <button type="button" className={`${pages.btn} ${pages.btnPrimary}`} onClick={() => setDesignateOpen(true)}>
+            <Plus size={18} /> Designar líder
+          </button>
+        </div>
+      </header>
+
+      <div className={pages.banner}>
+        <Info size={18} />
+        <p>
+          Los líderes designados aquí son los únicos que aparecen disponibles para ser asignados a un equipo.
+          Quitar el rol de líder a un usuario no elimina su equipo actual.
+        </p>
+      </div>
+
+      {error && (
+        <div className={`${pages.banner} ${pages.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>
+            {error}{" "}
+            <button type="button" className={pages.linkBtn} style={{ padding: 0 }} onClick={load}>Reintentar</button>
+          </p>
+        </div>
+      )}
+
+      {/* ---------- Filtros ---------- */}
+      <section className={pages.filterCard}>
+        <h2 className={pages.filterCardTitle}><Filter size={16} /> Filtrar por área</h2>
+        <div className={t.filterRow}>
+          <select className={`${pages.select} ${t.areaSelect}`} value={areaFilter}
+            onChange={(e) => setAreaFilter(e.target.value)} aria-label="Filtrar por área">
+            <option value="">Todas las áreas</option>
+            {areaOptions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+
+          <div className={t.search}>
+            <Search size={16} />
+            <input className={pages.input} placeholder="Buscar por nombre o código..." value={search}
+              onChange={(e) => setSearch(e.target.value)} aria-label="Buscar líderes" />
+          </div>
+
+          {!loading && (
+            <span className={pages.count}>
+              {filtered.length} {filtered.length === 1 ? "líder designado" : "líderes designados"}
+            </span>
+          )}
+        </div>
+      </section>
+
+      {/* ---------- Tabla ---------- */}
+      <section className={pages.panel}>
+        <Datatable
+          columns={columns}
+          rows={filtered}
+          loading={loading}
+          maxHeight={520}
+          emptyMessage={areaFilter || search
+            ? "Ningún líder coincide con los filtros."
+            : "Aún no hay líderes designados. Usa \"Designar líder\" para agregar el primero."}
+        />
+      </section>
+
+      {/* ---------- Modales ---------- */}
+      <DesignateLeaderModal
+        open={designateOpen}
+        areas={areaOptions}
+        defaultAreaId={areaFilter}
+        onClose={() => setDesignateOpen(false)}
+        onSaved={handleDesignated}
+      />
+
+      <ConfirmDialog
+        open={Boolean(toRemove)}
+        danger
+        icon={UserMinus}
+        title="¿Quitar rol de líder?"
+        message={toRemove ? `${toRemove.name} dejará de ser líder.` : ""}
+        detail={toRemove && (
+          <>
+            <div className={t.chipBox}>
+              <span className={`${t.avatar} ${t.avatarLeader}`}>{initials(toRemove.name)}</span>
+              <span className={t.personText}>
+                <span className={t.personName}>{toRemove.name}</span>
+                <span className={t.personSub}>
+                  {[toRemove.code, toRemove.areaName].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+            </div>
+            <div className={t.warnBox} style={{ margin: "12px 0 0", textAlign: "left" }}>
+              <TriangleAlert size={16} />
+              <p>
+                El usuario dejará de aparecer como opción al crear o editar equipos. Si tiene un equipo asignado
+                actualmente, ese equipo no se eliminará, pero quedará sin líder disponible hasta que se designe uno nuevo.
+              </p>
+            </div>
+          </>
+        )}
+        confirmText={removing ? "Quitando..." : "Quitar rol de líder"}
+        loading={removing}
+        error={removeError}
+        onConfirm={confirmRemove}
+        onCancel={() => setToRemove(null)}
+      />
+    </>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Link } from "react-router-dom";
+
+
+
+
+
+
+
+
+
+
+          <Link to="/mantenimientos/lider/gestion-lideres" className={`${pages.btn} ${pages.btnOutline}`}>
+            <UserCog size={18} /> Gestión de líderes
+          </Link>
