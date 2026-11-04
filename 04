@@ -1,58 +1,275 @@
-Uncaught SyntaxError: The requested module '/node_modules/.vite/deps/lucide-react.js?v=ed3fcf5e' does not provide an export named 'UsersRoundCollaboration' (at routesConfig.jsx:7:3)
+
+
+quiero decirte que.. el de marcadores va en en el modulo de plantillas yo lo movi hice la corrección ... lo meti dentro de una carpeta llamada templates/markers/
+
+Ahora ayuda a realizar la pagina de plantillas
+
+Esta va dentro del modulo de Plantillas
+
+ya creé la pagina se llama PlantillasPage.jsx esta dentro de templates/templates/
+
+
+Los endpoinst que utilizaremos son los siguientes:
+
+GET
+/api/templates
+Obtiene el listado de plantillas.
+
+
+Response: {
+    "code": 200,
+    "message": "OK",
+    "data": [
+        {
+            "id": 2,
+            "example": "Prueba 2",
+            "status": "Activa",
+            "markers": [
+                {
+                    "markerId": 1,
+                    "position": 1,
+                    "value": "Verbo",
+                    "valueType": "Alfanumérico"
+                },
+                {
+                    "markerId": 3,
+                    "position": 2,
+                    "value": "%",
+                    "valueType": "Alfanumérico"
+                },
+                {
+                    "markerId": 4,
+                    "position": 3,
+                    "value": "Que",
+                    "valueType": "Porcentaje"
+                },
+                {
+                    "markerId": 7,
+                    "position": 4,
+                    "value": "ValorX",
+                    "valueType": "Numérico"
+                },
+                {
+                    "markerId": 8,
+                    "position": 5,
+                    "value": "ValorY",
+                    "valueType": "Numérico"
+                },
+                {
+                    "markerId": 12,
+                    "position": 6,
+                    "value": "Cuando",
+                    "valueType": "Numérico"
+                }
+            ]
+        },
+        {
+            "id": 3,
+            "example": "Prueba 3",
+            "status": "Activa",
+            "markers": [
+                {
+                    "markerId": 1,
+                    "position": 1,
+                    "value": "Verbo",
+                    "valueType": "Alfanumérico"
+                },
+                {
+                    "markerId": 3,
+                    "position": 2,
+                    "value": "%",
+                    "valueType": "Alfanumérico"
+                }
+            ]
+        },
+        {
+            "id": 4,
+            "example": "Prueba 3",
+            "status": "Activa",
+            "markers": [
+                {
+                    "markerId": 1,
+                    "position": 1,
+                    "value": "Verbo",
+                    "valueType": "Alfanumérico"
+                },
+                {
+                    "markerId": 1,
+                    "position": 2,
+                    "value": "Verbo",
+                    "valueType": "Alfanumérico"
+                }
+            ]
+        }
+    ]
+}
 
 
 
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching>
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm install
 
-up to date, audited 206 packages in 5s
 
-43 packages are looking for funding
-  run `npm fund` for details
 
-3 vulnerabilities (1 moderate, 2 high)
+POST
+/api/templates
+Crea una plantilla.
 
-To address all issues, run:
-  npm audit fix
 
-Run `npm audit` for details.
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm audit
-# npm audit report
 
-follow-redirects  1.16.0 - 1.16.1
-Severity: high
-follow-redirects: Cross-realm sensitiveHeaders arrays are discarded and custom credentials can follow redirects - https://github.com/advisories/GHSA-mrwp-f3q8-3g9p
-fix available via `npm audit fix`
-node_modules/follow-redirects
 
-node-forge  <=1.4.0
-Severity: high
-node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements - https://github.com/advisories/GHSA-86w9-cpqp-85rv
-Forge: ASN.1 OID first arc truncation in asn1.oidToDer - https://github.com/advisories/GHSA-4642-5mcj-2rqw
-Forge: Prototype Pollution in forge.http cookie handling via a malicious Set-Cookie - https://github.com/advisories/GHSA-6wvx-3r32-xmcg
-Forge: TLS client crash when the server sends no certificate - https://github.com/advisories/GHSA-525v-9gp9-w22h
-Forge: Regular expression denial of service in PEM decoding (pem.decode) - https://github.com/advisories/GHSA-7wch-p9px-956x
-Forge: Denial of Service via infinite loop in BigInteger.modInverse() with negative input (incomplete fix of CVE-2026-33891) - https://github.com/advisories/GHSA-h6cr-wjv9-3cpp
-Forge: verifyCertificateChain() removes trusted CA certificates with the same subject from the CA store - https://github.com/advisories/GHSA-4487-j8r4-4g2f
-Forge: AES-GCM authentication bypass via unvalidated tagLength option - https://github.com/advisories/GHSA-5cwg-6vw7-rj6p
-Forge: PKCS#12 MAC forgery and constant-key PBE via zero iteration count - https://github.com/advisories/GHSA-jc66-7q78-782g
-Forge: Denial of service in TLS record processing via a record interleaved with a fragmented handshake message - https://github.com/advisories/GHSA-8hrf-8g6f-7xwp
-Forge: Denial of service in TLS record processing via call stack exhaustion - https://github.com/advisories/GHSA-hqq3-7jhf-c5jx
-Forge: X.509 basicConstraints bypass in verifyCertificateChain() via deprecated extension OIDs 2.5.29.10 and 2.5.29.13 - https://github.com/advisories/GHSA-5x38-2vff-x55p
-fix available via `npm audit fix`
-node_modules/node-forge
+{
+  "example": "string",
+  "status": 0,
+  "markers": [
+    {
+      "markerId": 0,
+      "position": 0
+    }
+  ]
+}
 
-vite  6.4.4
-Severity: moderate
-Vite: `server.fs.deny` bypassed with queries - https://github.com/advisories/GHSA-8g5g-mxqh-grgj
-fix available via `npm audit fix`
-node_modules/vite
 
-3 vulnerabilities (1 moderate, 2 high)
 
-To address all issues, run:
-  npm audit fix
-PS C:\Users\80730.HN\Desktop\Projects\2026\BH-59681 Sistema de Feedback\SistemaFeedbackColaboradores\FrontEnd\portal-coaching> npm run dev            
-        
-> portal-coaching@0.0.0 dev
-> vite
+
+
+GET
+/api/templates/{id}
+Obtiene una plantilla por su identificador
+
+
+PUT
+/api/templates/{id}
+Actualiza una plantilla.
+
+
+
+
+
+DELETE
+/api/templates/{id}
+Elimina una plantilla.
+
+
+
+
+PUT
+/api/templates/{id}/activate
+Activa una plantilla.
+
+
+
+
+PUT
+/api/templates/{id}/desactivate
+Desactiva una plantilla.
+
+
+
+
+POST
+/api/templates/filter
+Obtiene las plantillas filtradas y paginadas.
+
+
+
+{
+  "example": "string",
+  "status": 0,
+  "pageNumber": 0,
+  "pageSize": 0
+}
+
+
+
+
+
+Los requerimientos son los sigueintes:
+
+
+
+Al ingresar, el sistema debe mostrar un listado paginado de las plantillas existentes
+El listado debe mostrar como mínimo las siguientes columnas:
+- Editar / Eliminar (iconos de acción)
+- Plantilla (estructura del texto con marcadores)
+- Ejemplo (frase construida de muestra)
+- Estatus (estado de la plantilla)
+＋ Nueva plantilla Abre el modal de creación de plantilla con constructor de marcadores.
+✏️ Editar (acción fila) Abre el modal con los datos de la plantilla para edición.
+Toggle Activo/Inactivo Cambia el estatus de la plantilla. Registra en auditoría.
+Estado 
+El sistema debe permitir cambiar de página cuando existan múltiples registros.
+
+
+
+Al ingresar, el sistema debe mostrar un listado paginado de las plantillas existentes
+El listado debe mostrar como mínimo las siguientes columnas:
+- Editar / Eliminar (iconos de acción)
+- Plantilla (estructura del texto con marcadores)
+- Ejemplo (frase construida de muestra)
+- Estatus (estado de la plantilla)
+＋ Nueva plantilla Abre el modal de creación de plantilla con constructor de marcadores.
+✏️ Editar (acción fila) Abre el modal con los datos de la plantilla para edición.
+Toggle Activo/Inactivo Cambia el estatus de la plantilla. Registra en auditoría.
+Estado 
+El sistema debe permitir cambiar de página cuando existan múltiples registros.
+
+
+El estado debe mostrarse mediante:
+Un selector o control visible en la columna Estatus.
+El sistema debe manejar al menos los siguientes estados:
+- Activa
+- Inactiva
+Al marcar una plantilla como Inactiva:
+- La plantilla no debe estar disponible para su uso en otros módulos.
+- Debe permanecer visible en el listado para consulta administrativa.
+El sistema debe permitir crear una nueva plantilla mediante un botón o acción visible (ícono de agregar).
+Al crear una plantilla, el sistema debe mostrar un formulario con los campos:
+- Plantilla (campo de construcción del texto)
+- Ejemplo (vista previa del resultado colocado por el usuario que construye la plantilla)
+l seleccionar Agregar campo, el sistema debe mostrar un selector con los marcadores de posición disponibles, como mínimo:
+- Verbo
+- Qué
+- ValorX
+- ValorY
+- Frecuencia
+- Complemento
+´Usar misma caja de 4DX de Medidas predictivas´
+
+
+Los componentes deben insertarse como marcadores de posición dentro del campo Plantilla (ejemplo: {Verbo}, {Qué}, {ValorY}).
+ El usuario no debe escribir texto libre para los componentes; únicamente debe insertar marcadores desde el selector.
+ El usuario debe generar el contenido del campo Ejemplo con base en la plantilla construida.
+El campo Ejemplo debe ser editable.
+
+
+El ejemplo debe reflejar una frase completa y entendible del indicador resultante.
+El sistema debe permitir editar una plantilla existente mediante el ícono correspondiente.
+Al editar, el sistema debe cargar:
+- La estructura actual de la plantilla
+- El ejemplo asociado
+-El estado (Activo/Inactiva)
+Los cambios deben reflejarse inmediatamente tras guardar.
+El sistema debe permitir eliminar una plantilla mediante el ícono correspondiente.
+Antes de eliminar, el sistema debe solicitar confirmación explícita.
+
+Si una plantilla está siendo utilizada por otros módulos:
+- El sistema no debe permitir su eliminación.
+El sistema no debe permitir guardar una plantilla si:
+- No contiene al menos un marcador de posición.
+- El campo Plantilla está vacío.
+- El campo Ejemplo está vacío
+El sistema debe mostrar mensajes claros si faltan elementos obligatorios.
+Toda acción realizada sobre plantillas debe registrarse en un log indicando:
+- Usuario
+- Plantilla afectada
+- Acción realizada (crear, editar, eliminar, activar, inactivar)
+- Fecha y hora
+El sistema debe permitir crear nuevos marcadores de posición desde la pantalla de Mantenimiento de plantillas, al momento de agregar un 
+campo
+
+Si el marcador ya existe, el sistema no deberá guardar para evitar duplicarse
+Los marcadores creados deben estar disponibles para:
+- Otras plantillas
+- Ediciones futuras
+- Nuevas creaciones de plantillas
+Los marcadores deben comportarse igual que los marcadores predefinidos
+
