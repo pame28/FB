@@ -1,1 +1,68 @@
-Ayudame a corregir ese archivo. Mira ... al fial yo voy a etsra desarrollando 15 dias y emepceé el 22 de oct. entonces, ayudame a que termine cuando deberia .. basicamente el plan esta a 4 horas diarias creo o 5 no recuerdo .. tu ayudme a corregir el archivo
+Ayudame a realizar el siguiente Crud llamada Marcadores
+
+Pertenece a un nuevo modulo llaamdo indicators creé una nueva página que se llama MarcadoresPage.jsx
+
+Estps son los endpoints:
+
+GET
+/api/markers
+Obtiene el listado de marcadores de plantilla.
+
+
+POST
+/api/markers
+Crea un marcador de plantilla.
+
+
+{
+  "value": "string",
+  "valueType": 0
+}
+
+
+
+
+
+
+GET
+/api/markers/{id}
+Obtiene un marcador de plantilla por su identificador.
+
+
+
+PUT
+/api/markers/{id}
+Actualiza un marcador de plantilla.
+
+
+
+{
+  "value": "string",
+  "valueType": 0
+}
+
+
+DELETE
+/api/markers/{id}
+Elimina un marcador de plantilla.
+
+
+
+Estos son los requerimientos para crear los marcadores.. me dieron caso libre decisión para diseñar la pagina, solo hay que seguir estandares de colores, y podemos hacerla lucir super bien y diferente a un CRUD convencional
+
+Requistos:
+
+
+Al hacer clic en + Insertar nuevo marcador, el sistema debe mostrar dos campos obligatorios: el nombre del marcador y el tipo de valor.
+El campo Tipo de valor debe ser una lista desplegable con las siguientes opciones: Texto, Numérico, Alfanumérico, Porcentaje (%), Dólar ($), 
+Euro (€), Lempira (L), Fecha, Sí / No, Número entero, Número decimal.
+Ambos campos son obligatorios. No se puede confirmar la creación del marcador sin haber completado el nombre y seleccionado un tipo de 
+valor.
+Al confirmar, el sistema debe registrar el marcador con su nombre y tipo de valor asociado.
+El marcador creado debe mostrarse en el pool de marcadores disponibles con su nombre y el tipo de valor visible como etiqueta junto al 
+nombre — por ejemplo { ValorX } Numérico.
+Si el nombre del marcador ya existe, el sistema no debe permitir duplicados, independientemente del tipo de valor seleccionado.
+El sistema debe permitir eliminar un marcador creado
+
+
+
