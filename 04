@@ -1,22 +1,415 @@
-Ayudame a realizar el siguiente Crud llamada Marcadores
+import { apiFeedbackAuthorized } from "./APIS";
+import { endpointsAPI } from "./endpointApi";
 
-Pertenece a un nuevo modulo llaamdo templates creé una nueva página que se llama MarcadoresPage.jsx
+export const markersService = {
+  list: async () => {
+    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.markers);
+    const result = data.data;
+    return Array.isArray(result) ? result : result?.items ?? [];
+  },
 
-Estps son los endpoints:
+  // body: { value, valueType }
+  create: async (body) => {
+    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.markers, body);
+    return data.data;
+  },
 
-GET
-/api/markers
-Obtiene el listado de marcadores de plantilla.
+  update: async (id, body) => {
+    const { data } = await apiFeedbackAuthorized.put(`${endpointsAPI.markers}/${id}`, body);
+    return data.data;
+  },
+
+  remove: async (id) => {
+    await apiFeedbackAuthorized.delete(`${endpointsAPI.markers}/${id}`);
+  },
+};
 
 
-POST
-/api/markers
-Crea un marcador de plantilla.
 
 
-{
-  "value": "string",
-  "valueType": 0
+
+
+
+
+
+
+
+import {
+  Banknote, Calculator, CalendarDays, CaseSensitive, DollarSign,
+  Euro, Hash, Percent, Sigma, ToggleRight, Type,
+} from "lucide-react";
+
+/**
+ * Tipos de valor de un marcador.
+ * value: número que se envía en "valueType".
+ * ⚠️ Confirmar con backend el número de cada tipo (asumido: orden de la lista, desde 0).
+ * tone: familia de color de la etiqueta.
+ * aliases: por si la API devuelve el tipo como texto.
+ */
+export const MARKER_TYPES = [
+  { value: 0, label: "Texto", icon: Type, tone: "text", aliases: ["text"] },
+  { value: 1, label: "Numérico", icon: Sigma, tone: "number", aliases: ["numeric", "number"] },
+  { value: 2, label: "Alfanumérico", icon: CaseSensitive, tone: "text", aliases: ["alphanumeric"] },
+  { value: 3, label: "Porcentaje (%)", icon: Percent, tone: "money", aliases: ["percentage", "percent"] },
+  { value: 4, label: "Dólar ($)", icon: DollarSign, tone: "money", aliases: ["dollar", "usd"] },
+  { value: 5, label: "Euro (€)", icon: Euro, tone: "money", aliases: ["euro", "eur"] },
+  { value: 6, label: "Lempira (L)", icon: Banknote, tone: "money", aliases: ["lempira", "hnl"] },
+  { value: 7, label: "Fecha", icon: CalendarDays, tone: "date", aliases: ["date"] },
+  { value: 8, label: "Sí / No", icon: ToggleRight, tone: "bool", aliases: ["boolean", "bool", "yesno"] },
+  { value: 9, label: "Número entero", icon: Hash, tone: "number", aliases: ["integer", "int"] },
+  { value: 10, label: "Número decimal", icon: Calculator, tone: "number", aliases: ["decimal"] },
+];
+
+// "Sí / No" → "sino", "Porcentaje (%)" → "porcentaje"
+const toKey = (text) =>
+  String(text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** Encuentra el tipo a partir de lo que mande la API (número o texto). */
+export const findMarkerType = (raw) => {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (typeof raw === "number" || /^\d+$/.test(String(raw))) {
+    return MARKER_TYPES.find((t) => t.value === Number(raw)) ?? null;
+  }
+  const key = toKey(raw);
+  return MARKER_TYPES.find((t) => toKey(t.label).startsWith(key) || t.aliases.includes(key)) ?? null;
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   Marcadores
+   ========================================================= */
+
+/* ---- Panel para crear / editar ---- */
+.composer {
+  position: relative;
+  margin-bottom: 20px;
+  padding: 22px 22px 18px;
+  border: 1px solid #e6ebf1;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(0, 57, 100, 0.08);
+  overflow: hidden;
+  scroll-margin-top: 100px;
+  animation: drop 0.22s cubic-bezier(0.21, 1.02, 0.73, 1);
+}
+.composer::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--bp-yellow-opt);
+}
+
+.composerHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.composerEyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8592a3;
+}
+.composerTitle { margin: 2px 0 0; font-size: 16px; font-weight: 800; color: var(--bp-blue-expert); }
+
+.composerGrid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px 20px;
+  margin-top: 16px;
+}
+
+/* Campo con llaves { … } */
+.braceInput {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.braceInput:focus-within {
+  border-color: var(--bp-blue-digital);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--bp-blue-digital) 20%, transparent);
+}
+.braceInputInvalid { border-color: var(--bp-red); }
+
+.brace {
+  padding: 0 10px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--bp-blue-fin);
+  user-select: none;
+}
+
+.braceField {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--bp-blue-expert);
+}
+.braceField::placeholder { font-weight: 500; color: #a3adbb; }
+
+.composerFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed #e3e8ef;
+}
+
+.preview { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.previewLabel {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a3adbb;
+}
+.previewToken {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px solid #eef1f5;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.previewEmpty { font-size: 13px; font-style: italic; color: #a3adbb; }
+
+.composerActions { display: flex; gap: 10px; }
+
+/* ---- Pool de marcadores ---- */
+.pool { padding: 20px 22px 22px; border: 1px solid #e6ebf1; border-radius: 16px; background: #fff; }
+
+.poolHead { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.poolTitle { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 800; color: var(--bp-blue-expert); }
+.poolTitle svg { color: var(--bp-blue-fin); }
+.poolSub { margin: 4px 0 0; font-size: 13px; color: #8592a3; }
+
+.search { position: relative; flex: 0 1 300px; }
+.search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8592a3;
+  pointer-events: none;
+}
+.search input { padding-left: 38px; }
+
+/* Filtros por tipo */
+.filters {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 18px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #e1e6ee;
+  border-radius: 999px;
+  background: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #5b6b80;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.filterChip:hover { border-color: #c3ccd9; color: var(--bp-blue-expert); }
+.filterChip:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 2px; }
+.filterChipOn,
+.filterChipOn:hover { border-color: var(--bp-blue-expert); background: var(--bp-blue-expert); color: #fff; }
+
+.filterCount {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #eef1f5;
+  font-size: 11px;
+  font-weight: 800;
+  color: #5b6b80;
+}
+.filterChipOn .filterCount { background: rgba(255, 255, 255, 0.2); color: #fff; }
+
+/* Fichas */
+.tokenGrid { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+
+.token {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid #e6ebf1;
+  border-radius: 12px;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.token:hover,
+.token:focus-within {
+  border-color: color-mix(in srgb, var(--bp-blue-digital) 45%, white);
+  box-shadow: 0 6px 16px rgba(0, 57, 100, 0.08);
+  transform: translateY(-1px);
+}
+
+.tokenMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 6px 10px 14px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: copy;
+}
+.tokenMain:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 2px; }
+
+.tokenText {
+  max-width: 260px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--bp-blue-expert);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tokenActions { display: flex; gap: 2px; padding-right: 8px; opacity: 0; transition: opacity 0.15s ease; }
+.token:hover .tokenActions,
+.token:focus-within .tokenActions { opacity: 1; }
+
+.tokenBtn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #8592a3;
+  cursor: pointer;
+}
+.tokenBtn:hover { background: #f2f5f9; color: var(--bp-blue-expert); }
+.tokenBtnDanger:hover { background: #fdf0f0; color: var(--bp-red); }
+.tokenBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 1px; }
+
+/* Etiqueta de tipo (colores por familia, mismos tonos que las etiquetas del sistema) */
+.typeTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.toneText { background: #e8f1fb; border-color: #cfe1f7; color: #0c5aba; }
+.toneNumber { background: #e3f7f6; border-color: #c4ecea; color: #0d6f6c; }
+.toneMoney { background: #fff6dc; border-color: #fbe6a8; color: #8a5a00; }
+.toneDate { background: #f1edfb; border-color: #e0d8f6; color: #5b3fb0; }
+.toneBool { background: #eaf6ef; border-color: #cbe9d8; color: var(--bp-green); }
+.toneNeutral { background: #f1f4f8; border-color: #e3e8ef; color: #6b7a8f; }
+
+/* ---- Estados ---- */
+.skeletonToken {
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #eef1f5 25%, #f6f8fb 50%, #eef1f5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+
+.empty { padding: 44px 16px 36px; text-align: center; }
+.emptyArt {
+  margin-bottom: 14px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 44px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--bp-blue-fin);
+}
+.cursor {
+  display: inline-block;
+  width: 3px;
+  height: 34px;
+  margin: 0 12px;
+  vertical-align: middle;
+  background: var(--bp-yellow-opt);
+  animation: blink 1s steps(2, start) infinite;
+}
+.empty h3 { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: var(--bp-blue-expert); }
+.empty p { margin: 0 0 18px; font-size: 14px; color: #6b7a8f; }
+
+.noResults { padding: 28px 8px; text-align: center; font-size: 14px; color: #8592a3; }
+
+@keyframes drop { from { opacity: 0; transform: translateY(-8px); } }
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes blink { to { visibility: hidden; } }
+
+/* ---- Responsive ---- */
+@media (hover: none) {
+  .tokenActions { opacity: 1; }
+}
+
+@media (max-width: 700px) {
+  .composerGrid { grid-template-columns: 1fr; }
+  .composerActions { width: 100%; }
+  .composerActions > * { flex: 1; }
+  .search { flex-basis: 100%; }
+  .tokenText { max-width: 170px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer, .skeletonToken, .cursor { animation: none; }
+  .token:hover, .token:focus-within { transform: none; }
 }
 
 
@@ -24,45 +417,499 @@ Crea un marcador de plantilla.
 
 
 
-GET
-/api/markers/{id}
-Obtiene un marcador de plantilla por su identificador.
 
 
 
-PUT
-/api/markers/{id}
-Actualiza un marcador de plantilla.
 
 
 
-{
-  "value": "string",
-  "valueType": 0
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, Braces, Check, Loader2, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ConfirmDialog, useToast } from "../../../shared/components";
+import { markersService } from "../../../api/markersService";
+import { MARKER_TYPES, findMarkerType } from "./markerTypes";
+import styles from "../../Pages.module.css";
+import m from "./Markers.module.css";
+
+const MAX_LENGTH = 60;
+const EMPTY_FORM = { value: "", valueType: "" };
+
+const TONES = {
+  text: m.toneText,
+  number: m.toneNumber,
+  money: m.toneMoney,
+  date: m.toneDate,
+  bool: m.toneBool,
+};
+
+// Compara nombres sin tildes, mayúsculas ni espacios extra
+const normalize = (v) => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+const mapMarker = (x) => ({ id: x.id, value: x.value ?? "", type: findMarkerType(x.valueType) });
+
+const tokenOf = (value) => `{ ${value} }`;
+
+function TypeTag({ type }) {
+  if (!type) return <span className={`${m.typeTag} ${m.toneNeutral}`}>Sin tipo</span>;
+  const Icon = type.icon;
+  return (
+    <span className={`${m.typeTag} ${TONES[type.tone]}`}>
+      <Icon size={12} strokeWidth={2.4} />
+      {type.label}
+    </span>
+  );
 }
 
+export const MarcadoresPage = () => {
+  const toast = useToast();
 
-DELETE
-/api/markers/{id}
-Elimina un marcador de plantilla.
+  // Listado
+  const [markers, setMarkers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Filtros
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+
+  // Panel crear / editar
+  const [composer, setComposer] = useState({ open: false, editing: null });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const composerRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // Eliminar
+  const [toDelete, setToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  /* ---------- Carga ---------- */
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await markersService.list();
+      setMarkers(data.map(mapMarker));
+    } catch (err) {
+      setError(err.noAccess
+        ? "No tienes permiso para ver los marcadores."
+        : "No se pudieron cargar los marcadores. Intenta de nuevo.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Al abrir el panel: lo muestra y enfoca el nombre
+  useEffect(() => {
+    if (!composer.open) return;
+    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    inputRef.current?.focus();
+  }, [composer]);
+
+  /* ---------- Panel ---------- */
+  const openComposer = (editing = null) => {
+    setComposer({ open: true, editing });
+    setForm(editing
+      ? { value: editing.value, valueType: editing.type ? String(editing.type.value) : "" }
+      : EMPTY_FORM);
+    setErrors({});
+    setSubmitError("");
+  };
+
+  const closeComposer = () => {
+    if (saving) return;
+    setComposer({ open: false, editing: null });
+  };
+
+  const handleFormChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+    setErrors((er) => ({ ...er, [name]: undefined }));
+  };
+
+  // Duplicado: mismo nombre (sin importar tipo, mayúsculas ni tildes), excluyendo el que se edita
+  const trimmed = form.value.trim();
+  const duplicate = trimmed
+    ? markers.find((x) => x.id !== composer.editing?.id && normalize(x.value) === normalize(trimmed))
+    : null;
+
+  const selectedType = MARKER_TYPES.find((t) => String(t.value) === form.valueType) ?? null;
+  const canSubmit = Boolean(trimmed) && form.valueType !== "" && !duplicate;
+
+  const nameError = errors.value
+    || (duplicate ? `Ya existe ${tokenOf(duplicate.value)}${duplicate.type ? ` (${duplicate.type.label})` : ""}. Los nombres no se pueden repetir.` : "");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const found = {};
+    if (!trimmed) found.value = "Escribe el nombre del marcador.";
+    if (form.valueType === "") found.valueType = "Selecciona el tipo de valor.";
+    setErrors(found);
+    if (Object.keys(found).length > 0 || duplicate) return;
+
+    setSaving(true);
+    setSubmitError("");
+    const body = { value: trimmed, valueType: Number(form.valueType) };
+    const isEdit = Boolean(composer.editing);
+
+    try {
+      if (isEdit) await markersService.update(composer.editing.id, body);
+      else await markersService.create(body);
+
+      toast.success(
+        isEdit ? "Marcador actualizado" : "Marcador creado",
+        `${tokenOf(trimmed)} · ${selectedType?.label ?? ""}`
+      );
+      setComposer({ open: false, editing: null });
+      load();
+    } catch (err) {
+      setSubmitError(err.noAccess
+        ? `No tienes permiso para ${isEdit ? "editar" : "crear"} marcadores.`
+        : err.response?.data?.message ?? "No se pudo guardar el marcador. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ---------- Copiar ---------- */
+  const copyMarker = async (marker) => {
+    const text = `{${marker.value}}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.info("Marcador copiado", `${text} está listo para pegar en una plantilla.`, { duration: 2500 });
+    } catch {
+      toast.error("No se pudo copiar", "Copia el marcador manualmente.");
+    }
+  };
+
+  /* ---------- Eliminar ---------- */
+  const openDelete = (marker) => {
+    setDeleteError("");
+    setToDelete(marker);
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await markersService.remove(toDelete.id);
+      toast.success("Marcador eliminado", `${tokenOf(toDelete.value)} ya no está disponible.`);
+      if (composer.editing?.id === toDelete.id) setComposer({ open: false, editing: null });
+      setToDelete(null);
+      load();
+    } catch (err) {
+      setDeleteError(err.noAccess
+        ? "No tienes permiso para eliminar marcadores."
+        : err.response?.data?.message ?? "No se pudo eliminar. Es posible que el marcador esté en uso en una plantilla.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /* ---------- Filtros ---------- */
+  const counts = useMemo(() => {
+    const c = new Map();
+    markers.forEach((x) => {
+      const key = x.type?.value ?? "none";
+      c.set(key, (c.get(key) ?? 0) + 1);
+    });
+    return c;
+  }, [markers]);
+
+  // Solo se muestran los filtros de los tipos que tienen marcadores
+  const typeOptions = MARKER_TYPES.filter((t) => counts.get(t.value));
+
+  const visible = useMemo(() => {
+    const q = normalize(search);
+    return markers
+      .filter((x) => typeFilter === "all" || x.type?.value === typeFilter)
+      .filter((x) => !q || normalize(x.value).includes(q))
+      .sort((a, b) => a.value.localeCompare(b.value, "es"));
+  }, [markers, search, typeFilter]);
+
+  /* ---------- Render ---------- */
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Indicadores</span>
+          <h1 className={styles.title}>Marcadores</h1>
+          <p className={styles.subtitle}>Marcadores disponibles para usar en las plantillas de indicadores.</p>
+        </div>
+        <div className={styles.actions}>
+          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => openComposer()}>
+            <Plus size={18} /> Insertar nuevo marcador
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>
+            {error}{" "}
+            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={load}>Reintentar</button>
+          </p>
+        </div>
+      )}
+
+      {/* ---------- Panel crear / editar ---------- */}
+      {composer.open && (
+        <form
+          ref={composerRef}
+          className={m.composer}
+          onSubmit={handleSubmit}
+          onKeyDown={(e) => e.key === "Escape" && closeComposer()}
+          noValidate
+        >
+          <div className={m.composerHead}>
+            <div>
+              <span className={m.composerEyebrow}>{composer.editing ? "Editar marcador" : "Nuevo marcador"}</span>
+              <h2 className={m.composerTitle}>
+                {composer.editing ? "Actualiza el nombre o el tipo de valor" : "Define el nombre y el tipo de valor"}
+              </h2>
+            </div>
+            <button type="button" className={styles.iconBtn} onClick={closeComposer} aria-label="Cerrar" disabled={saving}>
+              <X size={16} />
+            </button>
+          </div>
+
+          {submitError && (
+            <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: "14px 0 0" }}>
+              <AlertCircle size={18} />
+              <p>{submitError}</p>
+            </div>
+          )}
+
+          <div className={m.composerGrid}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="marker-value">
+                Nombre del marcador<span className={styles.required}>*</span>
+              </label>
+              <div className={`${m.braceInput} ${nameError ? m.braceInputInvalid : ""}`}>
+                <span className={m.brace} aria-hidden="true">{"{"}</span>
+                <input
+                  ref={inputRef}
+                  id="marker-value"
+                  name="value"
+                  className={m.braceField}
+                  placeholder="ValorX"
+                  value={form.value}
+                  onChange={handleFormChange}
+                  maxLength={MAX_LENGTH}
+                  autoComplete="off"
+                  aria-invalid={!!nameError}
+                />
+                <span className={m.brace} aria-hidden="true">{"}"}</span>
+              </div>
+              {nameError
+                ? <span className={styles.fieldError}>{nameError}</span>
+                : <span className={styles.hint}>Así aparecerá dentro de las plantillas.</span>}
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="marker-type">
+                Tipo de valor<span className={styles.required}>*</span>
+              </label>
+              <select
+                id="marker-type"
+                name="valueType"
+                className={`${styles.select} ${errors.valueType ? styles.invalid : ""}`}
+                value={form.valueType}
+                onChange={handleFormChange}
+                aria-invalid={!!errors.valueType}
+              >
+                <option value="">— Selecciona el tipo —</option>
+                {MARKER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              {errors.valueType && <span className={styles.fieldError}>{errors.valueType}</span>}
+            </div>
+          </div>
+
+          <div className={m.composerFoot}>
+            <div className={m.preview} aria-live="polite">
+              <span className={m.previewLabel}>Vista previa</span>
+              {trimmed ? (
+                <span className={m.previewToken}>
+                  <span className={m.tokenText}>{tokenOf(trimmed)}</span>
+                  {selectedType && <TypeTag type={selectedType} />}
+                </span>
+              ) : (
+                <span className={m.previewEmpty}>Escribe un nombre para ver el marcador</span>
+              )}
+            </div>
+
+            <div className={m.composerActions}>
+              <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={closeComposer} disabled={saving}>
+                Cancelar
+              </button>
+              <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`} disabled={!canSubmit || saving}>
+                {saving ? <Loader2 size={16} className={styles.spin} /> : <Check size={16} />}
+                {saving ? "Guardando..." : composer.editing ? "Guardar cambios" : "Insertar marcador"}
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* ---------- Pool ---------- */}
+      <section className={m.pool} aria-label="Pool de marcadores">
+        <div className={m.poolHead}>
+          <div>
+            <h2 className={m.poolTitle}><Braces size={18} /> Pool de marcadores</h2>
+            <p className={m.poolSub}>
+              {loading
+                ? "Cargando marcadores..."
+                : `${markers.length} ${markers.length === 1 ? "disponible" : "disponibles"} · haz clic en un marcador para copiarlo`}
+            </p>
+          </div>
+
+          {markers.length > 0 && (
+            <div className={m.search}>
+              <Search size={16} />
+              <input className={styles.input} placeholder="Buscar marcador..." value={search}
+                onChange={(e) => setSearch(e.target.value)} aria-label="Buscar marcador" />
+            </div>
+          )}
+        </div>
+
+        {markers.length > 0 && (
+          <div className={m.filters} role="toolbar" aria-label="Filtrar por tipo de valor">
+            <button type="button" className={`${m.filterChip} ${typeFilter === "all" ? m.filterChipOn : ""}`}
+              onClick={() => setTypeFilter("all")} aria-pressed={typeFilter === "all"}>
+              Todos <span className={m.filterCount}>{markers.length}</span>
+            </button>
+            {typeOptions.map((t) => {
+              const Icon = t.icon;
+              const on = typeFilter === t.value;
+              return (
+                <button key={t.value} type="button" className={`${m.filterChip} ${on ? m.filterChipOn : ""}`}
+                  onClick={() => setTypeFilter(on ? "all" : t.value)} aria-pressed={on}>
+                  <Icon size={13} strokeWidth={2.4} />
+                  {t.label}
+                  <span className={m.filterCount}>{counts.get(t.value)}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {loading ? (
+          <ul className={m.tokenGrid} style={{ marginTop: 18 }} aria-hidden="true">
+            {[180, 220, 150, 200, 170, 240, 160].map((w, i) => (
+              <li key={i} className={m.skeletonToken} style={{ width: w }} />
+            ))}
+          </ul>
+        ) : markers.length === 0 ? (
+          !error && (
+            <div className={m.empty}>
+              <div className={m.emptyArt} aria-hidden="true">
+                <span>{"{"}</span><span className={m.cursor} /><span>{"}"}</span>
+              </div>
+              <h3>Aún no hay marcadores</h3>
+              <p>Crea el primero para empezar a usarlo en las plantillas.</p>
+              <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => openComposer()}>
+                <Plus size={18} /> Insertar nuevo marcador
+              </button>
+            </div>
+          )
+        ) : visible.length === 0 ? (
+          <p className={m.noResults}>Ningún marcador coincide con la búsqueda o el filtro.</p>
+        ) : (
+          <ul className={m.tokenGrid}>
+            {visible.map((marker) => (
+              <li key={marker.id} className={m.token}>
+                <button type="button" className={m.tokenMain} onClick={() => copyMarker(marker)}
+                  title={`Copiar {${marker.value}}`}>
+                  <span className={m.tokenText}>{tokenOf(marker.value)}</span>
+                  <TypeTag type={marker.type} />
+                </button>
+                <span className={m.tokenActions}>
+                  <button type="button" className={m.tokenBtn} onClick={() => openComposer(marker)}
+                    aria-label={`Editar ${marker.value}`} title="Editar">
+                    <Pencil size={14} />
+                  </button>
+                  <button type="button" className={`${m.tokenBtn} ${m.tokenBtnDanger}`} onClick={() => openDelete(marker)}
+                    aria-label={`Eliminar ${marker.value}`} title="Eliminar">
+                    <Trash2 size={14} />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ---------- Eliminar ---------- */}
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        danger
+        title="¿Eliminar marcador?"
+        message="Las plantillas que lo usen dejarán de poder reemplazarlo. Esta acción no se puede deshacer."
+        detail={toDelete && (
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <span className={m.previewToken}>
+              <span className={m.tokenText}>{tokenOf(toDelete.value)}</span>
+              <TypeTag type={toDelete.type} />
+            </span>
+          </div>
+        )}
+        confirmText={deleting ? "Eliminando..." : "Sí, eliminar"}
+        loading={deleting}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      />
+    </>
+  );
+};
 
 
 
-Estos son los requerimientos para crear los marcadores.. me dieron caso libre decisión para diseñar la pagina, solo hay que seguir estandares de colores, y podemos hacerla lucir super bien y diferente a un CRUD convencional
-
-Requistos:
-
-
-Al hacer clic en + Insertar nuevo marcador, el sistema debe mostrar dos campos obligatorios: el nombre del marcador y el tipo de valor.
-El campo Tipo de valor debe ser una lista desplegable con las siguientes opciones: Texto, Numérico, Alfanumérico, Porcentaje (%), Dólar ($), 
-Euro (€), Lempira (L), Fecha, Sí / No, Número entero, Número decimal.
-Ambos campos son obligatorios. No se puede confirmar la creación del marcador sin haber completado el nombre y seleccionado un tipo de 
-valor.
-Al confirmar, el sistema debe registrar el marcador con su nombre y tipo de valor asociado.
-El marcador creado debe mostrarse en el pool de marcadores disponibles con su nombre y el tipo de valor visible como etiqueta junto al 
-nombre — por ejemplo { ValorX } Numérico.
-Si el nombre del marcador ya existe, el sistema no debe permitir duplicados, independientemente del tipo de valor seleccionado.
-El sistema debe permitir eliminar un marcador creado
 
 
 
+
+
+
+
+
+
+
+import { MarcadoresPage } from "../pages/modules/indicators/MarcadoresPage";
+
+
+
+
+
+
+
+
+
+
+
+  {
+    key: "indicadores",
+    moduleId: null, // Pendiente: aún no existe en la BD
+    label: "Indicadores",
+    description: "Métricas y resultados de desempeño.",
+    icon: BarChart3,
+    path: "/indicadores",
+    pages: [
+      {
+        key: "marcadores",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Marcadores",
+        description: "Variables disponibles para las plantillas de indicadores.",
+        icon: Braces,
+        path: "marcadores",
+        component: MarcadoresPage,
+      },
+    ],
+  },
