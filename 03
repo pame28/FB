@@ -93,6 +93,29 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
         public string sql_ConsultaOrigen = string.Empty;
         public string sql_ConsultaActualizar = string.Empty;
 
+        // Timeout por defecto (segundos) si el parámetro "TimeoutSegundos" no existe en la tabla
+        // de parametrización o trae un valor inválido. 0 = sin límite.
+        private const int TIMEOUT_DEFAULT = 600;
+
+        /// <summary>
+        /// Timeout (en segundos) para comandos y bulk copy, leído del parámetro "TimeoutSegundos"
+        /// (del proceso "Sobres" o de "General"). Si no existe o no es válido, usa TIMEOUT_DEFAULT.
+        /// </summary>
+        public int TimeoutSegundos
+        {
+            get
+            {
+                string valor;
+                int segundos;
+                if (parametros.TryGetValue("TimeoutSegundos", out valor) &&
+                    int.TryParse(valor, out segundos) && segundos >= 0)
+                {
+                    return segundos;
+                }
+                return TIMEOUT_DEFAULT;
+            }
+        }
+
         /// <summary>
         /// This method is called when this script task executes in the control flow.
         /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
@@ -121,6 +144,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                     }
                     else
                     {
+                        // Comportamiento original: si se agotan los reintentos, la tarea termina en Success
                         Dts.TaskResult = (int)ScriptResults.Success;
                         return;
                     }
@@ -148,9 +172,14 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
         public bool RealizarMovimiento()
         {
             List<Contrato> resultado = ObtenerInfoAs400();
+
+            // null = hubo error al leer AS400 (ya quedó registrado en el log)
+            if (resultado == null)
+                return false;
+
             if (resultado.Count == 0)
             {
-                RegistraProceso("F", $"No se encontraron registros en AS400 para el d�a {fecha_generacion}");
+                RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
                 return true;
             }
 
@@ -185,38 +214,48 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as SqlConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
-                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
-                {
-                    cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "Sobres";
-
-                    using (SqlDataReader reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            string idParametro = reader["IdParametro"].ToString();
-                            string valorParametro = reader["ValorParametro"].ToString();
-
-                            if (!parametros.ContainsKey(idParametro))
-                                parametros.Add(idParametro, valorParametro);
-                        }
-                    }
-                }
+                // Primero los del proceso (tienen prioridad) y luego los generales.
+                // Si un parámetro existe en ambos, se queda el valor de "Sobres".
+                CargarParametrosProceso(conn, "Sobres");
+                CargarParametrosProceso(conn, "General");
 
                 return true;
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� obtener informaci�n desde usp_GetParametersByProcess con error {ex.Message.ToString()}");
+                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message}");
                 return false;
             }
             finally
             {
                 if (conn != null)
                     cm.ReleaseConnection(conn);
+            }
+        }
+
+        private void CargarParametrosProceso(SqlConnection conn, string proceso)
+        {
+            using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+            {
+                cmd.CommandType = CommandType.StoredProcedure;
+                // Aquí TimeoutSegundos puede no estar cargado aún, así que usa TIMEOUT_DEFAULT
+                cmd.CommandTimeout = TimeoutSegundos;
+                cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = proceso;
+
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        string idParametro = reader["IdParametro"].ToString();
+                        string valorParametro = reader["ValorParametro"].ToString();
+
+                        if (!parametros.ContainsKey(idParametro))
+                            parametros.Add(idParametro, valorParametro);
+                    }
+                }
             }
         }
 
@@ -254,13 +293,14 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
 
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaEstado;
+                    cmd.CommandTimeout = TimeoutSegundos;
                     using (IDataReader reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
@@ -274,8 +314,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� obtener estado proceso {sql_ConsultaEstado} con error {ex.Message.ToString()}");
-                Dts.TaskResult = (int)ScriptResults.Failure;
+                RegistraProceso("F", $"Falló obtener estado proceso {sql_ConsultaEstado} con error {ex.Message}");
                 return null;
 
             }
@@ -306,7 +345,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             }
             else
             {
-                RegistraProceso("F", $"Fall� reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizo estado G en AS400");
+                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
 
                 return false;
             }
@@ -321,6 +360,9 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             };
         }
 
+        /// <summary>
+        /// Devuelve la lista de contratos del AS400, o null si ocurrió un error al leer.
+        /// </summary>
         public List<Contrato> ObtenerInfoAs400()
         {
             List<Contrato> contratos = new List<Contrato>();
@@ -332,13 +374,14 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexi n desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
                 {
                     using (IDbCommand cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = sql_ConsultaOrigen;
+                        cmd.CommandTimeout = TimeoutSegundos;
                         using (IDataReader reader = cmd.ExecuteReader())
                         {
                             while (reader.Read())
@@ -416,8 +459,8 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� obtener informaci�n desde {parametros["ArchiviOrigen"]} con error {ex.Message.ToString()}");
-                Dts.TaskResult = (int)ScriptResults.Failure;
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message}");
+                return null;
 
             }
             finally
@@ -439,14 +482,15 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as SqlConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
                 using (SqlCommand cmd = new SqlCommand(parametros["PreParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -454,7 +498,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� preparseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
+                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message}");
 
                 return false;
             }
@@ -475,14 +519,15 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as SqlConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
                 using (SqlCommand cmd = new SqlCommand(parametros["PostParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -490,7 +535,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� PostParseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
+                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message}");
 
                 return false;
             }
@@ -645,7 +690,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� proceso de conversi�n DataTable {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
+                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message}");
 
                 return new DataTable();
             }
@@ -662,12 +707,14 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as SqlConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
                 using (SqlBulkCopy bulkCopy = new SqlBulkCopy(conn))
                 {
                     bulkCopy.DestinationTableName = parametros["ArchivoDestino"];
+                    bulkCopy.BulkCopyTimeout = TimeoutSegundos;
+                    bulkCopy.BatchSize = 5000;
                     bulkCopy.WriteToServer(tableCuentas);
                 }
 
@@ -678,7 +725,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
+                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message}");
 
                 return false;
             }
@@ -701,16 +748,18 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaActualizar;
+                    cmd.CommandTimeout = TimeoutSegundos;
                     int rowsAffected = cmd.ExecuteNonQuery();
 
                     if (rowsAffected == 0)
                     {
+                        RegistraProceso("F", $"Actualizar estado archivo: {parametros["ArchivoControl"]} no afectó ningún registro");
                         return false;
                     }
                 }
@@ -718,9 +767,9 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Fall� actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message.ToString()}");
+                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message}");
 
-                Dts.TaskResult = (int)ScriptResults.Failure;
+                return false;
             }
             finally
             {
@@ -739,7 +788,7 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             // Convertimos a string y eliminamos espacios
             var texto = valor.ToString().Trim();
 
-            // Si despu�s del Trim queda vac�o, lo tratamos como NULL
+            // Si después del Trim queda vacío, lo tratamos como NULL
             if (texto.Length == 0)
                 return DBNull.Value;
 
@@ -756,16 +805,17 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
                 conn = cm.AcquireConnection(null) as SqlConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
                 using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "Sobres";
-                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
-                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
+                    cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = "Sobres";
+                    cmd.Parameters.Add("@EstadoProceso", SqlDbType.VarChar).Value = estadoProceso;
+                    cmd.Parameters.Add("@Mensaje", SqlDbType.VarChar).Value = mensaje;
 
                     cmd.ExecuteNonQuery();
                 }
@@ -773,6 +823,9 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
             }
             catch (Exception ex)
             {
+                // Si el log falla, al menos queda en el historial del Job / log de SSIS
+                Dts.Events.FireWarning(0, "RegistraProceso",
+                    $"No se pudo registrar en log. Mensaje original: {mensaje} | Error: {ex.Message}", "", 0);
             }
             finally
             {
@@ -798,9 +851,3 @@ namespace ST_396a345376664c7fac60de3bd91c24cd
 
 	}
 }
-
-
-
-
-
-Ahora ayudame con este porfa
