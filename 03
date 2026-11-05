@@ -1,21 +1,637 @@
-import { PlantillasPage } from "../pages/modules/templates/templates/PlantillasPage";
+#region Help:  Introduction to the script task
+/* The Script Task allows you to perform virtually any operation that can be accomplished in
+ * a .Net application within the context of an Integration Services control flow. 
+ * 
+ * Expand the other regions which have "Help" prefixes for examples of specific ways to use
+ * Integration Services features within this script task. */
+#endregion
+
+
+#region Namespaces
+using Microsoft.SqlServer.Dts.Runtime;
+using ST_a4c8ddfc33b24addbe7ac9ee970768cf.Models;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.OleDb;
+using System.Data.SqlClient;
+using System.Net.Mail;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Windows.Forms;
+#endregion
+
+namespace ST_a4c8ddfc33b24addbe7ac9ee970768cf
+{
+    /// <summary>
+    /// ScriptMain is the entry point class of the script.  Do not change the name, attributes,
+    /// or parent of this class.
+    /// </summary>
+	[Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPointAttribute]
+    public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+    {
+        #region Help:  Using Integration Services variables and parameters in a script
+        /* To use a variable in this script, first ensure that the variable has been added to 
+         * either the list contained in the ReadOnlyVariables property or the list contained in 
+         * the ReadWriteVariables property of this script task, according to whether or not your
+         * code needs to write to the variable.  To add the variable, save this script, close this instance of
+         * Visual Studio, and update the ReadOnlyVariables and 
+         * ReadWriteVariables properties in the Script Transformation Editor window.
+         * To use a parameter in this script, follow the same steps. Parameters are always read-only.
+         * 
+         * Example of reading from a variable:
+         *  DateTime startTime = (DateTime) Dts.Variables["System::StartTime"].Value;
+         * 
+         * Example of writing to a variable:
+         *  Dts.Variables["User::myStringVariable"].Value = "new value";
+         * 
+         * Example of reading from a package parameter:
+         *  int batchId = (int) Dts.Variables["$Package::batchId"].Value;
+         *  
+         * Example of reading from a project parameter:
+         *  int batchId = (int) Dts.Variables["$Project::batchId"].Value;
+         * 
+         * Example of reading from a sensitive project parameter:
+         *  int batchId = (int) Dts.Variables["$Project::batchId"].GetSensitiveValue();
+         * */
+
+        #endregion
+
+        #region Help:  Firing Integration Services events from a script
+        /* This script task can fire events for logging purposes.
+         * 
+         * Example of firing an error event:
+         *  Dts.Events.FireError(18, "Process Values", "Bad value", "", 0);
+         * 
+         * Example of firing an information event:
+         *  Dts.Events.FireInformation(3, "Process Values", "Processing has started", "", 0, ref fireAgain)
+         * 
+         * Example of firing a warning event:
+         *  Dts.Events.FireWarning(14, "Process Values", "No values received for input", "", 0);
+         * */
+        #endregion
+
+        #region Help:  Using Integration Services connection managers in a script
+        /* Some types of connection managers can be used in this script task.  See the topic 
+         * "Working with Connection Managers Programatically" for details.
+         * 
+         * Example of using an ADO.Net connection manager:
+         *  object rawConnection = Dts.Connections["Sales DB"].AcquireConnection(Dts.Transaction);
+         *  SqlConnection myADONETConnection = (SqlConnection)rawConnection;
+         *  //Use the connection in some code here, then release the connection
+         *  Dts.Connections["Sales DB"].ReleaseConnection(rawConnection);
+         *
+         * Example of using a File connection manager
+         *  object rawConnection = Dts.Connections["Prices.zip"].AcquireConnection(Dts.Transaction);
+         *  string filePath = (string)rawConnection;
+         *  //Use the connection in some code here, then release the connection
+         *  Dts.Connections["Prices.zip"].ReleaseConnection(rawConnection);
+         * */
+        #endregion
+
+
+        public static DateTime date = DateTime.Now;
+        public static string fecha_generacion = string.Empty; //date.ToString("yyyy-MM-dd");
+        public Dictionary<string, string> parametros = new Dictionary<string, string>();
+        public string sql_ConsultaEstado = string.Empty;
+        public string sql_ConsultaOrigen = string.Empty;
+        public string sql_ConsultaOrigenBandejaVasa = string.Empty;
+        public string sql_ConsultaActualizar = string.Empty;
+
+
+        /// <summary>
+        /// This method is called when this script task executes in the control flow.
+        /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
+        /// To open Help, press F1.
+        /// </summary>
+        public void Main()
+        {
+            if (ObtieneParametros())
+            {
+                fecha_generacion = parametros["FechaProceso"];
+                ParseaConsultas();
+                var estado_proceso = ObtenerEstadoProceso();
+
+                if (estado_proceso != parametros["EstadoInicial"])
+                {
+                    if (RealizarReintento(estado_proceso))
+                    {
+                        Dts.TaskResult = (int)ScriptResults.Success;
+                        return;
+                    }
+                    else
+                    {
+                        Dts.TaskResult = (int)ScriptResults.Failure;
+                        return;
+                    }
+                }
+                else
+                {
+                    if (RealizarMovimiento())
+                    {
+
+                        Dts.TaskResult = (int)ScriptResults.Success;
+                        return;
+                    }
+                    else
+                    {
+                        Dts.TaskResult = (int)ScriptResults.Failure;
+                        return;
+                    }
+                }
+            }
+
+            Dts.TaskResult = (int)ScriptResults.Failure;
+        }
+
+        public bool RealizarMovimiento()
+        {
+            List<ModelosLiquidacion> resultadoAS400 = ObtenerInfoAs400();
+            if (resultadoAS400.Count == 0)
+            {
+                RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
+                return true;
+            }
+
+            List<ModelosLiquidacion> resultadoSqlServer = ObtenerInfoSqlServer();
+            if (resultadoSqlServer.Count == 0)
+            {
+                RegistraProceso("F", $"No se encontraron registros en SQLSERVER para el día {fecha_generacion}");
+                return false;
+            }
+
+            if (!validaDiferencias(resultadoAS400, resultadoSqlServer))
+                return false;
+
+
+            if (!UpdateArchivoAS400())
+                return false;
+
+            RegistraProceso("E", $"Proceso ejecutado exitosamente");
+            return true;
+
+        }
+
+        public bool ObtieneParametros()
+        {
+            ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "ParModelosLiq";
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string idParametro = reader["IdParametro"].ToString();
+                            string valorParametro = reader["ValorParametro"].ToString();
+
+                            if (!parametros.ContainsKey(idParametro))
+                                parametros.Add(idParametro, valorParametro);
+                        }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess");
+
+                return false;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+        public void ParseaConsultas()
+        {
+            string hora = DateTime.Now.ToString("HHmmss");
+            string fecha = DateTime.Now.ToString("yyyy-MM-dd");
+            sql_ConsultaEstado = parametros["ConsultaEstado"]
+                 .Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+                 .Replace("{FECHA_GENERACION}", $"'{fecha_generacion}'")
+                 .Replace("{ESTADO_INICIAL}", $"'{parametros["EstadoInicial"]}'")
+                 .Replace("{ARCHIVO_GENERADO}", $"'{parametros["ArchivoGenerado"]}'");
+
+            sql_ConsultaOrigen = parametros["ConsultaOrigen"]
+                .Replace("{ARCHIVO_ORIGEN}", parametros["ArchiviOrigen"]);
+
+            sql_ConsultaOrigenBandejaVasa = parametros["ConsultaOrigen"]
+               .Replace("{ARCHIVO_ORIGEN}", parametros["ArchivoDestino"]);
+
+            sql_ConsultaActualizar = parametros["ConsultaActualizar"]
+                .Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+                .Replace("{ESTADO_FINAL}", $"'{parametros["EstadoFinal"]}'")
+                .Replace("{FECHA_PROCESADO}", $"'{fecha}'")
+                .Replace("{HORA_PROCESADO}", $"'{hora}'")
+                .Replace("{USER}", $"'{parametros["Usuario"]}'")
+                .Replace("{FECHA_GENERACION}", $"'{fecha_generacion}'")
+                .Replace("{ESTADO_INICIAL}", $"'{parametros["EstadoInicial"]}'")
+                .Replace("{ARCHIVO_GENERADO}", $"'{parametros["ArchivoGenerado"]}'");
+        }
+        public string ObtenerEstadoProceso()
+        {
+            string estado_proceso = string.Empty;
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
+                }
+
+
+                using (IDbCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = sql_ConsultaEstado;
+                    using (IDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            estado_proceso = reader.GetString(0);
+                        }
+                    }
+                }
+
+
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener estado proceso {sql_ConsultaEstado}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
+
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return estado_proceso;
+        }
+
+        public bool RealizarReintento(string estadoProceso)
+        {
+            int intentoActual = 0;
+            var reintentos = ObtenerInfoReintentos();
+
+            while (estadoProceso != "G" && intentoActual < reintentos.CantidadReintentos)
+            {
+                intentoActual++;
+                System.Threading.Thread.Sleep(reintentos.MinutosReintentos * 60 * 1000);
+                estadoProceso = ObtenerEstadoProceso();
+            }
+
+            if (estadoProceso == "G")
+            {
+                return RealizarMovimiento();
+            }
+            else
+            {
+                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
+
+                return false;
+            }
+        }
+
+        public Reintentos ObtenerInfoReintentos()
+        {
+            return new Reintentos
+            {
+                CantidadReintentos = int.Parse(parametros["CantidadReintentos"]),
+                MinutosReintentos = int.Parse(parametros["MinutosReintentos"]),
+            };
+        }
+
+        public List<ModelosLiquidacion> ObtenerInfoSqlServer()
+        {
+            List<ModelosLiquidacion> modelosLiquidacion = new List<ModelosLiquidacion>();
+            ConnectionManager cm = Dts.Connections["BANDEJAVASA"]; 
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = sql_ConsultaOrigenBandejaVasa;
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            ModelosLiquidacion modelo = new ModelosLiquidacion();
+
+                            modelo.MODELOLIQUIDACION = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+                            modelo.MINIMOIMPAGOMORAML = reader.IsDBNull(1) ? 0 : reader.GetDecimal(1);
+                            modelo.MINIMOIMPAGOMORAUSD = reader.IsDBNull(2) ? 0 : reader.GetDecimal(2);
+                            modelo.TASAML = reader.IsDBNull(3) ? 0 : reader.GetDecimal(3);
+                            modelo.TASAUSD = reader.IsDBNull(4) ? 0 : reader.GetDecimal(4);
+                            modelosLiquidacion.Add(modelo);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]}");
+                Dts.TaskResult = (int)ScriptResults.Failure;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return modelosLiquidacion;
+        }
+
+        public List<ModelosLiquidacion> ObtenerInfoAs400()
+        {
+            List<ModelosLiquidacion> modelosLiquidacion = new List<ModelosLiquidacion>();
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                }
+
+                {
+                    using (IDbCommand cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = sql_ConsultaOrigen;
+                        using (IDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                ModelosLiquidacion modelo = new ModelosLiquidacion();
+
+                                modelo.MODELOLIQUIDACION = reader.GetDecimal(0);
+                                modelo.MINIMOIMPAGOMORAML = reader.GetDecimal(1);
+                                modelo.MINIMOIMPAGOMORAUSD = reader.GetDecimal(2);
+                                modelo.TASAML = reader.GetDecimal(3);
+                                modelo.TASAUSD = reader.GetDecimal(4);
+                                modelosLiquidacion.Add(modelo);
+                            }
+                        }
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
+
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return modelosLiquidacion;
+        }
+
+      
+        private void EnviarCorreoAlerta(List<string> diferencias)
+        {
+            string cuerpo = "Se encontraron diferencias en ModelosLiquidacion:\n\n";
+            string destinatarios = parametros["MailTo"];
+
+            foreach (var dif in diferencias)
+            {
+                cuerpo += dif + "\n";
+            }
+
+
+            using (var mail = new MailMessage())
+            {
+                mail.From = new MailAddress(parametros["MailFrom"]);
+                foreach(var correo in destinatarios.Split(';'))
+                {
+                    mail.To.Add(correo.Trim());
+                }
+
+                mail.Subject = parametros["MailSubject"];
+                mail.Body = cuerpo;
+
+                using (var smtp = new SmtpClient(parametros["MailServer"]))
+                {
+
+                    smtp.Send(mail);
+                }
+            }
+        }
+
+        private void ActualizarModelo(ModelosLiquidacion modeloDb2)
+        {
+            ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = parametros["ConsultUpdate"];
+
+                    cmd.Parameters.AddWithValue("@TasaML", modeloDb2.TASAML);
+                    cmd.Parameters.AddWithValue("@TasaUSD", modeloDb2.TASAUSD);
+                    cmd.Parameters.AddWithValue("@ModeloLiquidacion", modeloDb2.MODELOLIQUIDACION);
+
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Error al actualizar modelo {modeloDb2.MODELOLIQUIDACION}: {ex.Message}");
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+
+        public bool validaDiferencias(List<ModelosLiquidacion> modelosAS400, List<ModelosLiquidacion> modelosSQL)
+        {
+            try
+            {
+                bool exito = false;
+                var diferencias = new List<string>();
+
+                foreach (var modeloDb2 in modelosAS400)
+                {
+                    var modeloSql = modelosSQL.Find(m => m.MODELOLIQUIDACION == modeloDb2.MODELOLIQUIDACION);
+
+                    if (modeloSql == null)
+                    {
+                        diferencias.Add($"Modelo {modeloDb2.MODELOLIQUIDACION} existe en core pero no en ParModelosLiquidacion.");
+                    }
+                    else
+                    {
+                        if (modeloDb2.TASAML != modeloSql.TASAML || modeloDb2.TASAUSD != modeloSql.TASAUSD)
+                        {
+                            diferencias.Add($"Modelo {modeloDb2.MODELOLIQUIDACION} difiere en tasas. Core: ML={modeloDb2.TASAML}, USD={modeloDb2.TASAUSD} | ParModelosLiquidacion: ML={modeloSql.TASAML}, USD={modeloSql.TASAUSD}");
+
+                            if (parametros["PrismaActivo"] == "true")
+                            {
+                                ActualizarModelo(modeloDb2);
+                            }
+                        }
+                    }
+                }
+
+                if (diferencias.Count > 0)
+                {
+                    EnviarCorreoAlerta(diferencias);
+                }
+
+                exito = true;
+                return exito;
+                
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Error en comparación: {ex.Message}");
+                return false;
+            }
+
+        }
 
 
 
 
+        public bool UpdateArchivoAS400()
+        {
 
-import { /* ...los que ya tienes... */ LayoutTemplate } from "lucide-react";
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (IDbCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = sql_ConsultaActualizar;
+                    int rowsAffected = cmd.ExecuteNonQuery();
+
+                    if (rowsAffected == 0)
+                    {
+                        return false;
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return true;
+        }
+
+
+        public void RegistraProceso(string estadoProceso, string mensaje)
+        {
+            ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "ParModelosLiq";
+                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
+                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
+
+                    cmd.ExecuteNonQuery();
+                }
+
+            }
+            catch (Exception ex)
+            {
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+        #region ScriptResults declaration
+        /// <summary>
+        /// This enum provides a convenient shorthand within the scope of this class for setting the
+        /// result of the script.
+        /// 
+        /// This code was generated automatically.
+        /// </summary>
+        enum ScriptResults
+        {
+            Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
+            Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
+        };
+        #endregion
+
+    }
+}
 
 
 
 
-
-      {
-        key: "plantillas",
-        pageId: null, // Pendiente: aún no existe en la BD
-        label: "Plantillas",
-        description: "Estructuras de indicadores construidas con marcadores.",
-        icon: LayoutTemplate,
-        path: "plantillas",
-        component: PlantillasPage,
-      },
+Ayudame con este por favor
