@@ -9,15 +9,16 @@
 
 #region Namespaces
 using Microsoft.SqlServer.Dts.Runtime;
-using ST_a5d188e31b5a44e599b008f105924707.Models;
+using ST_889e93843e6a41799ada64a68533427e.Models;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.OleDb;
 using System.Data.SqlClient;
+using System.Windows.Forms;
 #endregion
 
-namespace ST_a5d188e31b5a44e599b008f105924707
+namespace ST_889e93843e6a41799ada64a68533427e
 {
     /// <summary>
     /// ScriptMain is the entry point class of the script.  Do not change the name, attributes,
@@ -92,29 +93,6 @@ namespace ST_a5d188e31b5a44e599b008f105924707
         public string sql_ConsultaOrigen = string.Empty;
         public string sql_ConsultaActualizar = string.Empty;
 
-        // Timeout por defecto (segundos) si el parámetro "TimeoutSegundos" no existe en la tabla
-        // de parametrización o trae un valor inválido. 0 = sin límite.
-        private const int TIMEOUT_DEFAULT = 600;
-
-        /// <summary>
-        /// Timeout (en segundos) para comandos y bulk copy, leído del parámetro "TimeoutSegundos"
-        /// (del proceso "ETarjetas" o de "General"). Si no existe o no es válido, usa TIMEOUT_DEFAULT.
-        /// </summary>
-        public int TimeoutSegundos
-        {
-            get
-            {
-                string valor;
-                int segundos;
-                if (parametros.TryGetValue("TimeoutSegundos", out valor) &&
-                    int.TryParse(valor, out segundos) && segundos >= 0)
-                {
-                    return segundos;
-                }
-                return TIMEOUT_DEFAULT;
-            }
-        }
-
         /// <summary>
         /// This method is called when this script task executes in the control flow.
         /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
@@ -122,13 +100,15 @@ namespace ST_a5d188e31b5a44e599b008f105924707
         /// </summary>
         public void Main()
         {
+            // TODO: Add your code here
+
             if (ObtieneParametros())
             {
                 fecha_generacion = parametros["FechaProceso"];
                 ParseaConsultas();
                 var estado_proceso = ObtenerEstadoProceso();
-                
-                if(estado_proceso == null)
+
+                if (estado_proceso == null)
                 {
                     Dts.TaskResult = (int)ScriptResults.Failure;
                     return;
@@ -146,12 +126,12 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                         Dts.TaskResult = (int)ScriptResults.Failure;
                         return;
                     }
+
                 }
                 else
                 {
                     if (RealizarMovimiento())
                     {
-
                         Dts.TaskResult = (int)ScriptResults.Success;
                         return;
                     }
@@ -160,45 +140,9 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                         Dts.TaskResult = (int)ScriptResults.Failure;
                         return;
                     }
+
                 }
             }
-
-            Dts.TaskResult = (int)ScriptResults.Failure;
-        }
-
-        public bool RealizarMovimiento()
-        {
-            List<Tarjeta> resultado = ObtenerInfoAs400();
-
-            // null = hubo error al leer AS400 (ya quedó registrado en el log)
-            if (resultado == null)
-                return false;
-
-            if (resultado.Count == 0)
-            {
-                RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
-                return false;
-            }
-
-
-            if (!PreParseo())
-                return false;
-
-            DataTable data = ConvertirADataTable(resultado);
-            if (data.Rows.Count == 0)
-                return false;
-
-            if (!EjecutarBulkInsertBandejaVasa(data))
-                return false;
-
-            if (!PostParseo())
-                return false;
-
-            if (!UpdateArchivoAS400())
-                return false;
-
-            RegistraProceso("E", $"Proceso ejecutado exitosamente");
-            return true;
 
         }
 
@@ -215,46 +159,35 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                     throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
-                // Primero los del proceso (tienen prioridad) y luego los generales.
-                // Si un parámetro existe en ambos, se queda el valor de "ETarjetas".
-                CargarParametrosProceso(conn, "ETarjetas");
-                CargarParametrosProceso(conn, "General");
+                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "EMaestroFiadores";
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string idParametro = reader["IdParametro"].ToString();
+                            string valorParametro = reader["ValorParametro"].ToString();
+
+                            if (!parametros.ContainsKey(idParametro))
+                                parametros.Add(idParametro, valorParametro);
+                        }
+                    }
+                }
 
                 return true;
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message}");
-
+                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message.ToString()}");
                 return false;
             }
             finally
             {
                 if (conn != null)
                     cm.ReleaseConnection(conn);
-            }
-        }
-
-        private void CargarParametrosProceso(SqlConnection conn, string proceso)
-        {
-            using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
-            {
-                cmd.CommandType = CommandType.StoredProcedure;
-                // Aquí TimeoutSegundos puede no estar cargado aún, así que usa TIMEOUT_DEFAULT
-                cmd.CommandTimeout = TimeoutSegundos;
-                cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = proceso;
-
-                using (SqlDataReader reader = cmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string idParametro = reader["IdParametro"].ToString();
-                        string valorParametro = reader["ValorParametro"].ToString();
-
-                        if (!parametros.ContainsKey(idParametro))
-                            parametros.Add(idParametro, valorParametro);
-                    }
-                }
             }
         }
 
@@ -281,56 +214,13 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 .Replace("{ESTADO_INICIAL}", $"'{parametros["EstadoInicial"]}'")
                 .Replace("{ARCHIVO_GENERADO}", $"'{parametros["ArchivoGenerado"]}'");
         }
-        public string ObtenerEstadoProceso()
-        {
-            string estado_proceso = string.Empty;
-            ConnectionManager cm = Dts.Connections["AS400"];
-            OleDbConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as OleDbConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
-                }
-
-
-                using (IDbCommand cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = sql_ConsultaEstado;
-                    cmd.CommandTimeout = TimeoutSegundos;
-                    using (IDataReader reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            estado_proceso = reader.GetString(0);
-                        }
-                    }
-                }
-
-
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló obtener estado proceso {sql_ConsultaEstado} con error {ex.Message}");
-                return null;
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-
-            return estado_proceso;
-        }
 
         public bool RealizarReintento(string estadoProceso)
         {
             int intentoActual = 0;
             var reintentos = ObtenerInfoReintentos();
 
-            while (estadoProceso != "G" && intentoActual < reintentos.CantidadReintentos)
+            while (estadoProceso != parametros["EstadoInicial"] && intentoActual < reintentos.CantidadReintentos)
             {
                 intentoActual++;
                 System.Threading.Thread.Sleep(reintentos.MinutosReintentos * 60 * 1000);
@@ -349,21 +239,39 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             }
         }
 
-        public Reintentos ObtenerInfoReintentos()
+        public bool RealizarMovimiento()
         {
-            return new Reintentos
+            List<Fiadores> resultado = ObtenerInfoAs400();
+            if (resultado.Count == 0)
             {
-                CantidadReintentos = int.Parse(parametros["CantidadReintentos"]),
-                MinutosReintentos = int.Parse(parametros["MinutosReintentos"]),
-            };
+                RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
+                UpdateArchivoAS400();
+                return true;
+            }
+
+            if (!PreParseo())
+                return false;
+
+            DataTable data = ConvertirADataTable(resultado);
+            if (data.Rows.Count == 0)
+                return false;
+
+            if (!EjecutarBulkInsert(data))
+                return false;
+
+            if (!PostParseo())
+                return false;
+
+            if (!UpdateArchivoAS400())
+                return false;
+
+            RegistraProceso("E", $"Proceso ejecutado exitosamente");
+            return true;
         }
 
-        /// <summary>
-        /// Devuelve la lista de registros del AS400, o null si ocurrió un error al leer.
-        /// </summary>
-        public List<Tarjeta> ObtenerInfoAs400()
+        public bool UpdateArchivoAS400()
         {
-            List<Tarjeta> tarjetas = new List<Tarjeta>();
+
             ConnectionManager cm = Dts.Connections["AS400"];
             OleDbConnection conn = null;
 
@@ -375,134 +283,22 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                     throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
+                using (IDbCommand cmd = conn.CreateCommand())
                 {
-                    using (IDbCommand cmd = conn.CreateCommand())
-                    {
-                        cmd.CommandText = sql_ConsultaOrigen;
-                        cmd.CommandTimeout = TimeoutSegundos;
-                        using (IDataReader reader = cmd.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                Tarjeta tarjeta = new Tarjeta();
+                    cmd.CommandText = sql_ConsultaActualizar;
+                    int rowsAffected = cmd.ExecuteNonQuery();
 
-                                tarjeta.NumeroTarjeta = reader.GetString(0);
-                                tarjeta.NumeroTarjetaRes = reader.GetString(1);
-                                tarjeta.LongitudNoTarjeta = reader.GetString(2);
-                                tarjeta.NoPlasticoGenerado = reader.GetDecimal(3);
-                                tarjeta.CodigoBanco = reader.GetDecimal(4);
-                                tarjeta.CodigoCasa = reader.GetDecimal(5);
-                                tarjeta.NoUsuario = reader.GetString(6);
-                                tarjeta.NombreCliente = reader.GetString(7);
-                                tarjeta.NombreTarjetaImprimir = reader.GetString(8);
-                                tarjeta.CodigoProducto = reader.GetString(9);
-                                tarjeta.Cartera = reader.GetDecimal(10);
-                                tarjeta.ModeloLiquidacion = reader.GetDecimal(11);
-                                tarjeta.GrupoAfinidad = reader.GetDecimal(12);
-                                tarjeta.CodigoPais = reader.GetDecimal(13);
-                                tarjeta.TipoDocumento = reader.GetString(14);
-                                tarjeta.NoDocumento = reader.GetString(15);
-                                tarjeta.EstadoTarjeta = reader.GetDecimal(16);
-                                tarjeta.FechaAltaTarjeta = reader.GetString(17);
-                                tarjeta.CategoriaTarjeta = reader.GetString(18);
-                                tarjeta.EstadoHabilitar = reader.GetString(19);
-                                tarjeta.Admin = reader.GetDecimal(20);
-                                tarjeta.SubAdmin = reader.GetDecimal(21);
-                                tarjeta.FechaRenovacion = reader.GetString(22);
-                                tarjeta.FechaInicioVigencia = reader.GetString(23);
-                                tarjeta.FechaFinVigencia = reader.GetString(24);
-                                tarjeta.FechaProceso = reader.GetString(25);
-                                tarjeta.SubEstado = reader.GetDecimal(26);
-                                tarjeta.NoProceso = reader.GetDecimal(27);
-                                tarjeta.BonificacionCargo = reader.GetString(28);
-                                tarjeta.CantidadCuotasCargo = reader.GetString(29);
-                                tarjeta.MarcaCobroCargo = reader.GetString(30);
-                                tarjeta.ImporteCargo = reader.GetDecimal(31);
-                                tarjeta.FechaGeneraCargo = reader.GetString(32);
-                                tarjeta.Nacionalidad = reader.GetString(33);
-                                tarjeta.Sexo = reader.GetString(34);
-                                tarjeta.EstadoCivil = reader.GetString(35);
-                                tarjeta.FechaNacimiento = reader.GetString(36);
-                                tarjeta.CodigoOcupacion = reader.GetDecimal(37);
-                                tarjeta.Denominacion4LineaEmbozado = reader.GetString(38);
-                                tarjeta.FechaCargoRenovacion = reader.GetString(39);
-                                tarjeta.VigenciaAnteriorTarjeta = reader.GetDecimal(40);
-                                tarjeta.VigenciaActualTarjeta = reader.GetDecimal(41);
-                                tarjeta.IndicadorLimiteCompra = reader.GetString(42);
-                                tarjeta.IndicadorLimiteCompraCuotas = reader.GetString(43);
-                                tarjeta.IndicadorLimiteCompraAdelanto = reader.GetString(44);
-                                tarjeta.IndicadorLimiteCompraTransacc = reader.GetString(45);
-                                tarjeta.PorcentajeLimiteCompra = reader.GetDecimal(46);
-                                tarjeta.PorcentajeLimiteCompraCuotas = reader.GetDecimal(47);
-                                tarjeta.PorcentajeLimiteCompraAdelanto = reader.GetDecimal(48);
-                                tarjeta.PorcentajeLimiteCompraTransacc = reader.GetDecimal(49);
-                                tarjeta.UltimoProcesoABM = reader.GetString(50);
-                                tarjeta.CentroCosto = reader.GetString(51);
-                                tarjeta.Empresa = reader.GetString(52);
-                                tarjeta.Planta = reader.GetString(53);
-                                tarjeta.CentroCostoTarjeta = reader.GetString(54);
-                                tarjeta.FechaReposicion = reader.GetString(55);
-                                tarjeta.NoTarjetaAnterior = reader.GetString(56);
-                                tarjeta.NoTarjetaAnteriorRes = reader.GetString(57);
-                                tarjeta.NoTarjetaNuevo = reader.GetString(58);
-                                tarjeta.NoTarjetaNuevoRes = reader.GetString(59);
-                                tarjeta.MarcaFuncionarioNovedadABM = reader.GetString(60);
-                                tarjeta.MarcaOrigenNovedadABM = reader.GetString(61);
-                                tarjeta.Supervisor = reader.GetString(62);
-                                tarjeta.Funcionario = reader.GetString(63);
-                                tarjeta.NoClienteUnico = reader.GetString(64);
-                                tarjeta.IndicativoEmbozado = reader.GetString(65);
-                                tarjeta.Seguro01 = reader.GetString(66);
-                                tarjeta.Seguro02 = reader.GetString(67);
-                                tarjeta.NoSolicitudABM = reader.GetString(68);
-                                tarjeta.ProductoTipo = reader.GetString(69);
-                                tarjeta.NoTarjetaOriginal = reader.GetString(70);
-                                tarjeta.NoTarjetaOriginalRes = reader.GetString(71);
-                                tarjeta.MarcaTarjetaRelacionada = reader.GetString(72);
-                                tarjeta.Seguro03 = reader.GetString(73);
-                                tarjeta.Seguro04 = reader.GetString(74);
-                                tarjeta.Seguro05 = reader.GetString(75);
-                                tarjeta.PerfilConsumo = reader.GetString(76);
-                                tarjeta.ApellidoTarjeta = reader.GetString(77);
-                                tarjeta.NombreTarjeta = reader.GetString(78);
-                                tarjeta.NombreAmpliado = reader.GetString(79);
-                                tarjeta.Reembozado = reader.GetString(80);
-                                tarjeta.Filler1 = reader.GetString(81);
-                                tarjeta.AltaPuntoVenta = reader.GetString(82);
-                                tarjeta.ImporteTarjetaLimiteCompra = reader.GetDecimal(83);
-                                tarjeta.ImporteTarjetaLimiteCompraCuotas = reader.GetDecimal(84);
-                                tarjeta.ImporteTarjetaLimiteCompraAdelantos = reader.GetDecimal(85);
-                                tarjeta.ImporteTarjetaLimite = reader.GetDecimal(86);
-                                tarjeta.CodigoProblemaTarjeta = reader.GetString(87);
-                                tarjeta.Telefono1 = reader.GetString(88);
-                                tarjeta.Telefono2 = reader.GetString(89);
-                                tarjeta.MarcaOrigenTarjeta = reader.GetString(90);
-                                tarjeta.MarcaPlastico = reader.GetString(91);
-                                tarjeta.MarcaTarjetaSospechosa = reader.GetString(92);
-                                tarjeta.MarcaTarjetaVencida = reader.GetString(93);
-                                tarjeta.NoEmpleadoCtaEmpresa = reader.GetString(94);
-                                tarjeta.Filler2 = reader.GetString(95);
-                                tarjeta.LineaEnArchivo = reader.GetDecimal(96);
-                                tarjeta.BinTarjeta = reader.GetString(97);
-                                tarjeta.TarjetaImprimir = reader.GetString(98);
-                                tarjeta.BinTarjetaNueva = reader.GetString(99);
-                                tarjeta.TarjetaNuevaImprimir = reader.GetString(100);
-                                tarjeta.BinTarjetaAnterior = reader.GetString(101);
-                                tarjeta.TarjetaAnteriorImprimir = reader.GetString(102);
-                                tarjeta.NoCuentaClaro = reader.GetString(103);
-                                tarjeta.ProcesadorOrigen = "LOCAL";
-                                tarjetas.Add(tarjeta);
-                            }
-                        }
+                    if (rowsAffected == 0)
+                    {
+                        return false;
                     }
                 }
 
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message}");
-
-                return null;
+                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message.ToString()}");
+                Dts.TaskResult = (int)ScriptResults.Failure;
 
             }
             finally
@@ -511,7 +307,134 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                     cm.ReleaseConnection(conn);
             }
 
-            return tarjetas;
+            return true;
+        }
+
+        public Reintentos ObtenerInfoReintentos()
+        {
+            return new Reintentos
+            {
+                CantidadReintentos = int.Parse(parametros["CantidadReintentos"]),
+                MinutosReintentos = int.Parse(parametros["MinutosReintentos"]),
+            };
+        }
+
+
+        public string ObtenerEstadoProceso()
+        {
+            string estado_proceso = string.Empty;
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                }
+
+                {
+                    using (IDbCommand cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = sql_ConsultaEstado;
+                        using (IDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                estado_proceso = reader.GetString(0);
+                            }
+                        }
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener estado proceso {sql_ConsultaEstado} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
+                return null;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return estado_proceso;
+        }
+
+        public List<Fiadores> ObtenerInfoAs400()
+        {
+            List<Fiadores> fiadores = new List<Fiadores>();
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                }
+
+                {
+                    using (IDbCommand cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = sql_ConsultaOrigen;
+                        using (IDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                Fiadores fiador = new Fiadores();
+
+                                fiador.ORIGEN = reader.GetString(0);
+                                fiador.NOUSUARIO = reader.GetString(1);
+                                fiador.NOMBREFIADOR1 = reader.GetString(2);
+                                fiador.NUMCEDULAFIADOR1 = reader.GetString(3);
+                                fiador.DIRECCIONFIADOR1 = reader.GetString(4);
+                                fiador.DIRECCIONFIADOR1_2 = reader.GetString(5);
+                                fiador.DIRECCIONFIADOR1_3 = reader.GetString(6);
+                                fiador.TELEFONO1_1 = reader.GetString(7);
+                                fiador.TELEFONO1_2 = reader.GetString(8);
+                                fiador.NOMBREFIADOR2 = reader.GetString(9);
+                                fiador.NUMCEDULAFIADOR2 = reader.GetString(10);
+                                fiador.DIRECCIONFIADOR2 = reader.GetString(11);
+                                fiador.DIRECCIONFIADOR2_2 = reader.GetString(12);
+                                fiador.DIRECCIONFIADOR2_3 = reader.GetString(13);
+                                fiador.TELEFONO2_1 = reader.GetString(14);
+                                fiador.TELEFONO2_2 = reader.GetString(15);
+                                fiador.NOMBREFIADOR3 = reader.GetString(16);
+                                fiador.NUMCEDULAFIADOR3 = reader.GetString(17);
+                                fiador.DIRECCIONFIADOR3 = reader.GetString(18);
+                                fiador.DIRECCIONFIADOR3_2 = reader.GetString(19);
+                                fiador.DIRECCIONFIADOR3_3 = reader.GetString(20);
+                                fiador.TELEFONO3_1 = reader.GetString(21);
+                                fiador.TELEFONO3_2 = reader.GetString(22);
+                                fiador.NOCUENTACLARO = reader.GetString(23);
+                                fiador.PROCSADORORIGEN = "LOCAL";
+                                fiadores.Add(fiador);
+                            }
+                        }
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
+
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return fiadores;
         }
 
         public bool PreParseo()
@@ -530,9 +453,8 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 using (SqlCommand cmd = new SqlCommand(parametros["PreParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -540,7 +462,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -567,9 +489,8 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 using (SqlCommand cmd = new SqlCommand(parametros["PostParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -577,7 +498,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -588,244 +509,216 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             }
         }
 
-        public DataTable ConvertirADataTable(List<Tarjeta> tarjetas)
+        public DataTable ConvertirADataTable(List<Fiadores> fiadores)
         {
 
             try
             {
                 DataTable dt = new DataTable();
-                dt.Columns.Add("NumeroTarjeta", typeof(string));
-                dt.Columns.Add("NumeroTarjetaRes", typeof(string));
-                dt.Columns.Add("LongitudNoTarjeta", typeof(string));
-                dt.Columns.Add("NoPlasticoGenerado", typeof(int));
-                dt.Columns.Add("CodigoBanco", typeof(short));
-                dt.Columns.Add("CodigoCasa", typeof(short));
                 dt.Columns.Add("NoUsuario", typeof(string));
-                dt.Columns.Add("NombreCliente", typeof(string));
-                dt.Columns.Add("NombreTarjetaImprimir", typeof(string));
-                dt.Columns.Add("CodigoProducto", typeof(string));
-                dt.Columns.Add("Cartera", typeof(short));
-                dt.Columns.Add("ModeloLiquidacion", typeof(short));
-                dt.Columns.Add("GrupoAfinidad", typeof(int));
+                dt.Columns.Add("OrdenFiador", typeof(string));
+                dt.Columns.Add("CodigoBanco", typeof(short));
                 dt.Columns.Add("CodigoPais", typeof(short));
+                dt.Columns.Add("NombreApellido", typeof(string));
+                dt.Columns.Add("Empresa", typeof(string));
                 dt.Columns.Add("TipoDocumento", typeof(string));
                 dt.Columns.Add("NoDocumento", typeof(string));
-                dt.Columns.Add("EstadoTarjeta", typeof(short));
-                dt.Columns.Add("FechaAltaTarjeta", typeof(DateTime));
-                dt.Columns.Add("CategoriaTarjeta", typeof(string));
-                dt.Columns.Add("EstadoHabilitar", typeof(string));
-                dt.Columns.Add("Admin", typeof(short));
-                dt.Columns.Add("SubAdmin", typeof(short));
-                dt.Columns.Add("FechaRenovacion", typeof(DateTime));
-                dt.Columns.Add("FechaInicioVigencia", typeof(DateTime));
-                dt.Columns.Add("FechaFinVigencia", typeof(DateTime));
-                dt.Columns.Add("FechaProceso", typeof(DateTime));
-                dt.Columns.Add("SubEstado", typeof(byte));
-                dt.Columns.Add("NoProceso", typeof(int));
-                dt.Columns.Add("BonificacionCargo", typeof(string));
-                dt.Columns.Add("CantidadCuotasCargo", typeof(string));
-                dt.Columns.Add("MarcaCobroCargo", typeof(string));
-                dt.Columns.Add("ImporteCargo", typeof(int));
-                dt.Columns.Add("FechaGeneraCargo", typeof(DateTime));
-                dt.Columns.Add("Nacionalidad", typeof(string));
-                dt.Columns.Add("Sexo", typeof(string));
-                dt.Columns.Add("EstadoCivil", typeof(string));
                 dt.Columns.Add("FechaNacimiento", typeof(DateTime));
-                dt.Columns.Add("CodigoOcupacion", typeof(int));
-                dt.Columns.Add("Denominacion4LineaEmbozado", typeof(string));
-                dt.Columns.Add("FechaCargoRenovacion", typeof(DateTime));
-                dt.Columns.Add("VigenciaAnteriorTarjeta", typeof(byte));
-                dt.Columns.Add("VigenciaActualTarjeta", typeof(byte));
-                dt.Columns.Add("IndicadorLimiteCompra", typeof(string));
-                dt.Columns.Add("IndicadorLimiteCompraCuotas", typeof(string));
-                dt.Columns.Add("IndicadorLimiteCompraAdelanto", typeof(string));
-                dt.Columns.Add("IndicadorLimiteCompraTransaccion", typeof(string));
-                dt.Columns.Add("PorcentajeLimiteCompra", typeof(int));
-                dt.Columns.Add("PorcentajeLimiteCompraCuotas", typeof(int));
-                dt.Columns.Add("PorcentajeLimiteCompraAdelantos", typeof(int));
-                dt.Columns.Add("PorcentajeLimiteCompraTransaccion", typeof(int));
-                dt.Columns.Add("UltimoProcesoABM", typeof(string));
-                dt.Columns.Add("CentroCosto", typeof(string));
-                dt.Columns.Add("Empresa", typeof(string));
-                dt.Columns.Add("Planta", typeof(string));
-                dt.Columns.Add("CentroCostoTarjeta", typeof(string));
-                dt.Columns.Add("FechaReposicion", typeof(DateTime));
-                dt.Columns.Add("NoTarjetaAnterior", typeof(string));
-                dt.Columns.Add("NoTarjetaAnteriorRes", typeof(string));
-                dt.Columns.Add("NoTarjetaNuevo", typeof(string));
-                dt.Columns.Add("NoTarjetaNuevoRes", typeof(string));
-                dt.Columns.Add("MarcaFuncionarioNovedadABM", typeof(string));
-                dt.Columns.Add("MarcaOrigenNovedadABM", typeof(string));
+                dt.Columns.Add("FechaAltaFiador", typeof(DateTime));
+                dt.Columns.Add("FechaProceso", typeof(DateTime));
                 dt.Columns.Add("Supervisor", typeof(string));
                 dt.Columns.Add("Funcionario", typeof(string));
-                dt.Columns.Add("NoClienteUnico", typeof(string));
-                dt.Columns.Add("IndicativoEmbozado", typeof(string));
-                dt.Columns.Add("Seguro01", typeof(string));
-                dt.Columns.Add("Seguro02", typeof(string));
-                dt.Columns.Add("NoSolicitudABM", typeof(string));
-                dt.Columns.Add("ProductoTipo", typeof(string));
-                dt.Columns.Add("NoTarjetaOriginal", typeof(string));
-                dt.Columns.Add("NoTarjetaOriginalRes", typeof(string));
-                dt.Columns.Add("MarcaTarjetaRelacionada", typeof(string));
-                dt.Columns.Add("Seguro03", typeof(string));
-                dt.Columns.Add("Seguro04", typeof(string));
-                dt.Columns.Add("Seguro05", typeof(string));
-                dt.Columns.Add("PerfilConsumo", typeof(string));
-                dt.Columns.Add("ApellidoTarjeta", typeof(string));
-                dt.Columns.Add("NombreTarjeta", typeof(string));
-                dt.Columns.Add("NombreAmpliado", typeof(string));
-                dt.Columns.Add("Reembozado", typeof(string));
+                dt.Columns.Add("DomicilioParticular1", typeof(string));
+                dt.Columns.Add("NoPuertaParticular", typeof(string));
+                dt.Columns.Add("DomicilioParticular2", typeof(string));
+                dt.Columns.Add("DomicilioParticular3", typeof(string));
+                dt.Columns.Add("CodigoPostalParticular", typeof(string));
+                dt.Columns.Add("BarrioParticular", typeof(string));
+                dt.Columns.Add("CiudadParticular", typeof(string));
+                dt.Columns.Add("CodigoDeptoParticular", typeof(string));
+                dt.Columns.Add("CodigoPaisParticular", typeof(string));
+                dt.Columns.Add("Telefono", typeof(string));
+                dt.Columns.Add("DomicilioCorrespondencia1", typeof(string));
+                dt.Columns.Add("NoPuertaCorrespondencia", typeof(string));
+                dt.Columns.Add("DomicilioCorrespondencia2", typeof(string));
+                dt.Columns.Add("DomicilioCorrespondencia3", typeof(string));
+                dt.Columns.Add("CodigoPostalCorrespondencia", typeof(string));
+                dt.Columns.Add("BarrioCorrespondencia", typeof(string));
+                dt.Columns.Add("CiudadCorrespondencia", typeof(string));
+                dt.Columns.Add("CodigoDeptoCorrespondencia", typeof(string));
+                dt.Columns.Add("CodigoPaisCorrespondencia", typeof(string));
+                dt.Columns.Add("CasillaCorreoCorrespondencia", typeof(string));
+                dt.Columns.Add("UsuEmailUsuario", typeof(string));
+                dt.Columns.Add("UsuEmailDominio", typeof(string));
+                dt.Columns.Add("TelefonoLaboral", typeof(string));
                 dt.Columns.Add("Filler1", typeof(string));
-                dt.Columns.Add("AltaPuntoVenta", typeof(string));
-                dt.Columns.Add("ImporteTarjetaLimiteCompra", typeof(decimal));
-                dt.Columns.Add("ImporteTarjetaLimiteCompraCuotas", typeof(decimal));
-                dt.Columns.Add("ImporteTarjetaLimiteCompraAdelantos", typeof(decimal));
-                dt.Columns.Add("ImporteTarjetaLimite", typeof(decimal));
-                dt.Columns.Add("CodigoProblemaTarjeta", typeof(string));
-                dt.Columns.Add("Telefono1", typeof(string));
-                dt.Columns.Add("Telefono2", typeof(string));
-                dt.Columns.Add("MarcaOrigenTarjeta", typeof(string));
-                dt.Columns.Add("MarcaPlastico", typeof(string));
-                dt.Columns.Add("MarcaTarjetaSospechosa", typeof(string));
-                dt.Columns.Add("MarcaTarjetaVencida", typeof(string));
-                dt.Columns.Add("NoEmpleadoCtaEmpresa", typeof(string));
-                dt.Columns.Add("Filler2", typeof(string));
+                dt.Columns.Add("NoCuentaClaro", typeof(string));
                 dt.Columns.Add("larId", typeof(int));
                 dt.Columns.Add("LineaEnArchivo", typeof(int));
-                dt.Columns.Add("BinTarjeta", typeof(string));
-                dt.Columns.Add("TarjetaImprimir", typeof(string));
-                dt.Columns.Add("BinTarjetaNueva", typeof(string));
-                dt.Columns.Add("TarjetaNuevaImprimir", typeof(string));
-                dt.Columns.Add("BinTarjetaAnterior", typeof(string));
-                dt.Columns.Add("TarjetaAnteriorImprimir", typeof(string));
-                dt.Columns.Add("NoCuentaClaro", typeof(string));
                 dt.Columns.Add("ProcesadorOrigen", typeof(string));
 
-                foreach (var c in tarjetas)
-                {
-                    dt.Rows.Add(
-                           LimpiarEspacios(c.NumeroTarjeta),
-                           LimpiarEspacios(c.NumeroTarjetaRes),
-                           LimpiarEspacios(c.LongitudNoTarjeta),
-                           LimpiarEspacios((int)Math.Round(c.NoPlasticoGenerado)),
-                           LimpiarEspacios(c.CodigoBanco),
-                           LimpiarEspacios(c.CodigoCasa),
-                           LimpiarEspacios(c.NoUsuario),
-                           LimpiarEspacios(c.NombreCliente),
-                           LimpiarEspacios(c.NombreTarjetaImprimir),
-                           LimpiarEspacios(c.CodigoProducto),
-                           LimpiarEspacios(c.Cartera),
-                           LimpiarEspacios(c.ModeloLiquidacion),
-                           LimpiarEspacios((int)Math.Round(c.GrupoAfinidad)),
-                           LimpiarEspacios(c.CodigoPais),
-                           LimpiarEspacios(c.TipoDocumento),
-                           LimpiarEspacios(c.NoDocumento),
-                           LimpiarEspacios(c.EstadoTarjeta),
-                           LimpiarEspacios(c.FechaAltaTarjeta),
-                           LimpiarEspacios(c.CategoriaTarjeta),
-                           (c.EstadoHabilitar),
-                           LimpiarEspacios(c.Admin),
-                           LimpiarEspacios(c.SubAdmin),
-                           LimpiarEspacios(c.FechaRenovacion),
-                           LimpiarEspacios(c.FechaInicioVigencia),
-                           LimpiarEspacios(c.FechaFinVigencia),
-                           LimpiarEspacios(c.FechaProceso),
-                           LimpiarEspacios(c.SubEstado),
-                           LimpiarEspacios((int)Math.Round(c.NoProceso)),
-                           LimpiarEspacios(c.BonificacionCargo),
-                           LimpiarEspacios(c.CantidadCuotasCargo),
-                           LimpiarEspacios(c.MarcaCobroCargo),
-                           LimpiarEspacios((int)Math.Round(c.ImporteCargo)),
-                           LimpiarEspacios(c.FechaGeneraCargo),
-                           LimpiarEspacios(c.Nacionalidad),
-                           LimpiarEspacios(c.Sexo),
-                           LimpiarEspacios(c.EstadoCivil),
-                           LimpiarEspacios(c.FechaNacimiento),
-                           LimpiarEspacios((int)Math.Round(c.CodigoOcupacion)),
-                           LimpiarEspacios(c.Denominacion4LineaEmbozado),
-                           LimpiarEspacios(c.FechaCargoRenovacion),
-                           LimpiarEspacios(c.VigenciaAnteriorTarjeta),
-                           LimpiarEspacios(c.VigenciaActualTarjeta),
-                           LimpiarEspacios(c.IndicadorLimiteCompra),
-                           LimpiarEspacios(c.IndicadorLimiteCompraCuotas),
-                           LimpiarEspacios(c.IndicadorLimiteCompraAdelanto),
-                           LimpiarEspacios(c.IndicadorLimiteCompraTransacc),
-                           LimpiarEspacios((int)Math.Round(c.PorcentajeLimiteCompra)),
-                           LimpiarEspacios((int)Math.Round(c.PorcentajeLimiteCompraCuotas)),
-                           LimpiarEspacios((int)Math.Round(c.PorcentajeLimiteCompraAdelanto)),
-                           LimpiarEspacios((int)Math.Round(c.PorcentajeLimiteCompraTransacc)),
-                           LimpiarEspacios(c.UltimoProcesoABM),
-                           LimpiarEspacios(c.CentroCosto),
-                           LimpiarEspacios(c.Empresa),
-                           LimpiarEspacios(c.Planta),
-                           LimpiarEspacios(c.CentroCostoTarjeta),
-                           LimpiarEspacios(c.FechaReposicion),
-                           LimpiarEspacios(c.NoTarjetaAnterior),
-                           LimpiarEspacios(c.NoTarjetaAnteriorRes),
-                           LimpiarEspacios(c.NoTarjetaNuevo),
-                           LimpiarEspacios(c.NoTarjetaNuevoRes),
-                           LimpiarEspacios(c.MarcaFuncionarioNovedadABM),
-                           LimpiarEspacios(c.MarcaOrigenNovedadABM),
-                           LimpiarEspacios(c.Supervisor),
-                           LimpiarEspacios(c.Funcionario),
-                           LimpiarEspacios(c.NoClienteUnico),
-                           LimpiarEspacios(c.IndicativoEmbozado),
-                           LimpiarEspacios(c.Seguro01),
-                           LimpiarEspacios(c.Seguro02),
-                           LimpiarEspacios(c.NoSolicitudABM),
-                           LimpiarEspacios(c.ProductoTipo),
-                           LimpiarEspacios(c.NoTarjetaOriginal),
-                           LimpiarEspacios(c.NoTarjetaOriginalRes),
-                           LimpiarEspacios(c.MarcaTarjetaRelacionada),
-                           LimpiarEspacios(c.Seguro03),
-                           LimpiarEspacios(c.Seguro04),
-                           LimpiarEspacios(c.Seguro05),
-                           LimpiarEspacios(c.PerfilConsumo),
-                           c.ApellidoTarjeta,
-                           c.NombreTarjeta,
-                           LimpiarEspacios(c.NombreAmpliado),
-                           LimpiarEspacios(c.Reembozado),
-                           LimpiarEspacios(c.Filler1),
-                           LimpiarEspacios(c.AltaPuntoVenta),
-                           LimpiarEspacios(c.ImporteTarjetaLimiteCompra),
-                           LimpiarEspacios(c.ImporteTarjetaLimiteCompraCuotas),
-                           LimpiarEspacios(c.ImporteTarjetaLimiteCompraAdelantos),
-                           LimpiarEspacios(c.ImporteTarjetaLimite),
-                           LimpiarEspacios(c.CodigoProblemaTarjeta),
-                           LimpiarEspacios(c.Telefono1),
-                           LimpiarEspacios(c.Telefono2),
-                           LimpiarEspacios(c.MarcaOrigenTarjeta),
-                           LimpiarEspacios(c.MarcaPlastico),
-                           LimpiarEspacios(c.MarcaTarjetaSospechosa),
-                           LimpiarEspacios(c.MarcaTarjetaVencida),
-                           LimpiarEspacios(c.NoEmpleadoCtaEmpresa),
-                           LimpiarEspacios(c.Filler2),
-                           LimpiarEspacios(23261),
-                           LimpiarEspacios((int)Math.Round(c.LineaEnArchivo)),
-                           LimpiarEspacios(c.BinTarjeta),
-                           LimpiarEspacios(c.TarjetaImprimir),
-                           LimpiarEspacios(c.BinTarjetaNueva),
-                           LimpiarEspacios(c.TarjetaNuevaImprimir),
-                           LimpiarEspacios(c.BinTarjetaAnterior),
-                           LimpiarEspacios(c.TarjetaAnteriorImprimir),
-                           LimpiarEspacios(c.NoCuentaClaro),
-                           LimpiarEspacios(c.ProcesadorOrigen)
-                    );
-                }
+                int ordenFiador = 1;
 
+                foreach (var c in fiadores)
+                {
+
+                    if (!String.IsNullOrEmpty(c.NOMBREFIADOR1))
+                    {
+                        dt.Rows.Add(
+                            LimpiarEspacios(c.NOUSUARIO),
+                            LimpiarEspacios(ordenFiador.ToString()),
+                            LimpiarEspacios(""), //CodigoBanco
+                            LimpiarEspacios(""), //CodigoPais
+                            LimpiarEspacios(c.NOMBREFIADOR1), //NombreApellido
+                            LimpiarEspacios(""), // Empresa
+                            LimpiarEspacios(""), // TipoDocumento
+                            LimpiarEspacios(c.NUMCEDULAFIADOR1), //NoDocumento
+                            LimpiarEspacios(""), // FechaNacimiento
+                            LimpiarEspacios(""), // FechaAltaFiador
+                            DateTime.Now, // FechaProceso ejemplo
+                            LimpiarEspacios(""), // Supervisor
+                            LimpiarEspacios(""), // Funcionario
+                            LimpiarEspacios(c.DIRECCIONFIADOR1), //DomicilioParticular1
+                            LimpiarEspacios(""), // NoPuertaParticular
+                            LimpiarEspacios(c.DIRECCIONFIADOR1_2), //DomicilioParticular2
+                            LimpiarEspacios(c.DIRECCIONFIADOR1_3), //DomicilioParticular3
+                            LimpiarEspacios(""), // CodigoPostalParticular
+                            LimpiarEspacios(""), // BarrioParticular
+                            LimpiarEspacios(""), // CiudadParticular
+                            LimpiarEspacios(""), // CodigoDeptoParticular
+                            LimpiarEspacios(""), // CodigoPaisParticular
+                            LimpiarEspacios(c.TELEFONO1_1), //Telefono
+                            LimpiarEspacios(""), // DomicilioCorrespondencia1
+                            LimpiarEspacios(""), // NoPuertaCorrespondencia
+                            LimpiarEspacios(""), // DomicilioCorrespondencia2
+                            LimpiarEspacios(""), // DomicilioCorrespondencia3
+                            LimpiarEspacios(""), // CodigoPostalCorrespondencia
+                            LimpiarEspacios(""), // BarrioCorrespondencia
+                            LimpiarEspacios(""), // CiudadCorrespondencia
+                            LimpiarEspacios(""), // CodigoDeptoCorrespondencia
+                            LimpiarEspacios(""), // CodigoPaisCorrespondencia
+                            LimpiarEspacios(""), // CasillaCorreoCorrespondencia
+                            LimpiarEspacios(""), // UsuEmailUsuario
+                            LimpiarEspacios(""), // UsuEmailDominio
+                            LimpiarEspacios(c.TELEFONO1_2), //TelefonoLaboral
+                            LimpiarEspacios(""), // Filler1
+                            LimpiarEspacios(c.NOCUENTACLARO), //NoCuentaClaro
+                            LimpiarEspacios(""),            // larId
+                            LimpiarEspacios(""),            // LineaEnArchivo
+                            LimpiarEspacios(c.PROCSADORORIGEN) //ProcesadorOrigen
+                            );
+                    }
+
+                    ordenFiador++;
+
+                    if (!String.IsNullOrEmpty(c.NOMBREFIADOR2))
+                    {
+                        dt.Rows.Add(
+                           LimpiarEspacios(c.NOUSUARIO),
+                           LimpiarEspacios(ordenFiador.ToString()),
+                           LimpiarEspacios(""), //CodigoBanco
+                           LimpiarEspacios(""), //CodigoPais
+                           LimpiarEspacios(c.NOMBREFIADOR2), //NombreApellido
+                           LimpiarEspacios(""), // Empresa
+                           LimpiarEspacios(""), // TipoDocumento
+                           LimpiarEspacios(c.NUMCEDULAFIADOR2), //NoDocumento
+                           LimpiarEspacios(""), // FechaNacimiento
+                           LimpiarEspacios(""), // FechaAltaFiador
+                           DateTime.Now, // FechaProceso ejemplo
+                           LimpiarEspacios(""), // Supervisor
+                           LimpiarEspacios(""), // Funcionario
+                           LimpiarEspacios(c.DIRECCIONFIADOR2), //DomicilioParticular1
+                           LimpiarEspacios(""), // NoPuertaParticular
+                           LimpiarEspacios(c.DIRECCIONFIADOR2_2), //DomicilioParticular2
+                           LimpiarEspacios(c.DIRECCIONFIADOR2_3), //DomicilioParticular3
+                           LimpiarEspacios(""), // CodigoPostalParticular
+                           LimpiarEspacios(""), // BarrioParticular
+                           LimpiarEspacios(""), // CiudadParticular
+                           LimpiarEspacios(""), // CodigoDeptoParticular
+                           LimpiarEspacios(""), // CodigoPaisParticular
+                           LimpiarEspacios(c.TELEFONO2_1), //Telefono
+                           LimpiarEspacios(""), // DomicilioCorrespondencia1
+                           LimpiarEspacios(""), // NoPuertaCorrespondencia
+                           LimpiarEspacios(""), // DomicilioCorrespondencia2
+                           LimpiarEspacios(""), // DomicilioCorrespondencia3
+                           LimpiarEspacios(""), // CodigoPostalCorrespondencia
+                           LimpiarEspacios(""), // BarrioCorrespondencia
+                           LimpiarEspacios(""), // CiudadCorrespondencia
+                           LimpiarEspacios(""), // CodigoDeptoCorrespondencia
+                           LimpiarEspacios(""), // CodigoPaisCorrespondencia
+                           LimpiarEspacios(""), // CasillaCorreoCorrespondencia
+                           LimpiarEspacios(""), // UsuEmailUsuario
+                           LimpiarEspacios(""), // UsuEmailDominio
+                           LimpiarEspacios(c.TELEFONO2_2), //TelefonoLaboral
+                           LimpiarEspacios(""), // Filler1
+                           LimpiarEspacios(c.NOCUENTACLARO), //NoCuentaClaro
+                           LimpiarEspacios(""),            // larId
+                           LimpiarEspacios(""),            // LineaEnArchivo
+                           LimpiarEspacios(c.PROCSADORORIGEN) //ProcesadorOrigen
+                           );
+                    }
+
+                    ordenFiador++;
+
+                    if (!String.IsNullOrEmpty(c.NOMBREFIADOR3))
+                    {
+                        dt.Rows.Add(
+                           LimpiarEspacios(c.NOUSUARIO),
+                           LimpiarEspacios(ordenFiador.ToString()),
+                           LimpiarEspacios(""), //CodigoBanco
+                           LimpiarEspacios(""), //CodigoPais
+                           LimpiarEspacios(c.NOMBREFIADOR3), //NombreApellido
+                           LimpiarEspacios(""), // Empresa
+                           LimpiarEspacios(""), // TipoDocumento
+                           LimpiarEspacios(c.NUMCEDULAFIADOR3), //NoDocumento
+                           LimpiarEspacios(""), // FechaNacimiento
+                           LimpiarEspacios(""), // FechaAltaFiador
+                           DateTime.Now, // FechaProceso ejemplo
+                           LimpiarEspacios(""), // Supervisor
+                           LimpiarEspacios(""), // Funcionario
+                           LimpiarEspacios(c.DIRECCIONFIADOR3), //DomicilioParticular1
+                           LimpiarEspacios(""), // NoPuertaParticular
+                           LimpiarEspacios(c.DIRECCIONFIADOR3_2), //DomicilioParticular2
+                           LimpiarEspacios(c.DIRECCIONFIADOR3_3), //DomicilioParticular3
+                           LimpiarEspacios(""), // CodigoPostalParticular
+                           LimpiarEspacios(""), // BarrioParticular
+                           LimpiarEspacios(""), // CiudadParticular
+                           LimpiarEspacios(""), // CodigoDeptoParticular
+                           LimpiarEspacios(""), // CodigoPaisParticular
+                           LimpiarEspacios(c.TELEFONO3_1), //Telefono
+                           LimpiarEspacios(""), // DomicilioCorrespondencia1
+                           LimpiarEspacios(""), // NoPuertaCorrespondencia
+                           LimpiarEspacios(""), // DomicilioCorrespondencia2
+                           LimpiarEspacios(""), // DomicilioCorrespondencia3
+                           LimpiarEspacios(""), // CodigoPostalCorrespondencia
+                           LimpiarEspacios(""), // BarrioCorrespondencia
+                           LimpiarEspacios(""), // CiudadCorrespondencia
+                           LimpiarEspacios(""), // CodigoDeptoCorrespondencia
+                           LimpiarEspacios(""), // CodigoPaisCorrespondencia
+                           LimpiarEspacios(""), // CasillaCorreoCorrespondencia
+                           LimpiarEspacios(""), // UsuEmailUsuario
+                           LimpiarEspacios(""), // UsuEmailDominio
+                           LimpiarEspacios(c.TELEFONO3_2), //TelefonoLaboral
+                           LimpiarEspacios(""), // Filler1
+                           LimpiarEspacios(c.NOCUENTACLARO), //NoCuentaClaro
+                           LimpiarEspacios(""),            // larId
+                           LimpiarEspacios(""),            // LineaEnArchivo
+                           LimpiarEspacios(c.PROCSADORORIGEN) //ProcesadorOrigen
+                           );
+                    }
+                }
                 return dt;
             }
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
 
                 return new DataTable();
             }
         }
 
-
-        public bool EjecutarBulkInsertBandejaVasa(DataTable tableCuentas)
+        public bool EjecutarBulkInsert(DataTable tableFiadores)
         {
             ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
             SqlConnection conn = null;
@@ -841,9 +734,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 using (SqlBulkCopy bulkCopy = new SqlBulkCopy(conn))
                 {
                     bulkCopy.DestinationTableName = parametros["ArchivoDestino"];
-                    bulkCopy.BulkCopyTimeout = TimeoutSegundos;
-                    bulkCopy.BatchSize = 5000;
-                    bulkCopy.WriteToServer(tableCuentas);
+                    bulkCopy.WriteToServer(tableFiadores);
                 }
 
                 return true;
@@ -853,7 +744,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -862,50 +753,6 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 if (conn != null)
                     cm.ReleaseConnection(conn);
             }
-        }
-
-       
-        public bool UpdateArchivoAS400()
-        {
-
-            ConnectionManager cm = Dts.Connections["AS400"];
-            OleDbConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as OleDbConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
-                }
-
-                using (IDbCommand cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = sql_ConsultaActualizar;
-                    cmd.CommandTimeout = TimeoutSegundos;
-                    int rowsAffected = cmd.ExecuteNonQuery();
-
-                    if (rowsAffected == 0)
-                    {
-                        RegistraProceso("F", $"Actualizar estado archivo: {parametros["ArchivoControl"]} no afectó ningún registro");
-                        return false;
-                    }
-                }
-
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message}");
-
-                return false;
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-
-            return true;
         }
 
         private object LimpiarEspacios(object valor)
@@ -939,11 +786,10 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = "Etarjetas";
-                    cmd.Parameters.Add("@EstadoProceso", SqlDbType.VarChar).Value = estadoProceso;
-                    cmd.Parameters.Add("@Mensaje", SqlDbType.VarChar).Value = mensaje;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "EMaestroFiadores";
+                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
+                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
 
                     cmd.ExecuteNonQuery();
                 }
@@ -951,9 +797,6 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             }
             catch (Exception ex)
             {
-                // Si el log falla, al menos queda en el historial del Job / log de SSIS
-                Dts.Events.FireWarning(0, "RegistraProceso",
-                    $"No se pudo registrar en log. Mensaje original: {mensaje} | Error: {ex.Message}", "", 0);
             }
             finally
             {
