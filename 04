@@ -1,211 +1,1847 @@
-Ahora ayudame con la pagina de indicadores. Te adjunté las imagenes del prototipo..
-Estos son los endpoints que utilizaremos:
+  list: async () => {
+    const { data } = await apiFeedbackAuthorized.get(base);
+    const result = data.data;
+    return Array.isArray(result) ? result : result?.items ?? [];
+  },
 
-GET
-/api/indicators
-Obtiene el listado de indicadores.
 
-POST
-/api/indicators
-Crea un indicador con sus asignaciones de marcadores.
 
-{
-  "name": "string",
-  "minimumValue": 0,
-  "maximumValue": 0,
-  "periodId": 0,
-  "formula": "string",
-  "weight": 0,
-  "type": 0,
-  "rule": 0,
-  "status": 0,
-  "templateId": 0,
-  "markerAssignments": [
-    {
-      "position": 0,
-      "verbId": 0,
-      "unitId": 0,
-      "value": "string"
+
+
+
+
+
+
+import { apiFeedbackAuthorized } from "./APIS";
+import { endpointsAPI } from "./endpointApi";
+
+const base = endpointsAPI.indicators;
+
+const toList = (result) => (Array.isArray(result) ? result : result?.items ?? result?.data ?? []);
+
+// Acepta las formas más comunes de respuesta paginada
+const toPage = (result) => {
+  if (Array.isArray(result)) return { items: result, total: result.length };
+  const items = result?.items ?? result?.data ?? result?.records ?? result?.results ?? [];
+  const total = result?.totalCount ?? result?.totalRecords ?? result?.totalItems ?? result?.total ?? items.length;
+  return { items, total };
+};
+
+export const indicatorsService = {
+  list: async () => {
+    const { data } = await apiFeedbackAuthorized.get(base);
+    return toList(data.data);
+  },
+
+  // body: { name, type, status, templateId, period, pageNumber, pageSize }  (null = sin filtro)
+  filter: async (body) => {
+    const { data } = await apiFeedbackAuthorized.post(`${base}/filter`, body);
+    return toPage(data.data);
+  },
+
+  getById: async (id) => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/${id}`);
+    return data.data;
+  },
+
+  create: async (body) => {
+    const { data } = await apiFeedbackAuthorized.post(base, body);
+    return data.data;
+  },
+
+  update: async (id, body) => {
+    const { data } = await apiFeedbackAuthorized.put(`${base}/${id}`, body);
+    return data.data;
+  },
+
+  remove: async (id) => {
+    await apiFeedbackAuthorized.delete(`${base}/${id}`);
+  },
+
+  activate: async (id) => {
+    await apiFeedbackAuthorized.put(`${base}/${id}/activate`);
+  },
+
+  // Así está escrito en el backend: "desactivate"
+  deactivate: async (id) => {
+    await apiFeedbackAuthorized.put(`${base}/${id}/desactivate`);
+  },
+
+  // Catálogos que usa el formulario
+  verbs: async () => {
+    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.verbs);
+    return toList(data.data);
+  },
+
+  units: async () => {
+    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.units);
+    return toList(data.data);
+  },
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import s from "./Pagination.module.css";
+
+// [1, "…", 4, 5, 6, "…", 12]
+const pageList = (page, totalPages) => {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const pages = [...new Set([1, totalPages, page - 1, page, page + 1])]
+    .filter((p) => p >= 1 && p <= totalPages)
+    .sort((a, b) => a - b);
+  return pages.flatMap((p, i) => (i > 0 && p - pages[i - 1] > 1 ? ["…", p] : [p]));
+};
+
+/**
+ * Pie de tabla con rango, filas por página y páginas.
+ * page empieza en 1.
+ */
+export const Pagination = ({ page, pageSize, total, onPageChange, onPageSizeChange, pageSizes = [10, 20, 50] }) => {
+  if (!total) return null;
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+
+  return (
+    <div className={s.footer}>
+      <span>
+        Mostrando <strong>{from}–{to}</strong> de <strong>{total}</strong>
+      </span>
+
+      <div className={s.right}>
+        {onPageSizeChange && (
+          <label className={s.size}>
+            Filas
+            <select value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value))}>
+              {pageSizes.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
+
+        <nav className={s.pager} aria-label="Paginación">
+          <button type="button" className={s.btn} disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)} aria-label="Página anterior">
+            <ChevronLeft size={16} />
+          </button>
+          {pageList(page, totalPages).map((p, i) =>
+            p === "…" ? (
+              <span key={`gap-${i}`} className={s.gap}>…</span>
+            ) : (
+              <button key={p} type="button" className={`${s.btn} ${p === page ? s.btnOn : ""}`}
+                aria-current={p === page ? "page" : undefined} onClick={() => onPageChange(p)}>
+                {p}
+              </button>
+            )
+          )}
+          <button type="button" className={s.btn} disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)} aria-label="Página siguiente">
+            <ChevronRight size={16} />
+          </button>
+        </nav>
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #eef1f5;
+  background: #fbfcfe;
+  font-size: 13px;
+  color: #6b7a8f;
+}
+.footer strong { color: var(--bp-blue-expert); }
+.right { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+
+.size { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
+.size select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid #d9e0ea;
+  border-radius: 8px;
+  background-color: #fff;
+  font: inherit;
+  font-size: 13px;
+  color: var(--bp-blue-expert);
+}
+
+.pager { display: flex; align-items: center; gap: 4px; }
+.btn {
+  min-width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 8px;
+  border: 1px solid #e1e6ee;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5b6b80;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: #c3ccd9; color: var(--bp-blue-expert); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 1px; }
+.btnOn,
+.btnOn:hover:not(:disabled) { border-color: var(--bp-blue-expert); background: var(--bp-blue-expert); color: #fff; }
+.gap { padding: 0 4px; color: #a3adbb; }
+
+@media (max-width: 760px) {
+  .footer, .right { justify-content: center; }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+import s from "./StatusSwitch.module.css";
+
+/** Interruptor Activo / Inactivo con su texto al lado */
+export const StatusSwitch = ({
+  checked,
+  onChange,
+  disabled = false,
+  onLabel = "Activo",
+  offLabel = "Inactivo",
+  ariaLabel,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={ariaLabel}
+    className={`${s.switch} ${checked ? s.on : ""}`}
+    disabled={disabled}
+    onClick={() => onChange?.(!checked)}
+  >
+    <span className={s.track} aria-hidden="true" />
+    {checked ? onLabel : offLabel}
+  </button>
+);
+
+
+
+
+
+
+
+
+
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #8592a3;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.switch:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 3px; border-radius: 6px; }
+.switch:disabled { cursor: progress; opacity: 0.55; }
+
+.track {
+  position: relative;
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: #d5dce6;
+  transition: background 0.2s ease;
+}
+.track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+}
+
+.on { color: var(--bp-green); }
+.on .track { background: var(--bp-green); }
+.on .track::after { transform: translateX(16px); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export { Pagination } from "./Pagination/Pagination";
+export { StatusSwitch } from "./StatusSwitch/StatusSwitch";
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   Indicadores: catálogos, mapeos y armado del body
+   ⚠️ Todo lo marcado con "Confirmar" depende del backend.
+   ========================================================= */
+
+const toKey = (text) =>
+  String(text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+export const normalize = (v) =>
+  String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+/** Confirmar: número de cada tipo (asumido: orden de la lista, desde 0) */
+export const INDICATOR_TYPES = [
+  { value: 0, label: "Numérico", tone: "number" },
+  { value: 1, label: "Cualitativo", tone: "quality" },
+  { value: 2, label: "Operativo", tone: "ops" },
+  { value: 3, label: "Actitudinal", tone: "attitude" },
+  { value: 4, label: "Ventas", tone: "sales" },
+];
+
+/** Confirmar: reglas disponibles y su número */
+export const RULES = [
+  { value: 0, label: "Mayor es mejor" },
+  { value: 1, label: "Menor es mejor" },
+];
+
+/** Confirmar: Inactivo = 0, Activo = 1 */
+export const INDICATOR_STATUS = { INACTIVE: 0, ACTIVE: 1 };
+
+const findIn = (list, raw) => {
+  if (raw === null || raw === undefined || raw === "") return null;
+  if (typeof raw === "number" || /^\d+$/.test(String(raw))) return list.find((x) => x.value === Number(raw)) ?? null;
+  return list.find((x) => toKey(x.label) === toKey(raw)) ?? null;
+};
+
+export const findIndicatorType = (raw) => findIn(INDICATOR_TYPES, raw);
+export const findRule = (raw) => findIn(RULES, raw);
+
+export const isActiveStatus = (raw) =>
+  raw === INDICATOR_STATUS.ACTIVE || raw === true || /^activ/i.test(String(raw ?? "").trim());
+
+export const indicatorCode = (id) => `IND-${String(id ?? "").padStart(3, "0")}`;
+export const templateCode = (id) => `PLT-${String(id ?? "").padStart(2, "0")}`;
+
+export const formatDate = (raw) => {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("es-HN", { day: "2-digit", month: "2-digit", year: "numeric" });
+};
+
+/* ---------- Catálogos de verbos y unidades ---------- */
+// Confirmar: nombre del campo de texto en /api/verbs y /api/units
+export const mapCatalogItem = (x) => ({
+  id: x.id,
+  name: x.name ?? x.description ?? x.value ?? x.verb ?? x.unit ?? "",
+  symbol: x.symbol ?? x.abbreviation ?? null,
+});
+export const unitLabel = (u) => (u ? (u.symbol && u.symbol !== u.name ? `${u.name} (${u.symbol})` : u.name) : "");
+
+/* ---------- Campos de la plantilla ---------- */
+/**
+ * Qué control se muestra para cada marcador de la plantilla.
+ * Confirmar: el verbo y la unidad se identifican por el nombre del marcador.
+ */
+export const fieldKind = (marker) => {
+  const name = normalize(marker.value);
+  if (name === "verbo") return "verb";
+  if (name === "unidad") return "unit";
+  switch (marker.type?.tone) {
+    case "number":
+    case "money": return "number";
+    case "date": return "date";
+    case "bool": return "bool";
+    default: return "text";
+  }
+};
+
+const MONEY_FORMAT = { 3: (v) => `${v}%`, 4: (v) => `$${v}`, 5: (v) => `€${v}`, 6: (v) => `L ${v}` };
+
+/** Texto que aporta un campo a la frase. Devuelve "" si está vacío. */
+export const fieldText = (marker, raw, { verbs, units, unitId }) => {
+  const kind = fieldKind(marker);
+  if (kind === "verb") return verbs.find((v) => String(v.id) === String(raw))?.name ?? "";
+  if (kind === "unit") return units.find((u) => String(u.id) === String(unitId))?.symbol
+    ?? units.find((u) => String(u.id) === String(unitId))?.name ?? "";
+
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+  if (kind === "bool") return value === "true" ? "Sí" : "No";
+  if (kind === "date") {
+    const d = new Date(`${value}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString("es-HN", { day: "numeric", month: "long", year: "numeric" });
+  }
+  const fmt = MONEY_FORMAT[marker.type?.value];
+  return fmt ? fmt(value) : value;
+};
+
+/** Valida un campo y devuelve el mensaje de error o "" */
+export const fieldError = (marker, raw, unitId) => {
+  const kind = fieldKind(marker);
+  if (kind === "unit") return unitId ? "" : "Selecciona la unidad.";
+  const value = String(raw ?? "").trim();
+  if (!value) return kind === "verb" ? "Selecciona el verbo." : `Completa ${marker.value}.`;
+  if (kind === "number") {
+    const n = Number(value.replace(",", "."));
+    if (Number.isNaN(n)) return "Debe ser un número.";
+    if (marker.type?.value === 9 && !Number.isInteger(n)) return "Debe ser un número entero.";
+  }
+  return "";
+};
+
+/* ---------- Forma de cálculo ---------- */
+export const EMPTY_CALC = { unitId: "", minimumValue: "", maximumValue: "", weight: "", rule: String(RULES[0].value), formula: "" };
+
+const toNumber = (v) => Number(String(v).replace(",", "."));
+
+export const validateCalc = (c) => {
+  const e = {};
+  if (!c.unitId) e.unitId = "Selecciona la unidad.";
+  if (String(c.minimumValue).trim() === "") e.minimumValue = "Ingresa el valor mínimo.";
+  else if (Number.isNaN(toNumber(c.minimumValue))) e.minimumValue = "Debe ser un número.";
+  if (String(c.maximumValue).trim() === "") e.maximumValue = "Ingresa el valor máximo.";
+  else if (Number.isNaN(toNumber(c.maximumValue))) e.maximumValue = "Debe ser un número.";
+  if (!e.minimumValue && !e.maximumValue && toNumber(c.minimumValue) > toNumber(c.maximumValue)) {
+    e.maximumValue = "El valor máximo debe ser mayor o igual al mínimo.";
+  }
+  if (String(c.weight).trim() !== "") {
+    const w = toNumber(c.weight);
+    if (Number.isNaN(w) || w < 0 || w > 100) e.weight = "Debe estar entre 0 y 100.";
+  }
+  if (c.rule === "") e.rule = "Selecciona la regla.";
+  return e;
+};
+
+/* ---------- API → formulario ---------- */
+export const mapIndicator = (x) => ({
+  id: x.id,
+  code: x.code ?? indicatorCode(x.id),
+  name: x.name ?? "",
+  type: findIndicatorType(x.type ?? x.indicatorType),
+  active: isActiveStatus(x.status),
+  templateId: x.templateId ?? x.template?.id ?? null,
+  updatedAt: x.updatedAt ?? x.modifiedAt ?? x.lastModified ?? x.modifiedDate ?? x.updatedDate ?? x.createdAt ?? null,
+  // Confirmar: campo que indica si una regla de negocio impide editarlo
+  editable: x.canEdit ?? x.isEditable ?? x.editable ?? true,
+  raw: x,
+});
+
+/** Detalle de GET /api/indicators/{id} → estado del formulario */
+export const toFormState = (x, templateMarkers) => {
+  const assignments = x.markerAssignments ?? x.markers ?? [];
+  const byPos = new Map(assignments.map((a) => [a.position, a]));
+  const values = {};
+  templateMarkers.forEach((m) => {
+    const a = byPos.get(m.position);
+    if (!a) return;
+    const kind = fieldKind(m);
+    if (kind === "verb") values[m.position] = a.verbId != null ? String(a.verbId) : "";
+    else if (kind !== "unit") values[m.position] = a.value ?? "";
+  });
+  const unitId = x.unitId ?? assignments.find((a) => a.unitId != null)?.unitId;
+  return {
+    type: findIndicatorType(x.type)?.value ?? "",
+    templateId: x.templateId ?? x.template?.id ?? "",
+    status: isActiveStatus(x.status) ? INDICATOR_STATUS.ACTIVE : INDICATOR_STATUS.INACTIVE,
+    periodId: x.periodId ?? null,
+    values,
+    calc: {
+      unitId: unitId != null ? String(unitId) : "",
+      minimumValue: x.minimumValue ?? "",
+      maximumValue: x.maximumValue ?? "",
+      weight: x.weight ?? "",
+      rule: String(findRule(x.rule)?.value ?? RULES[0].value),
+      formula: x.formula ?? "",
+    },
+  };
+};
+
+/* ---------- Formulario → API ---------- */
+/**
+ * Confirmar: la unidad de la forma de cálculo se envía como unitId en cada asignación,
+ * porque el body no tiene unitId a nivel del indicador.
+ */
+export const buildIndicatorBody = ({ name, type, templateId, status, periodId, values, calc, markers, verbs, units }) => ({
+  name,
+  minimumValue: toNumber(calc.minimumValue),
+  maximumValue: toNumber(calc.maximumValue),
+  periodId: periodId ?? null,
+  formula: calc.formula.trim(),
+  weight: String(calc.weight).trim() === "" ? 0 : toNumber(calc.weight),
+  type: Number(type),
+  rule: Number(calc.rule),
+  status,
+  templateId: Number(templateId),
+  markerAssignments: markers.map((m) => {
+    const kind = fieldKind(m);
+    return {
+      position: m.position,
+      verbId: kind === "verb" ? Number(values[m.position]) : null,
+      unitId: calc.unitId ? Number(calc.unitId) : null,
+      value: fieldText(m, values[m.position], { verbs, units, unitId: calc.unitId }),
+    };
+  }),
+});
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   Indicadores
+   ========================================================= */
+
+/* ---- Resumen ---- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.stat {
+  position: relative;
+  padding: 16px 18px;
+  border: 1px solid #e6ebf1;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--bp-blue-expert);
+}
+.statGreen::before { background: var(--bp-green); }
+.statGrey::before { background: #b8c2cf; }
+.statYellow::before { background: var(--bp-yellow-opt); }
+.statLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8592a3;
+}
+.statValue {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-brand, inherit);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--bp-blue-expert);
+}
+
+/* ---- Filtros ---- */
+.filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto;
+  align-items: end;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border: 1px solid #e6ebf1;
+  border-radius: 14px;
+  background: #fff;
+}
+.filters > div { margin: 0; }
+
+.searchField { position: relative; }
+.searchField svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8592a3;
+  pointer-events: none;
+}
+.searchField input { padding-left: 38px; }
+
+.filterActions { display: flex; gap: 10px; }
+
+/* ---- Tabla ---- */
+.tableCard {
+  border: 1px solid #e6ebf1;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+}
+.table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.table th {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e6ebf1;
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-align: left;
+  text-transform: uppercase;
+  color: #8592a3;
+  white-space: nowrap;
+}
+.table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef1f5;
+  vertical-align: middle;
+}
+.table tbody tr:last-child td { border-bottom: none; }
+.table tbody tr:hover td { background: #fbfcfe; }
+
+.colStatus { width: 140px; }
+.colType { width: 130px; }
+.colDate { width: 130px; }
+.colActions { width: 96px; }
+
+.rowInactive .name,
+.rowInactive .typeTag { opacity: 0.55; }
+.rowLoading { opacity: 0.6; transition: opacity 0.15s ease; }
+
+.name { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.45; color: #22303f; }
+.code {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border: 1px solid #e3e8ef;
+  border-radius: 999px;
+  background: #f6f8fb;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7a8f;
+}
+.cellDate { font-size: 13px; color: #5b6b80; white-space: nowrap; }
+.muted { color: #a3adbb; }
+
+/* Tipo de indicador */
+.typeTag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.toneNumber { background: #e3f7f6; border-color: #c4ecea; color: #0d6f6c; }
+.toneQuality { background: #f1edfb; border-color: #e0d8f6; color: #5b3fb0; }
+.toneOps { background: #e8f1fb; border-color: #cfe1f7; color: #0c5aba; }
+.toneAttitude { background: #eaf6ef; border-color: #cbe9d8; color: var(--bp-green); }
+.toneSales { background: #fff6dc; border-color: #fbe6a8; color: #8a5a00; }
+
+.actionBtns { display: flex; gap: 4px; }
+.actBtn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #8592a3;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.actBtn:hover:not(:disabled) { background: #eef4fb; color: var(--bp-blue); }
+.actBtnDanger:hover:not(:disabled) { background: #fdf0f0; color: var(--bp-red); }
+.actBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.actBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 1px; }
+
+/* Estados */
+.skel {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #eef1f5 25%, #f6f8fb 50%, #eef1f5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+}
+.emptyCell,
+.table tbody tr:hover .emptyCell { background: #fff; }
+.empty { padding: 40px 16px 36px; text-align: center; }
+.emptyIcon {
+  width: 54px;
+  height: 54px;
+  display: inline-grid;
+  place-items: center;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  background: #e8f1fb;
+  color: var(--bp-blue);
+}
+.emptyIconGrey { background: #f1f4f8; color: #8592a3; }
+.empty h3 { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: var(--bp-blue-expert); }
+.empty p { margin: 0; font-size: 14px; color: #6b7a8f; }
+
+.deleteDetail { display: grid; gap: 6px; justify-items: center; text-align: center; }
+.deleteDetail p { margin: 0; font-size: 13px; color: #5b6b80; }
+.deleteDetail .code { margin: 0; }
+
+/* =========================================================
+   Modal
+   ========================================================= */
+.modalLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 0;
+  font-size: 14px;
+  color: #6b7a8f;
+}
+
+.form { display: grid; gap: 18px; }
+.formIntro { margin: -4px 0 0; font-size: 13.5px; color: #6b7a8f; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.grid2 > div { margin: 0; }
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8592a3;
+}
+
+.templateExample {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f4f8fd;
+  color: var(--bp-blue);
+}
+.templateExample svg { flex-shrink: 0; margin-top: 2px; }
+.templateExample p { margin: 2px 0 0; font-size: 13.5px; color: #3d4b5c; }
+
+.counter { align-self: flex-end; font-size: 11.5px; color: #a3adbb; }
+
+/* Campo de unidad que se define en Forma de cálculo */
+.linkedField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px dashed #cfd8e3;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 14px;
+  color: #a3adbb;
+}
+.linkedField strong { color: var(--bp-blue-expert); }
+.linkedField small { font-size: 11.5px; color: #8592a3; }
+.linkedFieldInvalid { border-color: var(--bp-red); }
+
+/* Previsualización */
+.preview {
+  padding: 14px 16px;
+  border: 1px solid #d6e6f6;
+  border-radius: 12px;
+  background: #f6faff;
+}
+.previewText {
+  margin: 8px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--bp-blue-expert);
+}
+.previewMissing {
+  padding: 0 4px;
+  border: 1px dashed #b9c4d3;
+  border-radius: 5px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #a3adbb;
+}
+
+/* Forma de cálculo */
+.calc {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e6ebf1;
+  border-left: 3px solid var(--bp-yellow-opt);
+  border-radius: 12px;
+  background: #fff;
+}
+.calcInvalid { border-color: var(--bp-red); border-left-color: var(--bp-red); }
+
+.calcHead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.calcIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: #fff6dc;
+  color: #8a5a00;
+}
+.calcTitleWrap { flex: 1; min-width: 160px; }
+.calcTitle { margin: 0; font-size: 14px; font-weight: 800; color: var(--bp-blue-expert); }
+.calcSub { margin: 2px 0 0; font-size: 12.5px; color: #8592a3; }
+
+.calcBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #f1f4f8;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7a8f;
+}
+.calcBadgeOk { background: #eaf6ef; color: var(--bp-green); }
+.calcBtn { height: 34px; }
+
+.calcEmpty { margin: 0; font-size: 13px; color: #8592a3; }
+
+.calcSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.calcSummary dt { font-size: 11px; font-weight: 700; color: #8592a3; }
+.calcSummary dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 700; color: var(--bp-blue-expert); }
+.calcSummaryWide { grid-column: 1 / -1; }
+
+.calcForm { display: grid; gap: 14px; }
+.calcGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
+.calcGrid > div { margin: 0; }
+.calcActions { display: flex; justify-content: flex-end; gap: 10px; }
+
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1000px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filters { grid-template-columns: 1fr 1fr; }
+  .filterActions { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+  .filters { grid-template-columns: 1fr; }
+  .filterActions > * { flex: 1; }
+
+  .table thead { display: none; }
+  .table,
+  .table tbody { display: block; }
+  .table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "name name"
+      "type date"
+      "status actions";
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eef1f5;
+  }
+  .table tbody tr:last-child { border-bottom: none; }
+  .table td { display: block; width: auto; padding: 0; border: none; }
+  .cellName { grid-area: name; }
+  .cellType { grid-area: type; }
+  .cellDate { grid-area: date; align-self: center; }
+  .cellStatus { grid-area: status; }
+  .cellActions { grid-area: actions; }
+  .emptyCell { grid-column: 1 / -1; }
+
+  .grid2,
+  .calcGrid { grid-template-columns: 1fr; }
+  .calcSummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calcActions > * { flex: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { useState } from "react";
+import { Calculator, Check, CheckCircle2, CircleDashed, Pencil, Settings2 } from "lucide-react";
+import { useToast } from "../../../shared/components";
+import { EMPTY_CALC, RULES, findRule, unitLabel, validateCalc } from "./indicatorUtils";
+import styles from "../../Pages.module.css";
+import s from "./Indicators.module.css";
+
+/**
+ * Sección "Forma de cálculo" dentro del formulario del indicador.
+ * value: configuración guardada · configured: si ya se guardó
+ * onSave(calc): guarda la configuración en el formulario
+ */
+export const CalculationPanel = ({ value, configured, units, invalid, onSave }) => {
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(EMPTY_CALC);
+  const [errors, setErrors] = useState({});
+
+  const open = () => {
+    setDraft({ ...EMPTY_CALC, ...value });
+    setErrors({});
+    setEditing(true);
+  };
+
+  const change = (e) => {
+    const { name, value: v } = e.target;
+    setDraft((d) => ({ ...d, [name]: v }));
+    setErrors((er) => ({ ...er, [name]: undefined }));
+  };
+
+  const save = () => {
+    const found = validateCalc(draft);
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
+    onSave(draft);
+    setEditing(false);
+    toast.success("¡Forma de cálculo guardada exitosamente!");
+  };
+
+  const unit = units.find((u) => String(u.id) === String(value.unitId));
+
+  return (
+    <section className={`${s.calc} ${invalid && !editing ? s.calcInvalid : ""}`}>
+      <div className={s.calcHead}>
+        <span className={s.calcIcon}><Calculator size={18} /></span>
+        <div className={s.calcTitleWrap}>
+          <h3 className={s.calcTitle}>Forma de cálculo<span className={styles.required}>*</span></h3>
+          <p className={s.calcSub}>Obligatoria antes de guardar el indicador</p>
+        </div>
+        {!editing && (
+          <>
+            <span className={`${s.calcBadge} ${configured ? s.calcBadgeOk : ""}`}>
+              {configured ? <CheckCircle2 size={14} /> : <CircleDashed size={14} />}
+              {configured ? "Configurada" : "Pendiente"}
+            </span>
+            <button type="button" className={`${styles.btn} ${styles.btnOutline} ${s.calcBtn}`} onClick={open}>
+              {configured ? <Pencil size={15} /> : <Settings2 size={15} />}
+              {configured ? "Editar" : "Configurar"}
+            </button>
+          </>
+        )}
+      </div>
+
+      {editing ? (
+        <div className={s.calcForm}>
+          <div className={s.calcGrid}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="calc-unit">Unidad<span className={styles.required}>*</span></label>
+              <select id="calc-unit" name="unitId" className={`${styles.select} ${errors.unitId ? styles.invalid : ""}`}
+                value={draft.unitId} onChange={change}>
+                <option value="">— Selecciona —</option>
+                {units.map((u) => <option key={u.id} value={u.id}>{unitLabel(u)}</option>)}
+              </select>
+              {errors.unitId && <span className={styles.fieldError}>{errors.unitId}</span>}
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="calc-min">Valor mínimo<span className={styles.required}>*</span></label>
+              <input id="calc-min" name="minimumValue" inputMode="decimal" autoComplete="off"
+                className={`${styles.input} ${errors.minimumValue ? styles.invalid : ""}`}
+                value={draft.minimumValue} onChange={change} placeholder="0" />
+              {errors.minimumValue && <span className={styles.fieldError}>{errors.minimumValue}</span>}
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="calc-max">Valor máximo<span className={styles.required}>*</span></label>
+              <input id="calc-max" name="maximumValue" inputMode="decimal" autoComplete="off"
+                className={`${styles.input} ${errors.maximumValue ? styles.invalid : ""}`}
+                value={draft.maximumValue} onChange={change} placeholder="100" />
+              {errors.maximumValue && <span className={styles.fieldError}>{errors.maximumValue}</span>}
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="calc-weight">Peso (%)</label>
+              <input id="calc-weight" name="weight" inputMode="decimal" autoComplete="off"
+                className={`${styles.input} ${errors.weight ? styles.invalid : ""}`}
+                value={draft.weight} onChange={change} placeholder="30" />
+              {errors.weight && <span className={styles.fieldError}>{errors.weight}</span>}
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="calc-rule">Regla</label>
+              <select id="calc-rule" name="rule" className={`${styles.select} ${errors.rule ? styles.invalid : ""}`}
+                value={draft.rule} onChange={change}>
+                {RULES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+              {errors.rule && <span className={styles.fieldError}>{errors.rule}</span>}
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="calc-formula">Fórmula</label>
+              <input id="calc-formula" name="formula" maxLength={200} autoComplete="off"
+                className={`${styles.input} ${s.mono}`}
+                value={draft.formula} onChange={change} placeholder="(Real/Meta)*100" />
+            </div>
+          </div>
+
+          <div className={s.calcActions}>
+            <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={() => setEditing(false)}>
+              Cancelar
+            </button>
+            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={save}>
+              <Check size={16} /> Guardar forma de cálculo
+            </button>
+          </div>
+        </div>
+      ) : configured ? (
+        <dl className={s.calcSummary}>
+          <div><dt>Unidad</dt><dd>{unit ? unitLabel(unit) : "—"}</dd></div>
+          <div><dt>Mín / Máx</dt><dd>{value.minimumValue} / {value.maximumValue}</dd></div>
+          <div><dt>Peso</dt><dd>{String(value.weight).trim() === "" ? "—" : `${value.weight}%`}</dd></div>
+          <div><dt>Regla</dt><dd>{findRule(value.rule)?.label ?? "—"}</dd></div>
+          <div className={s.calcSummaryWide}><dt>Fórmula</dt><dd className={s.mono}>{value.formula || "—"}</dd></div>
+        </dl>
+      ) : (
+        <p className={s.calcEmpty}>
+          Define la unidad, el rango de valores, el peso, la regla y la fórmula del indicador.
+        </p>
+      )}
+
+      {invalid && !editing && <span className={styles.fieldError}>Configura la forma de cálculo antes de guardar.</span>}
+    </section>
+  );
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, Check, Eye, Info, Loader2 } from "lucide-react";
+import { Modal, useToast } from "../../../shared/components";
+import { indicatorsService } from "../../../api/indicatorsService";
+import { templatesService } from "../../../api/templatesService";
+import { mapTemplate } from "../templates/templates/templateUtils";
+import { CalculationPanel } from "./CalculationPanel";
+import {
+  EMPTY_CALC, INDICATOR_STATUS, INDICATOR_TYPES, buildIndicatorBody, fieldError, fieldKind, fieldText,
+  indicatorCode, mapCatalogItem, templateCode, toFormState, unitLabel, validateCalc,
+} from "./indicatorUtils";
+import styles from "../../Pages.module.css";
+import s from "./Indicators.module.css";
+
+const FORM_ID = "indicator-form";
+const MAX_TEXT = 200;
+
+const EMPTY_FORM = {
+  type: "",
+  templateId: "",
+  status: INDICATOR_STATUS.ACTIVE,
+  periodId: null,
+  values: {},
+  calc: EMPTY_CALC,
+  calcConfigured: false,
+};
+
+const templateLabel = (t) => `${templateCode(t.id)} — ${t.markers.map((m) => `{ ${m.value} }`).join(" ")}`;
+
+/**
+ * Modal para crear / editar un indicador.
+ * indicatorId: null = crear
+ */
+export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
+  const toast = useToast();
+  const isEdit = indicatorId != null;
+
+  // Catálogos
+  const [templates, setTemplates] = useState([]);
+  const [verbs, setVerbs] = useState([]);
+  const [units, setUnits] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  // Formulario
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  /* ---------- Carga al abrir ---------- */
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    setForm(EMPTY_FORM);
+    setSubmitted(false);
+    setSubmitError("");
+    setLoadError("");
+    setLoading(true);
+
+    (async () => {
+      try {
+        const [tpl, vb, un, detail] = await Promise.all([
+          templatesService.list(),
+          indicatorsService.verbs(),
+          indicatorsService.units(),
+          isEdit ? indicatorsService.getById(indicatorId) : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+
+        const mappedTemplates = tpl.map(mapTemplate);
+        setTemplates(mappedTemplates);
+        setVerbs(vb.map(mapCatalogItem));
+        setUnits(un.map(mapCatalogItem));
+
+        if (detail) {
+          const template = mappedTemplates.find((t) => String(t.id) === String(detail.templateId ?? detail.template?.id));
+          const state = toFormState(detail, template?.markers ?? []);
+          setForm({
+            ...EMPTY_FORM,
+            ...state,
+            type: String(state.type),
+            templateId: String(state.templateId),
+            calcConfigured: Object.keys(validateCalc(state.calc)).length === 0,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setLoadError(err.noAccess
+            ? "No tienes permiso para esta acción."
+            : isEdit ? "No se pudo cargar el indicador." : "No se pudieron cargar las plantillas y catálogos.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [open, indicatorId, isEdit]);
+
+  /* ---------- Derivados ---------- */
+  // Solo plantillas activas (y la actual, si se edita una con plantilla inactiva)
+  const templateOptions = useMemo(
+    () => templates.filter((t) => t.active || String(t.id) === form.templateId),
+    [templates, form.templateId]
+  );
+  const template = templates.find((t) => String(t.id) === form.templateId) ?? null;
+  const markers = template?.markers ?? [];
+  const catalogs = { verbs, units, unitId: form.calc.unitId };
+
+  const fieldErrors = Object.fromEntries(
+    markers.map((m) => [m.position, fieldError(m, form.values[m.position], form.calc.unitId)])
+  );
+  const formErrors = {
+    type: form.type === "" ? "Selecciona el tipo de indicador." : "",
+    templateId: form.templateId === "" ? "Selecciona una plantilla." : "",
+    fields: Object.values(fieldErrors).some(Boolean),
+    calc: !form.calcConfigured,
+  };
+  const hasErrors = Boolean(formErrors.type || formErrors.templateId || formErrors.fields || formErrors.calc);
+
+  const segments = markers.map((m) => ({
+    key: m.position,
+    label: m.value,
+    text: fieldText(m, form.values[m.position], catalogs),
+  }));
+  const phrase = segments.map((x) => x.text).filter(Boolean).join(" ");
+
+  /* ---------- Cambios ---------- */
+  const setField = (name, value) => setForm((f) => ({ ...f, [name]: value }));
+
+  const changeTemplate = (templateId) => setForm((f) => ({ ...f, templateId, values: {} }));
+
+  const setValue = (position, value) =>
+    setForm((f) => ({ ...f, values: { ...f.values, [position]: value } }));
+
+  /* ---------- Guardar ---------- */
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitted(true);
+    if (hasErrors) return;
+
+    setSaving(true);
+    setSubmitError("");
+    const body = buildIndicatorBody({ ...form, name: phrase, markers, verbs, units });
+    try {
+      if (isEdit) await indicatorsService.update(indicatorId, body);
+      else await indicatorsService.create(body);
+      toast.success("¡Indicador guardado exitosamente!", phrase);
+      onSaved();
+    } catch (err) {
+      setSubmitError(err.noAccess
+        ? `No tienes permiso para ${isEdit ? "editar" : "crear"} indicadores.`
+        : err.response?.data?.message ?? "No se pudo guardar el indicador. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
     }
-  ]
-}
+  };
 
+  const handleClose = () => { if (!saving) onClose(); };
 
+  /* ---------- Controles de cada campo ---------- */
+  const renderField = (m) => {
+    const kind = fieldKind(m);
+    const id = `ind-field-${m.position}`;
+    const value = form.values[m.position] ?? "";
+    const error = submitted ? fieldErrors[m.position] : "";
+    const invalid = error ? styles.invalid : "";
 
-
-GET
-/api/indicators/{id}
-Obtiene un indicador por su identificador.
-
-
-PUT
-/api/indicators/{id}
-Actualiza un indicador y sus asignaciones de marcadores.
-
-Request:
-{
-  "name": "string",
-  "minimumValue": 0,
-  "maximumValue": 0,
-  "periodId": 0,
-  "formula": "string",
-  "weight": 0,
-  "type": 0,
-  "rule": 0,
-  "status": 0,
-  "templateId": 0,
-  "markerAssignments": [
-    {
-      "position": 0,
-      "verbId": 0,
-      "unitId": 0,
-      "value": "string"
+    let control;
+    if (kind === "verb") {
+      control = (
+        <select id={id} className={`${styles.select} ${invalid}`} value={value} onChange={(e) => setValue(m.position, e.target.value)}>
+          <option value="">— Selecciona —</option>
+          {verbs.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+        </select>
+      );
+    } else if (kind === "unit") {
+      const unit = units.find((u) => String(u.id) === String(form.calc.unitId));
+      control = (
+        <div id={id} className={`${s.linkedField} ${error ? s.linkedFieldInvalid : ""}`}>
+          {unit ? <strong>{unitLabel(unit)}</strong> : <span>Sin definir</span>}
+          <small>Se define en Forma de cálculo</small>
+        </div>
+      );
+    } else if (kind === "bool") {
+      control = (
+        <select id={id} className={`${styles.select} ${invalid}`} value={value} onChange={(e) => setValue(m.position, e.target.value)}>
+          <option value="">— Selecciona —</option>
+          <option value="true">Sí</option>
+          <option value="false">No</option>
+        </select>
+      );
+    } else if (kind === "date") {
+      control = (
+        <input id={id} type="date" className={`${styles.input} ${invalid}`} value={value}
+          onChange={(e) => setValue(m.position, e.target.value)} />
+      );
+    } else {
+      control = (
+        <input id={id} className={`${styles.input} ${invalid}`} value={value} maxLength={MAX_TEXT} autoComplete="off"
+          inputMode={kind === "number" ? "decimal" : undefined}
+          placeholder={kind === "number" ? "0" : ""}
+          onChange={(e) => setValue(m.position, e.target.value)} />
+      );
     }
-  ]
-}
+
+    return (
+      <div key={m.position} className={styles.field}>
+        <label className={styles.label} htmlFor={id}>
+          {m.value}<span className={styles.required}>*</span>
+        </label>
+        {control}
+        {error ? (
+          <span className={styles.fieldError}>{error}</span>
+        ) : kind === "text" ? (
+          <span className={s.counter}>{value.length}/{MAX_TEXT}</span>
+        ) : null}
+      </div>
+    );
+  };
+
+  /* ---------- Render ---------- */
+  return (
+    <Modal
+      open={open}
+      size="lg"
+      title={isEdit ? `Editar indicador — ${indicatorCode(indicatorId)}` : "Crear indicador"}
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving || loading || !!loadError}>
+            {saving ? <Loader2 size={16} className={styles.spin} /> : <Check size={16} />}
+            {saving ? "Guardando..." : "Guardar indicador"}
+          </button>
+        </>
+      }
+    >
+      {loading ? (
+        <div className={s.modalLoading}><Loader2 size={22} className={styles.spin} /> Cargando...</div>
+      ) : loadError ? (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: 0 }}>
+          <AlertCircle size={18} /><p>{loadError}</p>
+        </div>
+      ) : (
+        <form id={FORM_ID} onSubmit={handleSubmit} noValidate className={s.form}>
+          <p className={s.formIntro}>
+            Completa los campos obligatorios. La frase se construye únicamente con los campos de la plantilla.
+          </p>
+
+          {submitError && (
+            <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: 0 }}>
+              <AlertCircle size={18} /><p>{submitError}</p>
+            </div>
+          )}
+          {submitted && hasErrors && !submitError && (
+            <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: 0 }}>
+              <AlertCircle size={18} />
+              <p>Faltan datos obligatorios. Revisa los campos marcados en rojo.</p>
+            </div>
+          )}
+
+          {/* Tipo y plantilla */}
+          <div className={s.grid2}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="ind-type">Tipo de indicador<span className={styles.required}>*</span></label>
+              <select id="ind-type" className={`${styles.select} ${submitted && formErrors.type ? styles.invalid : ""}`}
+                value={form.type} onChange={(e) => setField("type", e.target.value)}>
+                <option value="">— Selecciona —</option>
+                {INDICATOR_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              {submitted && formErrors.type && <span className={styles.fieldError}>{formErrors.type}</span>}
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="ind-template">Plantilla<span className={styles.required}>*</span></label>
+              <select id="ind-template" className={`${styles.select} ${submitted && formErrors.templateId ? styles.invalid : ""}`}
+                value={form.templateId} disabled={form.type === ""} onChange={(e) => changeTemplate(e.target.value)}>
+                <option value="">{form.type === "" ? "— Primero selecciona el tipo —" : "— Selecciona —"}</option>
+                {templateOptions.map((t) => <option key={t.id} value={t.id}>{templateLabel(t)}</option>)}
+              </select>
+              {submitted && formErrors.templateId && <span className={styles.fieldError}>{formErrors.templateId}</span>}
+              {form.type !== "" && templateOptions.length === 0 && (
+                <span className={styles.hint}>No hay plantillas activas. Créalas en Mantenimiento de plantillas.</span>
+              )}
+            </div>
+          </div>
+
+          {template && (
+            <>
+              <div className={s.templateExample}>
+                <Info size={16} />
+                <div>
+                  <span className={s.kicker}>Ejemplo de plantilla</span>
+                  <p>{template.example}</p>
+                </div>
+              </div>
+
+              {/* Campos de la plantilla */}
+              <div className={s.grid2}>{markers.map(renderField)}</div>
+
+              {/* Previsualización */}
+              <div className={s.preview} aria-live="polite">
+                <span className={s.kicker}><Eye size={13} /> Previsualización · solo lectura</span>
+                <p className={s.previewText}>
+                  {segments.map((seg, i) => (
+                    <span key={seg.key}>
+                      {i > 0 && " "}
+                      {seg.text ? <span>{seg.text}</span> : <span className={s.previewMissing}>{`{${seg.label}}`}</span>}
+                    </span>
+                  ))}
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Forma de cálculo */}
+          <CalculationPanel
+            value={form.calc}
+            configured={form.calcConfigured}
+            units={units}
+            invalid={submitted && formErrors.calc}
+            onSave={(calc) => setForm((f) => ({ ...f, calc, calcConfigured: true }))}
+          />
+        </form>
+      )}
+    </Modal>
+  );
+};
 
 
 
-DELETE
-/api/indicators/{id}
-Elimina un indicador.
-
-
-PUT
-/api/indicators/{id}/activate
-Activa un indicador.
-
-No se manda request solo el parametro,o sea el id 
-
-
-PUT
-/api/indicators/{id}/desactivate
-Desactiva un indicador.
 
 
 
-POST
-/api/indicators/filter
-Obtiene los indicadores filtrados y paginados.
-Request
-{
-  "name": "string",
-  "type": 0,
-  "status": 0,
-  "templateId": 0,
-  "period": "string",
-  "pageNumber": 0,
-  "pageSize": 0
-}
-
-
-GET
-/api/verbs
-Obtiene el listado de verbos.
 
 
 
-GET
-/api/units
-Obtiene el listado de unidades.
+
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Eraser, ListFilter, Lock, Pencil, Plus, Search, SearchX, Trash2 } from "lucide-react";
+import { ConfirmDialog, Pagination, StatusSwitch, useToast } from "../../../shared/components";
+import { indicatorsService } from "../../../api/indicatorsService";
+import { IndicatorFormModal } from "./IndicatorFormModal";
+import { INDICATOR_TYPES, formatDate, mapIndicator } from "./indicatorUtils";
+import styles from "../../Pages.module.css";
+import s from "./Indicators.module.css";
+
+const EMPTY_FILTERS = { type: "all", name: "" };
+
+const TONES = {
+  number: s.toneNumber,
+  quality: s.toneQuality,
+  ops: s.toneOps,
+  attitude: s.toneAttitude,
+  sales: s.toneSales,
+};
+
+const TypeTag = ({ type }) =>
+  type ? <span className={`${s.typeTag} ${TONES[type.tone]}`}>{type.label}</span> : <span className={s.muted}>—</span>;
+
+export const IndicadoresPage = () => {
+  const toast = useToast();
+
+  // Resumen (tarjetas)
+  const [stats, setStats] = useState(null);
+
+  // Filtros: "draft" es lo que se escribe, "applied" lo que se buscó (null = aún no se busca)
+  const [draft, setDraft] = useState(EMPTY_FILTERS);
+  const [applied, setApplied] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Listado
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const requestRef = useRef(0);
+
+  // Acciones
+  const [modal, setModal] = useState({ open: false, id: null });
+  const [toggling, setToggling] = useState(() => new Set());
+  const [toDelete, setToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  /* ---------- Resumen ---------- */
+  const loadStats = useCallback(async () => {
+    try {
+      const all = (await indicatorsService.list()).map(mapIndicator);
+      const active = all.filter((x) => x.active).length;
+      const templates = new Set(all.map((x) => x.templateId).filter((v) => v != null));
+      setStats({ total: all.length, active, inactive: all.length - active, templates: templates.size });
+    } catch {
+      setStats(null);
+    }
+  }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
+
+  /* ---------- Listado (solo después de buscar) ---------- */
+  const load = useCallback(async () => {
+    if (!applied) return;
+    const id = ++requestRef.current;
+    setLoading(true);
+    setError("");
+    try {
+      const { items, total: count } = await indicatorsService.filter({
+        name: applied.name || null,
+        type: applied.type === "all" ? null : Number(applied.type),
+        status: null,
+        templateId: null,
+        period: null,
+        pageNumber: page,
+        pageSize,
+      });
+      if (id !== requestRef.current) return;
+      setRows(items.map(mapIndicator));
+      setTotal(count);
+    } catch (err) {
+      if (id !== requestRef.current) return;
+      setError(err.noAccess
+        ? "No tienes permiso para ver los indicadores."
+        : "No se pudieron cargar los indicadores. Intenta de nuevo.");
+    } finally {
+      if (id === requestRef.current) setLoading(false);
+    }
+  }, [applied, page, pageSize]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const search = (e) => {
+    e.preventDefault();
+    setApplied({ type: draft.type, name: draft.name.trim() });
+    setPage(1);
+  };
+
+  const clear = () => {
+    requestRef.current++; // descarta respuestas pendientes
+    setDraft(EMPTY_FILTERS);
+    setApplied(null);
+    setRows([]);
+    setTotal(0);
+    setError("");
+    setLoading(false);
+    setPage(1);
+  };
+
+  /* ---------- Estatus ---------- */
+  const toggleStatus = async (row) => {
+    setToggling((set) => new Set(set).add(row.id));
+    try {
+      if (row.active) await indicatorsService.deactivate(row.id);
+      else await indicatorsService.activate(row.id);
+      setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, active: !r.active } : r)));
+      toast.success(
+        row.active ? "Indicador inactivado" : "Indicador activado",
+        row.active ? "Ya no estará disponible para asignación ni coaching." : "Ya está disponible para asignación y coaching."
+      );
+      loadStats();
+    } catch (err) {
+      toast.error(
+        "No se pudo cambiar el estatus",
+        err.noAccess ? "No tienes permiso para esta acción." : err.response?.data?.message ?? "Intenta de nuevo."
+      );
+    } finally {
+      setToggling((set) => { const n = new Set(set); n.delete(row.id); return n; });
+    }
+  };
+
+  /* ---------- Eliminar ---------- */
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await indicatorsService.remove(toDelete.id);
+      toast.success("Indicador eliminado", toDelete.name);
+      setToDelete(null);
+      loadStats();
+      if (rows.length === 1 && page > 1) setPage((p) => p - 1);
+      else load();
+    } catch (err) {
+      setDeleteError(err.noAccess
+        ? "No tienes permiso para eliminar indicadores."
+        : err.response?.data?.message ?? "No se pudo eliminar el indicador. Intenta de nuevo.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /* ---------- Modal ---------- */
+  const handleSaved = () => {
+    setModal({ open: false, id: null });
+    loadStats();
+    // Regresa al listado: si aún no se había buscado, muestra todos
+    if (!applied) { setApplied({ ...EMPTY_FILTERS }); setPage(1); }
+    else load();
+  };
+
+  const statCards = [
+    { label: "Total", value: stats?.total },
+    { label: "Activos", value: stats?.active, tone: s.statGreen },
+    { label: "Inactivos", value: stats?.inactive, tone: s.statGrey },
+    { label: "Plantillas usadas", value: stats?.templates, tone: s.statYellow },
+  ];
+
+  /* ---------- Render ---------- */
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Mantenimiento</span>
+          <h1 className={styles.title}>Mantenimiento de indicadores</h1>
+          <p className={styles.subtitle}>Indicadores construidos a partir de las plantillas.</p>
+        </div>
+        <div className={styles.actions}>
+          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setModal({ open: true, id: null })}>
+            <Plus size={18} /> Crear indicador
+          </button>
+        </div>
+      </header>
+
+      {/* ---------- Resumen ---------- */}
+      <div className={s.stats}>
+        {statCards.map((c) => (
+          <div key={c.label} className={`${s.stat} ${c.tone ?? ""}`}>
+            <span className={s.statLabel}>{c.label}</span>
+            <strong className={s.statValue}>{c.value ?? "—"}</strong>
+          </div>
+        ))}
+      </div>
+
+      {/* ---------- Filtros ---------- */}
+      <form className={s.filters} onSubmit={search}>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="f-type">Tipo</label>
+          <select id="f-type" className={styles.select} value={draft.type}
+            onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value }))}>
+            <option value="all">Todos</option>
+            {INDICATOR_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+
+        <div className={`${styles.field} ${s.filterName}`}>
+          <label className={styles.label} htmlFor="f-name">Nombre del indicador</label>
+          <div className={s.searchField}>
+            <Search size={16} />
+            <input id="f-name" className={styles.input} placeholder="Buscar..." value={draft.name}
+              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} autoComplete="off" />
+          </div>
+        </div>
+
+        <div className={s.filterActions}>
+          <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`}>
+            <Search size={16} /> Buscar
+          </button>
+          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={clear}
+            disabled={!applied && draft.type === "all" && !draft.name}>
+            <Eraser size={16} /> Limpiar
+          </button>
+        </div>
+      </form>
+
+      {error && (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>
+            {error}{" "}
+            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={load}>Reintentar</button>
+          </p>
+        </div>
+      )}
+
+      {/* ---------- Tabla ---------- */}
+      <div className={s.tableCard}>
+        <table className={s.table}>
+          <thead>
+            <tr>
+              <th className={s.colStatus}>Estatus</th>
+              <th>Indicador</th>
+              <th className={s.colType}>Tipo</th>
+              <th className={s.colDate}>Última modif.</th>
+              <th className={s.colActions}>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!applied ? (
+              <tr>
+                <td colSpan={5} className={s.emptyCell}>
+                  <div className={s.empty}>
+                    <span className={s.emptyIcon}><ListFilter size={24} /></span>
+                    <h3>Aplica un filtro para ver los indicadores</h3>
+                    <p>Elige un tipo o escribe el nombre del indicador y presiona <strong>Buscar</strong>.</p>
+                  </div>
+                </td>
+              </tr>
+            ) : loading && rows.length === 0 ? (
+              Array.from({ length: 4 }, (_, i) => (
+                <tr key={i} aria-hidden="true">
+                  <td><span className={s.skel} style={{ width: 80 }} /></td>
+                  <td><span className={s.skel} style={{ width: `${80 - i * 8}%` }} /></td>
+                  <td><span className={s.skel} style={{ width: 70 }} /></td>
+                  <td><span className={s.skel} style={{ width: 76 }} /></td>
+                  <td><span className={s.skel} style={{ width: 56 }} /></td>
+                </tr>
+              ))
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className={s.emptyCell}>
+                  {!error && (
+                    <div className={s.empty}>
+                      <span className={`${s.emptyIcon} ${s.emptyIconGrey}`}><SearchX size={24} /></span>
+                      <h3>No se encontraron indicadores</h3>
+                      <p>Prueba con otro tipo o nombre.</p>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id} className={`${!row.active ? s.rowInactive : ""} ${loading ? s.rowLoading : ""}`}>
+                  <td className={s.cellStatus}>
+                    <StatusSwitch
+                      checked={row.active}
+                      disabled={toggling.has(row.id)}
+                      onChange={() => toggleStatus(row)}
+                      ariaLabel={`Estatus de ${row.code}`}
+                    />
+                  </td>
+                  <td className={s.cellName}>
+                    <p className={s.name}>{row.name}</p>
+                    <span className={s.code}>{row.code}</span>
+                  </td>
+                  <td className={s.cellType}><TypeTag type={row.type} /></td>
+                  <td className={s.cellDate}>{formatDate(row.updatedAt)}</td>
+                  <td className={s.cellActions}>
+                    <div className={s.actionBtns}>
+                      <button
+                        type="button"
+                        className={s.actBtn}
+                        disabled={!row.editable}
+                        title={row.editable ? "Editar" : "No se puede editar por reglas de negocio"}
+                        aria-label={`Editar ${row.code}`}
+                        onClick={() => setModal({ open: true, id: row.id })}
+                      >
+                        {row.editable ? <Pencil size={16} /> : <Lock size={16} />}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${s.actBtn} ${s.actBtnDanger}`}
+                        title="Eliminar"
+                        aria-label={`Eliminar ${row.code}`}
+                        onClick={() => { setDeleteError(""); setToDelete(row); }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+
+        {applied && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+          />
+        )}
+      </div>
+
+      <IndicatorFormModal
+        open={modal.open}
+        indicatorId={modal.id}
+        onClose={() => setModal({ open: false, id: null })}
+        onSaved={handleSaved}
+      />
+
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        danger
+        title="Eliminar indicador"
+        message="Esta acción eliminará un indicador ¿Desea continuar?"
+        detail={toDelete && (
+          <div className={s.deleteDetail}>
+            <span className={s.code}>{toDelete.code}</span>
+            <p>{toDelete.name}</p>
+          </div>
+        )}
+        confirmText={deleting ? "Eliminando..." : "Sí"}
+        cancelText="No"
+        loading={deleting}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      />
+    </>
+  );
+};
 
 
 
-Estos son los requerimientos:
 
-Al ingresar al módulo, el sistema no debe cargar indicadores automáticamente
-El sistema debe mostrar los siguientes filtros iniciales:
-- Tipo (Todos, Numérico, Cualitativo, Operativo, Actitudinal, Ventas)
-- Campo de búsqueda por nombre del indicador
-El listado debe permanecer vacío hasta que el usuario aplique un filtro o búsqueda
-Al aplicar filtros, el sistema debe mostrar un listado con las columnas:
-- Estatus
-- Indicador (frase construida)
-- Tipo
-- Última modificación
-- Acciones (editar / eliminar)
+
+import { IndicadoresPage } from "../pages/modules/indicators/IndicadoresPage";
 
 
 
-El estatus del indicador debe representarse visualmente (activo / inactivo).
-El listado debe soportar paginación cuando existan múltiples registros
-
-l sistema debe permitir crear un indicador mediante el botón Crear indicador.
-Para crear un indicador, el sistema debe requerir obligatoriamente:
-- Tipo de indicador
-- Selección de una plantilla, proveniente de Mantenimiento de plantillas
-Al seleccionar la plantilla, el sistema debe mostrar dinámicamente los campos definidos por dicha plantilla.
-El sistema debe permitir construir el indicador solo mediante los campos definidos por la plantilla
-
-El usuario no debe poder ingresar texto libre para construir la frase del indicador
-El botón Previsualizar debe mostrar la frase completa del indicador de forma solo lectura.
-El sistema debe permitir guardar el indicador únicamente si:
-- El tipo fue seleccionado
-- La plantilla fue seleccionada
-- Todos los campos de la plantilla fueron completados
-- La forma de cálculo fue configurada correctamente
-Al guardar el indicador, el sistema debe mostrar el mensaje:
-“¡Indicador guardado exitosamente!”
-El sistema debe permitir modificar únicamente indicadores que no estén restringidos por reglas de negocio.
-El sistema debe permitir eliminar un indicador mediante la acción Eliminar
-Después del guardado, el sistema debe regresar al listado de indicadores.
-El sistema debe permitir editar un indicador existente mediante la acción Editar
-Al editar, el sistema debe cargar:
-- Tipo del indicador
-- Plantilla seleccionada
-- Valores de los campos de la plantilla
-- Configuración de la forma de cálculo
-El sistema debe permitir configurar la forma de cálculo del indicador mediante una acción específica (Forma de cálculo).
-La configuración debe permitir definir:
-- Unidad de medida
-- Valor mínimo
-- Valor máximo
-- Peso
-- Regla
-- Fórmula de cálculo
-El sistema debe validar que:
-- El valor mínimo sea menor o igual al valor máximo
-- Los campos obligatorios estén completos
-Al guardar la forma de cálculo, el sistema debe mostrar el mensaje:
-“¡Forma de cálculo guardada exitosamente!”
-
-El sistema debe permitir guardar el indicador únicamente si:
-- El tipo fue seleccionado
-- La plantilla fue seleccionada
-- Todos los campos de la plantilla fueron completados
-- La forma de cálculo fue configurada correctamente
-Al guardar el indicador, el sistema debe mostrar el mensaje:
-“¡Indicador guardado exitosamente!”
-
-Después del guardado, el sistema debe regresar al listado de indicadores.
-El sistema debe permitir editar un indicador existente mediante la acción Editar
-Al editar, el sistema debe cargar:
-- Tipo del indicador
-- Plantilla seleccionada
-- Valores de los campos de la plantilla
-- Configuración de la forma de cálculo
-
-El sistema debe permitir modificar únicamente indicadores que no estén restringidos por reglas de negocio.
-El sistema debe permitir eliminar un indicador mediante la acción Eliminar
 
 
-Antes de eliminar, el sistema debe mostrar el mensaje de confirmación:
-“Esta acción eliminará un indicador ¿Desea continuar?”
-
-Si el usuario selecciona No, no debe realizarse ningún cambio.
-Si el usuario selecciona Sí, el indicador debe eliminarse y desaparecer del listado.
-El sistema debe manejar como mínimo los estados:
-- Activo
-- Inactivo
- Los indicadores inactivos deben:
-- Permanecer visibles en el listado
-- No estar disponibles para procesos posteriores (asignación o coaching)
-Toda acción realizada sobre indicadores debe registrarse en auditoría indicando:
-- Usuario
-- Indicador afectado
-- Acción realizada (crear, editar, eliminar, configurar cálculo)
-- Fecha y hora
-Antes de eliminar, el sistema debe mostrar el mensaje de confirmación:
-“Esta acción eliminará un indicador ¿Desea continuar?”
-Prototipo
-Si el valor que se registra esta debajo del valor mínimo deberá mostrarse en color rojo (no satisfactorio), caso contrario verde "satisfactorio
+      {
+        key: "indicadores",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Indicadores",
+        description: "Indicadores construidos a partir de las plantillas.",
+        icon: BarChart3,
+        path: "indicadores",
+        component: IndicadoresPage,
+      },
