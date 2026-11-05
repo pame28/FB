@@ -1,162 +1,18 @@
-Mira este es el origen:
-SELECT RELA_CIF ,RELA_IDEN ,RELA_TIPO ,RELA_NCTA ,RELA_TIPR FROM uvw_CobranzasRelacionesTC
+-- 1. ¿Cuántas filas nulas devuelve la vista y de qué tipo?
+SELECT RELA_TIPR, COUNT(*) AS filas
+FROM uvw_CobranzasRelacionesTC
+WHERE RELA_IDEN IS NULL
+GROUP BY RELA_TIPR;
 
+-- 2. Cuentas en Saldos sin documento en ETarjetas
+SELECT s.NoCuentaClaro, s.Cif
+FROM uvw_SaldosVasa s
+WHERE s.CategoriaTarjeta = '0'
+  AND NOT EXISTS (SELECT 1 FROM ETarjetas et
+                  WHERE et.NoCuentaClaro = s.NoCuentaClaro
+                    AND et.NoDocumento IS NOT NULL);
 
-USE [BandejaVasa_PRD]
-GO
-
-/****** Object:  View [dbo].[uvw_CobranzasRelacionesTC]    Script Date: 5/11/2026 16:49:26 ******/
-SET ANSI_NULLS ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-
-
-
--- ==========================================================
--- Author:		<Elkin Amador>
--- Create date: <2016-05-10>
--- Description:	<Obtiene la relación entre Tarjetas y número de identidad entre avales y titulares para cobranzas>
--- ==========================================================
-CREATE VIEW [dbo].[uvw_CobranzasRelacionesTC]
-AS
-
-WITH Saldos
-AS
-(
-	SELECT NoCuentaClaro, cif,CategoriaTarjeta
-	FROM uvw_SaldosVasa
-	--WHERE  CategoriaTarjeta = '0'
-)
-,
- TitularesTarjetas
-(
-	RELA_CIF,
-	RELA_IDEN,
-	RELA_TIPO,
-	RELA_NCTA,
-	RELA_TIPR
-)
-AS
-(
-    SELECT s.Cif																				  RELA_CIF,
-           (SELECT top 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=s.NoCuentaClaro) RELA_IDEN,
-           'TDC'																				  RELA_TIPO,
-           s.NoCuentaClaro																		  RELA_NCTA,
-           'SOW'																				  RELA_TIPR--Tipo Referencia
-    FROM    Saldos s 
-    WHERE  s.CategoriaTarjeta = '0'--ND LEN(uc.Cif)>0
-),
-AvalesTarjetas(RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR) AS
-(
-    SELECT f.NumCedulaFiador1									RELA_CIF,
-           f.NumCedulaFiador1									RELA_IDEN,
-           'TDC'												RELA_TIPO,
-           f.NoCuentaClaro										RELA_NCTA,
-           'IND'												RELA_TIPR--Tipo Referencia
-    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro       
-    WHERE  s.CategoriaTarjeta = '0'
-		   AND NumCedulaFiador1 IS NOT NULL
-           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador1))) > 0 
-           AND NumCedulaFiador1 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
-    UNION
-    SELECT f.NumCedulaFiador2									RELA_CIF,
-           f.NumCedulaFiador2									RELA_IDEN,
-           'TDC'												RELA_TIPO,
-           f.NoCuentaClaro										RELA_NCTA,
-           'IND'												RELA_TIPR--Tipo Referencia
-    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro
-    WHERE  s.CategoriaTarjeta = '0'
-		   AND f.NumCedulaFiador2 IS NOT NULL
-           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador2))) > 0 
-           AND NumCedulaFiador2 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
-)
-
-SELECT RELA_CIF,
-       RELA_IDEN,
-       RELA_TIPO,
-       RELA_NCTA,
-       RELA_TIPR
-FROM   TitularesTarjetas
-UNION
-SELECT RELA_CIF,
-       RELA_IDEN,
-       RELA_TIPO,
-       RELA_NCTA,
-       RELA_TIPR
-FROM   AvalesTarjetas
-UNION
-SELECT CONVERT(CHAR(19),RELA_CIF)									RELA_CIF,
-       CONVERT(CHAR(19),RELA_IDEN)									RELA_IDEN,
-       CONVERT(VARCHAR(3),RELA_TIPO)								RELA_TIPO,
-       CONVERT(CHAR(16),RELA_NCTA)									RELA_NCTA,
-       CONVERT(VARCHAR(3),RELA_TIPR)								RELA_TIPR--Tipo Referencia
-FROM   (
-           SELECT cc.No_Cliente										RELA_CIF,
-                  cc.No_Cedula										RELA_IDEN,
-                  'TDC'												RELA_TIPO,
-                  cc.NoCuentaClaro										RELA_NCTA,
-                  'SOW'												RELA_TIPR
-           FROM   uvw_CobranzasCuentas     cc
-           
-           UNION
-           
-           SELECT cc.No_Cliente										RELA_CIF,
-                  cc.Cedula_Fiador_1								RELA_IDEN,
-                  'TDC'												RELA_TIPO,
-                  cc.NoCuentaClaro									RELA_NCTA,
-                  'IND'												RELA_TIPR--Tipo Referencia
-           FROM   uvw_CobranzasCuentas       cc
-           WHERE  cc.Cedula_Fiador_1 IS NOT NULL
-                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_1))) > 0
-                  AND cc.Cedula_Fiador_1 != cc.Cedula_Fiador_1
-           UNION
-           
-           SELECT cc.No_Cliente										RELA_CIF,
-                  cc.Cedula_Fiador_2								RELA_IDEN,
-                  'TDC'												RELA_TIPO,
-                  cc.NoCuentaClaro									RELA_NCTA,
-                  'IND'												RELA_TIPR--Tipo Referencia
-           FROM   uvw_CobranzasCuentas       cc
-           WHERE  cc.Cedula_Fiador_2 IS NOT NULL
-                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_2))) > 0
-                  AND cc.Cedula_Fiador_2 != cc.Cedula_Fiador_2
-       ) AS Empresariales
-WHERE  LEN(RELA_CIF) > 0
-
-
-GO
-
-
-
-
-
-
-USE [BandejaTC_Procesador]
-GO
-
-/****** Object:  Table [dbo].[RELACIONES_TC]    Script Date: 5/11/2026 16:18:26 ******/
-SET ANSI_NULLS ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-CREATE TABLE [dbo].[RELACIONES_TC](
-	[RELA_CIF] [char](19) NOT NULL,
-	[RELA_IDEN] [char](19) NOT NULL,
-	[RELA_TIPO] [varchar](3) NOT NULL,
-	[RELA_NCTA] [char](16) NOT NULL,
-	[RELA_TIPR] [varchar](3) NOT NULL
-) ON [PRIMARY]
-GO
-
-
-
-
-
-
-
-
+-- 3. Empresariales sin cédula
+SELECT No_Cliente, NoCuentaClaro
+FROM uvw_CobranzasCuentas
+WHERE No_Cedula IS NULL;
