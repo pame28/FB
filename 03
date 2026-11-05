@@ -87,6 +87,12 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
         #endregion
 
 
+        /// <summary>
+        /// This method is called when this script task executes in the control flow.
+        /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
+        /// To open Help, press F1.
+        /// </summary>
+        /// 
         public static DateTime date = DateTime.Now;
         public static string fecha_generacion = string.Empty; //date.ToString("yyyy-MM-dd");
         public Dictionary<string, string> parametros = new Dictionary<string, string>();
@@ -94,36 +100,9 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
         public string sql_ConsultaOrigen = string.Empty;
         public string sql_ConsultaActualizar = string.Empty;
 
-        // Timeout por defecto (segundos) si el parámetro "TimeoutSegundos" no existe en la tabla
-        // de parametrización o trae un valor inválido. 0 = sin límite.
-        private const int TIMEOUT_DEFAULT = 600;
 
-        /// <summary>
-        /// Timeout (en segundos) para comandos y bulk copy, leído del parámetro "TimeoutSegundos"
-        /// (del proceso "EPosicionDiaria" o de "General"). Si no existe o no es válido, usa TIMEOUT_DEFAULT.
-        /// </summary>
-        public int TimeoutSegundos
-        {
-            get
-            {
-                string valor;
-                int segundos;
-                if (parametros.TryGetValue("TimeoutSegundos", out valor) &&
-                    int.TryParse(valor, out segundos) && segundos >= 0)
-                {
-                    return segundos;
-                }
-                return TIMEOUT_DEFAULT;
-            }
-        }
-
-        /// <summary>
-        /// This method is called when this script task executes in the control flow.
-        /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
-        /// To open Help, press F1.
-        /// </summary>
         public void Main()
-		{
+        {
             if (ObtieneParametros())
             {
 
@@ -170,16 +149,12 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
 
         public bool RealizarMovimiento()
         {
-            List<PosicionDiaria> resultado = ObtenerInfoAs400();
-
-            // null = hubo error al leer AS400 (ya quedó registrado en el log)
-            if (resultado == null)
-                return false;
-
+            List<Rendicion> resultado = ObtenerInfoAs400();
             if (resultado.Count == 0)
             {
                 RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
-                return false;
+                UpdateArchivoAS400();
+                return true;
             }
 
             if (!PreParseo())
@@ -215,16 +190,29 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                     throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
-                // Primero los del proceso (tienen prioridad) y luego los generales.
-                // Si un parámetro existe en ambos, se queda el valor de "EPosicionDiaria".
-                CargarParametrosProceso(conn, "EPosicionDiaria");
-                CargarParametrosProceso(conn, "General");
+                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "DRendicion";
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string idParametro = reader["IdParametro"].ToString();
+                            string valorParametro = reader["ValorParametro"].ToString();
+
+                            if (!parametros.ContainsKey(idParametro))
+                                parametros.Add(idParametro, valorParametro);
+                        }
+                    }
+                }
 
                 return true;
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message}");
+                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -232,29 +220,6 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             {
                 if (conn != null)
                     cm.ReleaseConnection(conn);
-            }
-        }
-
-        private void CargarParametrosProceso(SqlConnection conn, string proceso)
-        {
-            using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
-            {
-                cmd.CommandType = CommandType.StoredProcedure;
-                // Aquí TimeoutSegundos puede no estar cargado aún, así que usa TIMEOUT_DEFAULT
-                cmd.CommandTimeout = TimeoutSegundos;
-                cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = proceso;
-
-                using (SqlDataReader reader = cmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string idParametro = reader["IdParametro"].ToString();
-                        string valorParametro = reader["ValorParametro"].ToString();
-
-                        if (!parametros.ContainsKey(idParametro))
-                            parametros.Add(idParametro, valorParametro);
-                    }
-                }
             }
         }
 
@@ -293,14 +258,13 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
                 }
 
 
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaEstado;
-                    cmd.CommandTimeout = TimeoutSegundos;
                     using (IDataReader reader = cmd.ExecuteReader())
                     {
 
@@ -314,7 +278,9 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener estado proceso:  {sql_ConsultaEstado}  | ERROR :  {ex.Message} ");
+                RegistraProceso("F", $"Falló obtener estado proceso {sql_ConsultaEstado} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
                 return null;
             }
             finally
@@ -340,14 +306,12 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
 
             if (estadoProceso == "G")
             {
+                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
+
                 return RealizarMovimiento();
             }
             else
             {
-                // Corregido: antes este mensaje se registraba cuando el estado SÍ llegaba a "G",
-                // y cuando se agotaban los reintentos no se registraba nada.
-                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
-
                 return false;
             }
         }
@@ -361,12 +325,9 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             };
         }
 
-        /// <summary>
-        /// Devuelve la lista de posiciones del AS400, o null si ocurrió un error al leer.
-        /// </summary>
-        public List<PosicionDiaria> ObtenerInfoAs400()
+        public List<Rendicion> ObtenerInfoAs400()
         {
-            List<PosicionDiaria> posiciones = new List<PosicionDiaria>();
+            List<Rendicion> rendicions = new List<Rendicion>();
             ConnectionManager cm = Dts.Connections["AS400"];
             OleDbConnection conn = null;
 
@@ -375,182 +336,164 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
                 }
 
                 {
                     using (IDbCommand cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = sql_ConsultaOrigen;
-                        cmd.CommandTimeout = TimeoutSegundos;
                         using (IDataReader reader = cmd.ExecuteReader())
                         {
                             while (reader.Read())
                             {
-                                PosicionDiaria posicion = new PosicionDiaria();
+                                Rendicion rendicion = new Rendicion();
 
-                                posicion.NOUSUARIO = reader.GetString(0);
-                                posicion.NUMEROTARJETA = reader.GetString(1);
-                                posicion.NUMEROTARJETARES = reader.GetString(2);
-                                posicion.FECHAGENERACION = reader.GetString(3);
-                                posicion.DISPONIBLECOMPRAML = reader.GetDecimal(4);
-                                posicion.DISPONIBLERETIROML = reader.GetDecimal(5);
-                                posicion.SALDOULTIMALIQUIDACIONML = reader.GetDecimal(6);
-                                posicion.SALDOULTIMALIQUIDACIONUSD = reader.GetDecimal(7);
-                                posicion.PUNTOSACUMULADOSPERIODO = reader.GetDecimal(8);
-                                posicion.FECHAULTIMALIQUIDACION = reader.GetString(9);
-                                posicion.PAGOMINIMOULTIMALIQUIDACIML = reader.GetDecimal(10);
-                                posicion.PAGOMINIMOULTIMALIQUIDACIUSD = reader.GetDecimal(11);
-                                posicion.PAGOCONTADOML = reader.GetDecimal(12);
-                                posicion.PAGOCONTADOUSD = reader.GetDecimal(13);
-                                posicion.NOCLIENTEUNICO = reader.GetString(14);
-                                posicion.CODIGOBANCO = reader.GetDecimal(15);
-                                posicion.CODIGOPRODUCTO = reader.GetString(16);
-                                posicion.FECHAVENCEULTIMALIQUIDACION = reader.GetString(17);
-                                posicion.MONEDALIMITECOMPRA = reader.GetString(18);
-                                posicion.IMPORTELIMITECOMPRA = reader.GetDecimal(19);
-                                posicion.SALDOACTUALML = reader.GetDecimal(20);
-                                posicion.SALDOACTUALUSD = reader.GetDecimal(21);
-                                posicion.TOTALAUTORIZADOFECHAML = reader.GetDecimal(22);
-                                posicion.TOTALAUTORIZADOFECHAUSD = reader.GetDecimal(23);
-                                posicion.SALDOCONSUMIDOML = reader.GetDecimal(24);
-                                posicion.SALDOCONSUMIDOUSD = reader.GetDecimal(25);
-                                posicion.CODIGOCASA = reader.GetString(26);
-                                posicion.CARTERA = reader.GetDecimal(27);
-                                posicion.MODELOLIQUIDACION = reader.GetDecimal(28);
-                                posicion.GRUPOAFINIDAD = reader.GetDecimal(29);
-                                posicion.CODIGOPOSTALPARTICULAR = reader.GetString(30);
-                                posicion.CODIGODEPTOPARTICULAR = reader.GetString(31);
-                                posicion.CODIGOPAIS = reader.GetString(32);
-                                posicion.ESTADOTARJETA = reader.GetDecimal(33);
-                                posicion.SUBESTADO = reader.GetString(34);
-                                posicion.CODIGOEMPRESA = reader.GetString(35);
-                                posicion.PLANTA = reader.GetString(36);
-                                posicion.CALIFICACIONUSUARIO = reader.GetString(37);
-                                posicion.FECHACIERREPROXLIQUIDACION = reader.GetString(38);
-                                posicion.DIASGRACIACONSECUTIVOS = reader.GetDecimal(39);
-                                posicion.LIMITECOMPRASCUOTAS = reader.GetDecimal(40);
-                                posicion.LIMITEADELANTO = reader.GetDecimal(41);
-                                posicion.LIMITECOMPRASFINANCIACION = reader.GetDecimal(42);
-                                posicion.DISPONIBLECOMPRACUOTAS = reader.GetDecimal(43);
-                                posicion.DISPONIBLEEXTRAFINANCIAMIENTO = reader.GetDecimal(44);
-                                posicion.AUTORIZACIONESCONSUMOSML = reader.GetDecimal(45);
-                                posicion.AUTORIZACIONESCONSUMOCUOTAML = reader.GetDecimal(46);
-                                posicion.AUTORIZACIONESDISPONEEFECTML = reader.GetDecimal(47);
-                                posicion.AUTORIZACIONESCONSUMOSUSD = reader.GetDecimal(48);
-                                posicion.AUTORIZACIONESCONSUMOCUOTAUSD = reader.GetDecimal(49);
-                                posicion.AUTORIZACIONESDISPONEEFECTUSD = reader.GetDecimal(50);
-                                posicion.PAGOSINGRESADOSML = reader.GetDecimal(51);
-                                posicion.AJUSTESNETOCREDEBINGRESADOSML = reader.GetDecimal(52);
-                                posicion.AJUSTESCREDITOINGRESADOSML = reader.GetDecimal(53);
-                                posicion.AJUSTESDEBITOINGRESADOSML = reader.GetDecimal(54);
-                                posicion.CONSUMOSINGRESADOSML = reader.GetDecimal(55);
-                                posicion.DISPOSICIONESEFECTIVOINGREML = reader.GetDecimal(56);
-                                posicion.CUOTASPENDIENTESLIQUIDARML = reader.GetDecimal(57);
-                                posicion.CUOTASEXTRAFINPENDIENTELIQML = reader.GetDecimal(58);
-                                posicion.PAGOSINGRESADOSUSD = reader.GetDecimal(59);
-                                posicion.AJUSTESNETOCREDEBUSD = reader.GetDecimal(60);
-                                posicion.AJUSTESCREDITOINGRESADOSUSD = reader.GetDecimal(61);
-                                posicion.AJUSTESDEBITOINGRESADOSUSD = reader.GetDecimal(62);
-                                posicion.CONSUMOSINGRESADOSUSD = reader.GetDecimal(63);
-                                posicion.DISPOSICIONESEFECTIVOINGREUSD = reader.GetDecimal(64);
-                                posicion.CUOTASPENDIENTESLIQUIDARUSD = reader.GetDecimal(65);
-                                posicion.CUOTASEXTRAFINPENDIENTELIQUSD = reader.GetDecimal(66);
-                                posicion.TNAINTERESCONSUMOFINANML = reader.GetDecimal(67);
-                                posicion.TNAINTERESFINANCIACIONADEML = reader.GetDecimal(68);
-                                posicion.TNAINTERESPUNITORIOML = reader.GetDecimal(69);
-                                posicion.TNAINTERESADELANTOML = reader.GetDecimal(70);
-                                posicion.TNAINTERESCONSUMOFINANUSD = reader.GetDecimal(71);
-                                posicion.TNAINTERESFINANCIACIONADEUSD = reader.GetDecimal(72);
-                                posicion.TNAINTERESPUNITORIOUSD = reader.GetDecimal(73);
-                                posicion.TNAINTERESADELANTOUSD = reader.GetDecimal(74);
-                                posicion.FECHAINGRESOMORAML = reader.GetString(75);
-                                posicion.DIASMORAML = reader.GetDecimal(76);
-                                posicion.FECHAINGRESOMORAUSD = reader.GetString(77);
-                                posicion.DIASMORAUSD = reader.GetDecimal(78);
-                                posicion.TIPOCAMBIOCOMPRADOR = reader.GetDecimal(79);
-                                posicion.TIPOCAMBIOVENDEDOR = reader.GetDecimal(80);
-                                posicion.TIPOCAMBIODESLIZAMIENTO = reader.GetDecimal(81);
-                                posicion.CAPITALPAGOMINIMOML = reader.GetDecimal(82);
-                                posicion.PAGOMINIMOCARGOML = reader.GetDecimal(83);
-                                posicion.PAGOMINIMOINTERESFINANML = reader.GetDecimal(84);
-                                posicion.PAGOMINIMOPUNITORIOSML = reader.GetDecimal(85);
-                                posicion.CAPITALPAGOMINIMOUSD = reader.GetDecimal(86);
-                                posicion.PAGOMINIMOCARGOUSD = reader.GetDecimal(87);
-                                posicion.PAGOMINIMOINTERESFINANUSD = reader.GetDecimal(88);
-                                posicion.PAGOMINIMOPUNITORIOSUSD = reader.GetDecimal(89);
-                                posicion.VALORCUBIERTOMINCAPITLQANTML = reader.GetDecimal(90);
-                                posicion.VALORCUBIERTOMINCARGOLQANTML = reader.GetDecimal(91);
-                                posicion.VALORCUBIERTOMINFINANLQANTML = reader.GetDecimal(92);
-                                posicion.VALORCUBIERTOMINPUNITLQANTML = reader.GetDecimal(93);
-                                posicion.VALORCUBIERTOMINCAPITLQANTUSD = reader.GetDecimal(94);
-                                posicion.VALORCUBIERTOMINCARGOLQANTUSD = reader.GetDecimal(95);
-                                posicion.VALORCUBIERTOMINFINANLQANTUSD = reader.GetDecimal(96);
-                                posicion.VALORCUBIERTOMINPUNITLQANTUSD = reader.GetDecimal(97);
-                                posicion.FECHACUBRIOMINCAPITALLQANTML = reader.GetString(98);
-                                posicion.FECHACUBRIOMINICARGOSLQANTML = reader.GetString(99);
-                                posicion.FECHACUBRIOMINFINANCILQANTML = reader.GetString(100);
-                                posicion.FECHACUBRIOMINPUNITORLQANTML = reader.GetString(101);
-                                posicion.FECHACUBRIOMINCAPITALLQANTUSD = reader.GetString(102);
-                                posicion.FECHACUBRIOMINICARGOSLQANTUSD = reader.GetString(103);
-                                posicion.FECHACUBRIOMINFINANCILQANTUSD = reader.GetString(104);
-                                posicion.FECHACUBRIOMINPUNITORLQANTUSD = reader.GetString(105);
-                                posicion.FECHAEGRESOMORAML = reader.GetString(106);
-                                posicion.TRAMOMORACLIENTEULTIMALIQUML = reader.GetDecimal(107);
-                                posicion.TRAMOMORACLIENTEACTUALML = reader.GetDecimal(108);
-                                posicion.FECHAEGRESOMORAUSD = reader.GetString(109);
-                                posicion.TRAMOMORACLIENTEULTIMALIQUUSD = reader.GetDecimal(110);
-                                posicion.TRAMOMORACLIENTEACTUALUSD = reader.GetDecimal(111);
-                                posicion.PUNTOSDISPONIBLES = reader.GetDecimal(112);
-                                posicion.FACTOROVERLIMIT = reader.GetDecimal(113);
-                                posicion.MARCAPMFIJO = reader.GetString(114);
-                                posicion.IMPORTECUOTASPENDIENTELIQUML = reader.GetDecimal(115);
-                                posicion.IMPORTECUOTASPENDIENTELIQUUSD = reader.GetDecimal(116);
-                                posicion.SALDOZFECHA = reader.GetDecimal(117);
-                                posicion.IMPORTECUOTASZPENDIENTE = reader.GetDecimal(118);
-                                posicion.IMPORTEAUTORIZACIONCONSUMOZ = reader.GetDecimal(119);
-                                posicion.IMPORTECONSUMOSZPERIOACTUAL = reader.GetDecimal(120);
-                                posicion.IMPORTEAJUSTEZPERIOACTUAL = reader.GetDecimal(121);
-                                posicion.DISPONIBLECONSUMOZ = reader.GetDecimal(122);
-                                posicion.FECHAVENCIMIENTOPROXIMA = reader.GetString(123);
-                                posicion.SALDOZULTIMALIQUIDACION = reader.GetDecimal(124);
-                                posicion.IMPORTECUOTAZOPTADAPAGO = reader.GetDecimal(125);
-                                posicion.INTERESSUSPENSOFINANCIACIOML = reader.GetDecimal(126);
-                                posicion.INTERESSUSPENSOFINANCIACIOUSD = reader.GetDecimal(127);
-                                posicion.INTERESUSPENSOPUNITORIOML = reader.GetDecimal(128);
-                                posicion.INTERESUSPENSOPUNITORIOUSD = reader.GetDecimal(129);
-                                posicion.VALORCUBIERTOMINCAPITLQACTML = reader.GetDecimal(130);
-                                posicion.VALORCUBIERTOMINCARGOLQACTML = reader.GetDecimal(131);
-                                posicion.VALORCUBIERTOMINFINANLQACTML = reader.GetDecimal(132);
-                                posicion.VALORCUBIERTOMINPUNITLQACTML = reader.GetDecimal(133);
-                                posicion.VALORCUBIERTOMINCAPITLQACTUSD = reader.GetDecimal(134);
-                                posicion.VALORCUBIERTOMINCARGOLQACTUSD = reader.GetDecimal(135);
-                                posicion.VAORLCUBIERTOMINFINANLQACTUSD = reader.GetDecimal(136);
-                                posicion.VALORCUBIERTOMINPUNITLQACTUSD = reader.GetDecimal(137);
-                                posicion.TOTALCUOTASPENDIENTESPLANZ = reader.GetDecimal(138);
-                                posicion.FECHAINGRESOMORANIVELACTUAML = reader.GetString(139);
-                                posicion.FECHAINGRESOMORANIVELACTUAUSD = reader.GetString(140);
-                                posicion.DIASATRASOINGRESOML = reader.GetDecimal(141);
-                                posicion.DIASATRASOINGRESOUSD = reader.GetDecimal(142);
-                                posicion.DIASATRASOACTUALML = reader.GetDecimal(143);
-                                posicion.DIASATRASOACTUALUSD = reader.GetDecimal(144);
-                                posicion.PERIODOSIMPAGOSULTIMALIQUIML = reader.GetDecimal(145);
-                                posicion.PERIODOSIMPAGOSULTIMALIQUIUSD = reader.GetDecimal(146);
-                                posicion.PERIODOSIMPAGOSACTUALML = reader.GetDecimal(147);
-                                posicion.PERIODOSIMPAGOSACTUALUSD = reader.GetDecimal(148);
-                                posicion.MOROSIDADFECHACIERREVENCIMIEN = reader.GetDecimal(149);
-                                posicion.FECHAULTIMOPAGOML = reader.GetString(150);
-                                posicion.FECHAULTIMOPAGOUSD = reader.GetString(151);
-                                posicion.IMPORTEULTIMOPAGOML = reader.GetDecimal(152);
-                                posicion.IMPORTEULTIMOPAGOUSD = reader.GetDecimal(153);
-                                posicion.FILLER1 = reader.GetString(154);
-                                posicion.LINEAENARCHIVO = reader.GetDecimal(155);
-                                posicion.BINTARJETA = reader.GetString(156);
-                                posicion.TARJETAIMPRIMIR = reader.GetString(157);
-                                posicion.NOCUENTACLARO = reader.GetString(158);
-                                posicion.ProcesadorOrigen = "LOCAL";
+                                rendicion.Admin = reader.GetDecimal(0);
+                                rendicion.SubAdmin = reader.GetDecimal(1);
+                                rendicion.NoClienteUnico = reader.GetString(2);
+                                rendicion.CodigoBanco = reader.GetDecimal(3);
+                                rendicion.CodigoSucursal = reader.GetString(4);
+                                rendicion.NumeroCuenta = reader.GetString(5);
+                                rendicion.NumeroTarjeta = reader.GetString(6);
+                                rendicion.NumeroTarjetaRes = reader.GetString(7);
+                                rendicion.BinTarjeta = reader.GetString(8);
+                                rendicion.TarjetaImprimir = reader.GetString(9);
+                                rendicion.CodigoProducto = reader.GetString(10);
+                                rendicion.Cartera = reader.GetDecimal(11);
+                                rendicion.CodigoOperacion = reader.GetString(12);
+                                rendicion.GrupoMovimientos = reader.GetString(13);
+                                rendicion.OrigenIngreso = reader.GetString(14);
+                                rendicion.Cuotas = reader.GetString(15);
+                                rendicion.PlanCuotas = reader.GetString(16);
+                                rendicion.SignoSaldoUsuario = reader.GetString(17);
+                                rendicion.SignoSaldoEstablecimiento = reader.GetString(18);
+                                rendicion.SignoCruceEmisor = reader.GetString(19);
+                                rendicion.SignoCrucePagador = reader.GetString(20);
+                                rendicion.MotivoCargoReembolso = reader.GetString(21);
+                                rendicion.TipoFinanciacionUsuario = reader.GetString(22);
+                                rendicion.NumeroComprobante = reader.GetString(23);
+                                rendicion.Filler1 = reader.GetString(24);
+                                rendicion.NoCut = reader.GetString(25);
+                                rendicion.OrigenTransaccion = reader.GetString(26);
+                                rendicion.PosiEntryMode = reader.GetString(27);
+                                rendicion.MarcaEcommerce = reader.GetString(28);
+                                rendicion.NumeroEstablecimiento = reader.GetString(29);
+                                rendicion.MonedaOriginalMovimiento = reader.GetDecimal(30);
+                                rendicion.ImporteOriginalMovimiento = reader.GetDecimal(31);
+                                rendicion.MonedaCruce = reader.GetDecimal(32);
+                                rendicion.ImporteCruce = reader.GetDecimal(33);
+                                rendicion.MonedaLiquidar = reader.GetDecimal(34);
+                                rendicion.ImporteLiquidar = reader.GetDecimal(35);
+                                rendicion.ImporteTotalPlan = reader.GetDecimal(36);
+                                rendicion.ImporteLiquidadoPlan = reader.GetDecimal(37);
+                                rendicion.CuotaNumero = reader.GetString(38);
+                                rendicion.CantidadCuotasPlan = reader.GetString(39);
+                                rendicion.FechaOrigen = reader.GetString(40);
+                                rendicion.FechaPresentacionAdquirente = reader.GetString(41);
+                                rendicion.FechaPresentacionVasa = reader.GetString(42);
+                                rendicion.FechaProceso = reader.GetString(43);
+                                rendicion.HoraProceso = reader.GetString(44).Replace('.',':');
+                                rendicion.FechaValor = reader.GetString(45);
+                                rendicion.FechaCruce = reader.GetString(46);
+                                rendicion.FechaPagoEstablecimiento = reader.GetString(47);
+                                rendicion.FechaCinta = reader.GetString(48);
+                                rendicion.NumeroCinta = reader.GetString(49);
+                                rendicion.TipoIngresoMovimientoCie = reader.GetString(50);
+                                rendicion.MarcaRepresentacion = reader.GetString(51);
+                                rendicion.RubroInternacional = reader.GetString(52);
+                                rendicion.RubroPropio = reader.GetString(53);
+                                rendicion.NombreEstablecimiento = reader.GetString(54);
+                                rendicion.CiudadEstablecimiento = reader.GetString(55);
+                                rendicion.NoAutorizacion = reader.GetString(56);
+                                rendicion.IdTerminal = reader.GetString(57);
+                                rendicion.CanalIngresoExtraFinIntraFin = reader.GetString(58);
+                                rendicion.CodigoPaisOrigenCupon = reader.GetString(59);
+                                rendicion.Microfilm = reader.GetString(60);
+                                rendicion.NumeroCaja = reader.GetDecimal(61);
+                                rendicion.NumeroLote = reader.GetDecimal(62);
+                                rendicion.AfectaDisponible = reader.GetString(63);
+                                rendicion.AfectaPagoMinimo = reader.GetString(64);
+                                rendicion.PoseeArancelEmisor = reader.GetString(65);
+                                rendicion.PoseeArancelPagador = reader.GetString(66);
+                                rendicion.PoseeArancelProcesador = reader.GetString(67);
+                                rendicion.OperaResumenLimpio = reader.GetString(68);
+                                rendicion.TarjetaConProblema = reader.GetString(69);
+                                rendicion.OperaMillaje = reader.GetString(70);
+                                rendicion.LiquidaUsuario = reader.GetString(71);
+                                rendicion.TipoPago = reader.GetString(72);
+                                rendicion.UtilizaLeyendaCodigoOperacion = reader.GetString(73);
+                                rendicion.BinOrigen = reader.GetDecimal(74);
+                                rendicion.BinDestino = reader.GetDecimal(75);
+                                rendicion.AtributoCargoReembolsoInt = reader.GetString(76);
+                                rendicion.ReservadoPexAdquirente = reader.GetString(77);
+                                rendicion.CiclosDiferir = reader.GetDecimal(78);
+                                rendicion.CodigoCampaniaDiferimiento = reader.GetString(79);
+                                rendicion.InteresDiferimiento = reader.GetString(80);
+                                rendicion.CodigoComercio = reader.GetDecimal(81);
+                                rendicion.Filler2 = reader.GetString(82);
+                                rendicion.ArancelEmisor = reader.GetDecimal(83);
+                                rendicion.ArancelPagador = reader.GetDecimal(84);
+                                rendicion.ArancelProcesador = reader.GetDecimal(85);
+                                rendicion.TasaCostoFinanciero = reader.GetDecimal(86);
+                                rendicion.EstadoResumenLimpio = reader.GetString(87);
+                                rendicion.IngresoObsCargas = reader.GetString(88);
+                                rendicion.IngresoObsIntercambioEntrante = reader.GetString(89);
+                                rendicion.CodigoRazonInternacional = reader.GetString(90);
+                                rendicion.BancoPagador = reader.GetDecimal(91);
+                                rendicion.CasaPagadora = reader.GetDecimal(92);
+                                rendicion.BinPagador = reader.GetDecimal(93);
+                                rendicion.MarcaLimitePorTarjeta = reader.GetString(94);
+                                rendicion.AjusteCuota01 = reader.GetDecimal(95);
+                                rendicion.CostoFinanciero = reader.GetDecimal(96);
+                                rendicion.UnattendedAcceptanceTerminal = reader.GetString(97);
+                                rendicion.NoReclamo = reader.GetString(98);
+                                rendicion.NoExpediente = reader.GetString(99);
+                                rendicion.AutorizacionLocalizada = reader.GetString(100);
+                                rendicion.NoCutRelacionado = reader.GetString(101);
+                                rendicion.TipoResolucion = reader.GetString(102);
+                                rendicion.CaracteristicaAutorizacion = reader.GetString(103);
+                                rendicion.FuenteAutorizacion = reader.GetString(104);
+                                rendicion.Millas = reader.GetDecimal(105);
+                                rendicion.ReglaMillas = reader.GetString(106);
+                                rendicion.FechaRendicion = reader.GetString(107);
+                                rendicion.Evento = reader.GetString(108);
+                                rendicion.ImporteAplicadoUsd = reader.GetDecimal(109);
+                                rendicion.ImporteAplicadoMl = reader.GetDecimal(110);
+                                rendicion.ImporteSobranteMo = reader.GetDecimal(111);
+                                rendicion.TipoCambio = reader.GetDecimal(112);
+                                rendicion.FechaCierrre = reader.GetString(113);
+                                rendicion.CodigoMkt = reader.GetString(114);
+                                rendicion.LiquidaEstablecimiento = reader.GetString(115);
+                                rendicion.NoCuentaUnica = reader.GetString(116);
+                                rendicion.NumeroComercio = reader.GetString(117);
+                                rendicion.ModeloArancelPagadorAdquirien = reader.GetString(118);
+                                rendicion.TasaArancelPagadorAdquirente = reader.GetDecimal(119);
+                                rendicion.MonedaArancelPagadorAdquirent = reader.GetString(120);
+                                rendicion.ImporteArancelPagadorAdquiren = reader.GetDecimal(121);
+                                rendicion.FechaCierreEstablecimiento = reader.GetString(122);
+                                rendicion.TipoImporteAdicional = reader.GetString(123);
+                                rendicion.ImporteAdicional = reader.GetDecimal(124);
+                                rendicion.ImporteAdicionalIncluido = reader.GetString(125);
+                                rendicion.IdentificaDevolucionIva = reader.GetString(126);
+                                rendicion.IdentificaNumeroFactura = reader.GetString(127);
+                                rendicion.TipoAccionPlan = reader.GetString(128);
+                                rendicion.MillasExcedidas = reader.GetDecimal(129);
+                                rendicion.ReglaMillasOrig = reader.GetString(130);
+                                rendicion.CodigoRechazoSaliente = reader.GetString(131);
+                                rendicion.SettlementFlag = reader.GetString(132);
+                                rendicion.AcuerdoGas = reader.GetString(133);
+                                rendicion.Filler3 = reader.GetString(134);
+                                rendicion.Filler4 = reader.GetString(135);
+                                rendicion.ImporteCashback = reader.GetDecimal(136);
+                                rendicion.Filler5 = reader.GetString(137);
+                                rendicion.TipoCiclo = reader.GetString(138);
+                                rendicion.IdAdquirenteEmisor = reader.GetString(139);
+                                rendicion.LineaEnArchivo = reader.GetDecimal(140);
+                                rendicion.NoCuentaClaro = reader.GetString(141);
+                                rendicion.ProcesadorOrigen = "LOCAL";
 
-                                posiciones.Add(posicion);
+                                rendicions.Add(rendicion);
                             }
                         }
                     }
@@ -559,8 +502,9 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message}");
-                return null;
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
 
             }
             finally
@@ -569,7 +513,7 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                     cm.ReleaseConnection(conn);
             }
 
-            return posiciones;
+            return rendicions;
         }
 
         public bool PreParseo()
@@ -588,9 +532,8 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                 using (SqlCommand cmd = new SqlCommand(parametros["PreParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -598,7 +541,7 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -625,9 +568,8 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                 using (SqlCommand cmd = new SqlCommand(parametros["PostParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -635,7 +577,7 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -646,339 +588,308 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             }
         }
 
-        public DataTable ConvertirADataTable(List<PosicionDiaria> posicion)
+        public DataTable ConvertirADataTable(List<Rendicion> posicion)
         {
 
             try
             {
                 DataTable dt = new DataTable();
 
-                dt.Columns.Add("NoUsuario", typeof(string));
-                dt.Columns.Add("NumeroTarjeta", typeof(string));
-                dt.Columns.Add("NumeroTarjetaRes", typeof(string));
-                dt.Columns.Add("FechaGeneracion", typeof(DateTime));
-                dt.Columns.Add("DisponibleCompraML", typeof(decimal));
-                dt.Columns.Add("DisponibleRetiroML", typeof(decimal));
-                dt.Columns.Add("SaldoUltimaLiquidacionML", typeof(decimal));
-                dt.Columns.Add("SaldoUltimaLiquidacionUSD", typeof(decimal));
-                dt.Columns.Add("PuntosAcumuladosPeriodo", typeof(int));
-                dt.Columns.Add("FechaUltimaLiquidacion", typeof(DateTime));
-                dt.Columns.Add("PagoMinimoUltimaLiquidacionML", typeof(decimal));
-                dt.Columns.Add("PagoMinimoUltimaLiquidacionUSD", typeof(decimal));
-                dt.Columns.Add("PagoContadoML", typeof(decimal));
-                dt.Columns.Add("PagoContadoUSD", typeof(decimal));
+                dt.Columns.Add("Admin", typeof(short));
+                dt.Columns.Add("SubAdmin", typeof(short));
                 dt.Columns.Add("NoClienteUnico", typeof(string));
                 dt.Columns.Add("CodigoBanco", typeof(short));
-                dt.Columns.Add("CodigoProducto", typeof(string));
-                dt.Columns.Add("FechaVenceUltimaLiquidacion", typeof(DateTime));
-                dt.Columns.Add("MonedaLimiteCompra", typeof(string));
-                dt.Columns.Add("ImporteLimiteCompra", typeof(decimal));
-                dt.Columns.Add("SaldoActualML", typeof(decimal));
-                dt.Columns.Add("SaldoActualUSD", typeof(decimal));
-                dt.Columns.Add("TotalAutorizadoFechaML", typeof(decimal));
-                dt.Columns.Add("TotalAutorizadoFechaUSD", typeof(decimal));
-                dt.Columns.Add("SaldoConsumidoML", typeof(decimal));
-                dt.Columns.Add("SaldoConsumidoUSD", typeof(decimal));
-                dt.Columns.Add("CodigoCasa", typeof(string));
-                dt.Columns.Add("Cartera", typeof(short));
-                dt.Columns.Add("ModeloLiquidacion", typeof(short));
-                dt.Columns.Add("GrupoAfinidad", typeof(short));
-                dt.Columns.Add("CodigoPostalParticular", typeof(string));
-                dt.Columns.Add("CodigoDeptoParticular", typeof(string));
-                dt.Columns.Add("CodigoPais", typeof(string));
-                dt.Columns.Add("EstadoTarjeta", typeof(byte));
-                dt.Columns.Add("SubEstado", typeof(string));
-                dt.Columns.Add("CodigoEmpresa", typeof(string));
-                dt.Columns.Add("Planta", typeof(string));
-                dt.Columns.Add("CalificacionUsuario", typeof(string));
-                dt.Columns.Add("FechaCierreProxLiquidacion", typeof(DateTime));
-                dt.Columns.Add("DiasGraciaConsecutivos", typeof(byte));
-                dt.Columns.Add("LimiteComprasCuotas", typeof(decimal));
-                dt.Columns.Add("LimiteAdelanto", typeof(decimal));
-                dt.Columns.Add("LimiteComprasFinanciacion", typeof(decimal));
-                dt.Columns.Add("DisponibleCompraCuotas", typeof(decimal));
-                dt.Columns.Add("DisponibleExtraFinanciamiento", typeof(decimal));
-                dt.Columns.Add("AutorizacionesConsumosML", typeof(decimal));
-                dt.Columns.Add("AutorizacionesConsumoCuotasML", typeof(decimal));
-                dt.Columns.Add("AutorizacionesDisponeEfecticoML", typeof(decimal));
-                dt.Columns.Add("AutorizacionesConsumosUSD", typeof(decimal));
-                dt.Columns.Add("AutorizacionesConsumoCuotasUSD", typeof(decimal));
-                dt.Columns.Add("AutorizacionesDisponeEfectivoUSD", typeof(decimal));
-                dt.Columns.Add("PagosIngresadosML", typeof(decimal));
-                dt.Columns.Add("AjustesNetoCreDebIngresadosML", typeof(decimal));
-                dt.Columns.Add("AjustesCreditoIngresadosML", typeof(decimal));
-                dt.Columns.Add("AjustesDebitoIngresadosML", typeof(decimal));
-                dt.Columns.Add("ConsumosIngresadosML", typeof(decimal));
-                dt.Columns.Add("DisposicionesEfectivoIngresadosML", typeof(decimal));
-                dt.Columns.Add("CuotasPendientesLiquidarML", typeof(decimal));
-                dt.Columns.Add("CuotasExtraFinPendienteLiquidarML", typeof(decimal));
-                dt.Columns.Add("PagosIngresadosUSD", typeof(decimal));
-                dt.Columns.Add("AjustesNetoCreDebUSD", typeof(decimal));
-                dt.Columns.Add("AjustesCreditoIngresadosUSD", typeof(decimal));
-                dt.Columns.Add("AjustesDebitoIngresadosUSD", typeof(decimal));
-                dt.Columns.Add("ConsumosIngresadosUSD", typeof(decimal));
-                dt.Columns.Add("DisposicionesEfectivoIngresadosUSD", typeof(decimal));
-                dt.Columns.Add("CuotasPendientesLiquidarUSD", typeof(decimal));
-                dt.Columns.Add("CuotasExtraFinPendienteLiquidarUSD", typeof(decimal));
-                dt.Columns.Add("TNAInteresConsumoFinanML", typeof(decimal));
-                dt.Columns.Add("TNAInteresFinanciacionAdeML", typeof(decimal));
-                dt.Columns.Add("TNAInteresPunitorioML", typeof(decimal));
-                dt.Columns.Add("TNAInteresAdelantoML", typeof(decimal));
-                dt.Columns.Add("TNAInteresConsumoFinanUSD", typeof(decimal));
-                dt.Columns.Add("TNAInteresFinanciacionAdeUSD", typeof(decimal));
-                dt.Columns.Add("TNAInteresPunitorioUSD", typeof(decimal));
-                dt.Columns.Add("TNAInteresAdelantoUSD", typeof(decimal));
-                dt.Columns.Add("FechaIngresoMoraML", typeof(DateTime));
-                dt.Columns.Add("DiasMoraML", typeof(short));
-                dt.Columns.Add("FechaIngresoMoraUSD", typeof(DateTime));
-                dt.Columns.Add("DiasMoraUSD", typeof(short));
-                dt.Columns.Add("TipoCambioComprador", typeof(decimal));
-                dt.Columns.Add("TipoCambioVendedor", typeof(decimal));
-                dt.Columns.Add("TipoCambioDeslizamiento", typeof(decimal));
-                dt.Columns.Add("CapitalPagoMinimoML", typeof(decimal));
-                dt.Columns.Add("PagoMinimoCargoML", typeof(decimal));
-                dt.Columns.Add("PagoMinimoInteresFinanML", typeof(decimal));
-                dt.Columns.Add("PagoMinimoPunitoriosML", typeof(decimal));
-                dt.Columns.Add("CapitalPagoMinimoUSD", typeof(decimal));
-                dt.Columns.Add("PagoMinimoCargoUSD", typeof(decimal));
-                dt.Columns.Add("PagoMinimoInteresFinanUSD", typeof(decimal));
-                dt.Columns.Add("PagoMinimoPunitoriosUSD", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCapitalLqAntML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCargoLqAntML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoFinanciacionLqAntML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoPunitorioLqAntML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCapitalLqAntUSD", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCargoLqAntUSD", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoFinanciacionLqAntUSD", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoPunitorioLqAntUSD", typeof(decimal));
-                dt.Columns.Add("FechaCubrioMinimoCapitalLqAntML", typeof(DateTime));
-                dt.Columns.Add("FechaCubrioMinimoCargosLqAntML", typeof(DateTime));
-                dt.Columns.Add("FechaCubrioMinimoFinanciacionLqAntML", typeof(DateTime));
-                dt.Columns.Add("FechaCubrioMinimoPunitorioLqAntML", typeof(DateTime));
-                dt.Columns.Add("FechaCubrioMinimoCapitalLqAntUSD", typeof(DateTime));
-                dt.Columns.Add("FechaCubrioMinimoCargoLqAntUSD", typeof(DateTime));
-                dt.Columns.Add("FechaCubrioFinanciacionLqAntUSD", typeof(DateTime));
-                dt.Columns.Add("FechaCubrioPunitorioLqAntUSD", typeof(DateTime));
-                dt.Columns.Add("FechaEgresoMoraML", typeof(DateTime));
-                dt.Columns.Add("TramoMoraClienteUltimaLiquidacionML", typeof(short));
-                dt.Columns.Add("TramoMoraClienteActualML", typeof(short));
-                dt.Columns.Add("FechaEgresoMoraUSD", typeof(DateTime));
-                dt.Columns.Add("TramoMoraClienteUltimaLiquidacionUSD", typeof(short));
-                dt.Columns.Add("TramoMoraClienteActualUSD", typeof(short));
-                dt.Columns.Add("PuntosDisponibles", typeof(int));
-                dt.Columns.Add("FactorOverLimit", typeof(decimal));
-                dt.Columns.Add("MarcaPMFijo", typeof(string));
-                dt.Columns.Add("ImporteCuotasPendienteLiquidacionML", typeof(decimal));
-                dt.Columns.Add("ImporteCuotasPendienteLiquidacionUSD", typeof(decimal));
-                dt.Columns.Add("SaldoZFecha", typeof(decimal));
-                dt.Columns.Add("ImporteCuotasZPendiente", typeof(decimal));
-                dt.Columns.Add("ImporteAutorizacionConsumoZ", typeof(decimal));
-                dt.Columns.Add("ImporteConsumosZPerioActual", typeof(decimal));
-                dt.Columns.Add("ImporteAjusteZPerioActual", typeof(decimal));
-                dt.Columns.Add("DisponibleConsumoZ", typeof(decimal));
-                dt.Columns.Add("FechaVencimientoProxima", typeof(DateTime));
-                dt.Columns.Add("SaldoZUltimaLiquidacion", typeof(decimal));
-                dt.Columns.Add("ImporteCuotaZOptadaPago", typeof(decimal));
-                dt.Columns.Add("InteresSuspensoFinanciacionML", typeof(decimal));
-                dt.Columns.Add("InteresSuspensoFinanciacionUSD", typeof(decimal));
-                dt.Columns.Add("IntereSuspensoPunitorioML", typeof(decimal));
-                dt.Columns.Add("IntereSuspensoPunitorioUSD", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCapitalLqActML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCargosLqActML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoFinanciacionLqActML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoPunitorioLqActML", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCapitalLqActUSD", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoCargoLqActUSD", typeof(decimal));
-                dt.Columns.Add("VaorlCubiertoMinimoFinanciacionLqActUSD", typeof(decimal));
-                dt.Columns.Add("ValorCubiertoMinimoPunitorioLqActUSD", typeof(decimal));
-                dt.Columns.Add("TotalCuotasPendientesPlanZ", typeof(decimal));
-                dt.Columns.Add("FechaIngresoMoraNivelActualML", typeof(DateTime));
-                dt.Columns.Add("FechaIngresoMoraNivelActualUSD", typeof(DateTime));
-                dt.Columns.Add("DiasAtrasoIngresoML", typeof(short));
-                dt.Columns.Add("DiasAtrasoIngresoUSD", typeof(short));
-                dt.Columns.Add("DiasAtrasoActualML", typeof(short));
-                dt.Columns.Add("DiasAtrasoActualUSD", typeof(short));
-                dt.Columns.Add("PeriodosImpagosUltimaLiquidacionML", typeof(byte));
-                dt.Columns.Add("PeriodosImpagosUltimaLiquidacionUSD", typeof(byte));
-                dt.Columns.Add("PeriodosImpagosActualML", typeof(byte));
-                dt.Columns.Add("PeriodosImpagosActualUSD", typeof(byte));
-                dt.Columns.Add("MorosidadFechaCierreVencimiento", typeof(byte));
-                dt.Columns.Add("FechaUltimoPagoML", typeof(DateTime));
-                dt.Columns.Add("FechaUltimoPagoUSD", typeof(DateTime));
-                dt.Columns.Add("ImporteUltimoPagoML", typeof(decimal));
-                dt.Columns.Add("ImporteUltimoPagoUSD", typeof(decimal));
-                dt.Columns.Add("Filler1", typeof(string));
-                dt.Columns.Add("larId", typeof(int));
-                dt.Columns.Add("LineaEnArchivo", typeof(int));
+                dt.Columns.Add("CodigoSucursal", typeof(short));
+                dt.Columns.Add("NumeroCuenta", typeof(string));
+                dt.Columns.Add("NumeroTarjeta", typeof(string));
+                dt.Columns.Add("NumeroTarjetaRes", typeof(string));
                 dt.Columns.Add("BinTarjeta", typeof(string));
                 dt.Columns.Add("TarjetaImprimir", typeof(string));
+                dt.Columns.Add("CodigoProducto", typeof(string));
+                dt.Columns.Add("Cartera", typeof(short));
+                dt.Columns.Add("CodigoOperacion", typeof(string));
+                dt.Columns.Add("GrupoMovimientos", typeof(string));
+                dt.Columns.Add("OrigenIngreso", typeof(string));
+                dt.Columns.Add("Cuotas", typeof(string));
+                dt.Columns.Add("PlanCuotas", typeof(string));
+                dt.Columns.Add("SignoSaldoUsuario", typeof(string));
+                dt.Columns.Add("SignoSaldoEstablecimiento", typeof(string));
+                dt.Columns.Add("SignoCruceEmisor", typeof(string));
+                dt.Columns.Add("SignoCrucePagador", typeof(string));
+                dt.Columns.Add("MotivoCargoReembolso", typeof(string));
+                dt.Columns.Add("TipoFinanciacionUsuario", typeof(string));
+                dt.Columns.Add("NumeroComprobante", typeof(string));
+                dt.Columns.Add("Filler1", typeof(string));
+                dt.Columns.Add("NoCUT", typeof(string));
+                dt.Columns.Add("OrigenTransaccion", typeof(string));
+                dt.Columns.Add("PosiEntryMode", typeof(string));
+                dt.Columns.Add("MarcaEcommerce", typeof(string));
+                dt.Columns.Add("NumeroEstablecimiento", typeof(string));
+                dt.Columns.Add("MonedaOriginalMovimiento", typeof(short));
+                dt.Columns.Add("ImporteOriginalMovimiento", typeof(decimal));
+                dt.Columns.Add("MonedaCruce", typeof(short));
+                dt.Columns.Add("ImporteCruce", typeof(decimal));
+                dt.Columns.Add("MonedaLiquidar", typeof(short));
+                dt.Columns.Add("ImporteLiquidar", typeof(decimal));
+                dt.Columns.Add("ImporteTotalPlan", typeof(decimal));
+                dt.Columns.Add("ImporteLiquidadoPlan", typeof(decimal));
+                dt.Columns.Add("CuotaNumero", typeof(string));
+                dt.Columns.Add("CantidadCuotasPlan", typeof(string));
+                dt.Columns.Add("FechaOrigen", typeof(DateTime));
+                dt.Columns.Add("FechaPresentacionAdquirente", typeof(DateTime));
+                dt.Columns.Add("FechaPresentacionVASA", typeof(DateTime));
+                dt.Columns.Add("FechaProceso", typeof(DateTime));
+                dt.Columns.Add("HoraProceso", typeof(TimeSpan));
+                dt.Columns.Add("FechaValor", typeof(DateTime));
+                dt.Columns.Add("FechaCruce", typeof(DateTime));
+                dt.Columns.Add("FechaPagoEstablecimiento", typeof(DateTime));
+                dt.Columns.Add("FechaCinta", typeof(DateTime));
+                dt.Columns.Add("NumeroCinta", typeof(string));
+                dt.Columns.Add("TipoIngresoMovimientoCIE", typeof(string));
+                dt.Columns.Add("MarcaRepresentacion", typeof(string));
+                dt.Columns.Add("RubroInternacional", typeof(string));
+                dt.Columns.Add("RubroPropio", typeof(string));
+                dt.Columns.Add("NombreEstablecimiento", typeof(string));
+                dt.Columns.Add("CiudadEstablecimiento", typeof(string));
+                dt.Columns.Add("NoAutorizacion", typeof(string));
+                dt.Columns.Add("IdTerminal", typeof(string));
+                dt.Columns.Add("CanalIngresoExtrafinIntrafin", typeof(string));
+                dt.Columns.Add("CodigoPaisOrigenCupon", typeof(string));
+                dt.Columns.Add("MicroFilm", typeof(string));
+                dt.Columns.Add("NumeroCaja", typeof(int));
+                dt.Columns.Add("NumeroLote", typeof(int));
+                dt.Columns.Add("AfectaDisponible", typeof(string));
+                dt.Columns.Add("AfectaPagoMinimo", typeof(string));
+                dt.Columns.Add("PoseeArancelEmisor", typeof(string));
+                dt.Columns.Add("PoseeArancelPagador", typeof(string));
+                dt.Columns.Add("PoseeArancelProcesador", typeof(string));
+                dt.Columns.Add("OperaResumenLimpio", typeof(string));
+                dt.Columns.Add("TarjetaConProblema", typeof(string));
+                dt.Columns.Add("OperaMillaje", typeof(string));
+                dt.Columns.Add("LiquidaUsuario", typeof(string));
+                dt.Columns.Add("TipoPago", typeof(string));
+                dt.Columns.Add("UtilizaLeyendaCodigoOperacion", typeof(string));
+                dt.Columns.Add("BINOrigen", typeof(int));
+                dt.Columns.Add("BINDestino", typeof(int));
+                dt.Columns.Add("AtributoCargoReembolsoInt", typeof(string));
+                dt.Columns.Add("ReservadoPEXAdquirente", typeof(string));
+                dt.Columns.Add("CiclosDiferir", typeof(byte));
+                dt.Columns.Add("CodigoCampaniaDiferimiento", typeof(string));
+                dt.Columns.Add("InteresDiferimiento", typeof(string));
+                dt.Columns.Add("CodigoComercio", typeof(short));
+                dt.Columns.Add("Filler2", typeof(string));
+                dt.Columns.Add("ArancelEmisor", typeof(decimal));
+                dt.Columns.Add("ArancelPagador", typeof(decimal));
+                dt.Columns.Add("ArancelProcesador", typeof(decimal));
+                dt.Columns.Add("TasaCostoFinanciero", typeof(decimal));
+                dt.Columns.Add("EstadoResumenLimpio", typeof(string));
+                dt.Columns.Add("IngresoObsCargas", typeof(string));
+                dt.Columns.Add("IngresoObsIntercambioEntrante", typeof(string));
+                dt.Columns.Add("CodigoRazonInternacional", typeof(string));
+                dt.Columns.Add("BancoPagador", typeof(short));
+                dt.Columns.Add("CasaPagadora", typeof(short));
+                dt.Columns.Add("BINPagador", typeof(int));
+                dt.Columns.Add("MarcaLimitePorTarjeta", typeof(string));
+                dt.Columns.Add("AjusteCuota01", typeof(decimal));
+                dt.Columns.Add("CostoFinanciero", typeof(decimal));
+                dt.Columns.Add("UnanttendedAcceptanceTerminal", typeof(string));
+                dt.Columns.Add("NoReclamo", typeof(string));
+                dt.Columns.Add("NoExpediente", typeof(string));
+                dt.Columns.Add("AutorizacionLocalizada", typeof(string));
+                dt.Columns.Add("NoCUTRelacionado", typeof(string));
+                dt.Columns.Add("TipoResolucion", typeof(string));
+                dt.Columns.Add("CaracteristicaAutorizacion", typeof(string));
+                dt.Columns.Add("FuenteAutorizacion", typeof(string));
+                dt.Columns.Add("Millas", typeof(int));
+                dt.Columns.Add("ReglaMillas", typeof(string));
+                dt.Columns.Add("FechaRendicion", typeof(DateTime));
+                dt.Columns.Add("Evento", typeof(string));
+                dt.Columns.Add("ImporteAplicadoUSD", typeof(decimal));
+                dt.Columns.Add("ImporteAplicadoML", typeof(decimal));
+                dt.Columns.Add("ImporteSobranteMO", typeof(decimal));
+                dt.Columns.Add("TipoCambio", typeof(int));
+                dt.Columns.Add("FechaCierrre", typeof(DateTime));
+                dt.Columns.Add("CodigoMKT", typeof(string));
+                dt.Columns.Add("LiquidaEstablecimiento", typeof(string));
+                dt.Columns.Add("NoCuentaUnica", typeof(string));
+                dt.Columns.Add("NumeroComercio", typeof(string));
+                dt.Columns.Add("ModeloArancelPagadorAdquirient", typeof(string));
+                dt.Columns.Add("TasaArancelPagadorAdquierente", typeof(int));
+                dt.Columns.Add("MonedaArancelPagadorAdquirente", typeof(string));
+                dt.Columns.Add("ImporteArancelPagadorAdquirent", typeof(decimal));
+                dt.Columns.Add("FechaCierreEstablecimiento", typeof(DateTime));
+                dt.Columns.Add("TipoImporteAdicional", typeof(string));
+                dt.Columns.Add("ImporteAdicional", typeof(decimal));
+                dt.Columns.Add("ImporteAdicionalIncluido", typeof(string));
+                dt.Columns.Add("IdentificaDevolucionIVA", typeof(string));
+                dt.Columns.Add("IdentificaNumeroFactura", typeof(string));
+                dt.Columns.Add("TipoAccionPlan", typeof(string));
+                dt.Columns.Add("MillasExcedidas", typeof(int));
+                dt.Columns.Add("ReglaMillasOrig", typeof(string));
+                dt.Columns.Add("CodigoRechazoSaliente", typeof(string));
+                dt.Columns.Add("SettlementFlag", typeof(string));
+                dt.Columns.Add("AcuerdoGas", typeof(string));
+                dt.Columns.Add("Filler3", typeof(string));
+                dt.Columns.Add("Filler4", typeof(string));
+                dt.Columns.Add("ImporteCashBack", typeof(decimal));
+                dt.Columns.Add("Filler5", typeof(string));
+                dt.Columns.Add("TipoCiclo", typeof(string));
+                dt.Columns.Add("IdAdquirenteEmisor", typeof(string));
+                dt.Columns.Add("larId", typeof(int));
+                dt.Columns.Add("LineaEnArchivo", typeof(int));
+                dt.Columns.Add("FechaCarga", typeof(DateTime));
                 dt.Columns.Add("NoCuentaClaro", typeof(string));
                 dt.Columns.Add("ProcesadorOrigen", typeof(string));
+
 
                 foreach (var p in posicion)
                 {
                     dt.Rows.Add(
-                        LimpiarEspacios(p.NOUSUARIO),
-                        LimpiarEspacios(p.NUMEROTARJETA),
-                        LimpiarEspacios(p.NUMEROTARJETARES),
-                        LimpiarEspacios(p.FECHAGENERACION),
-                        LimpiarEspacios(p.DISPONIBLECOMPRAML),
-                        LimpiarEspacios(p.DISPONIBLERETIROML),
-                        LimpiarEspacios(p.SALDOULTIMALIQUIDACIONML),
-                        LimpiarEspacios(p.SALDOULTIMALIQUIDACIONUSD),
-                        LimpiarEspacios(p.PUNTOSACUMULADOSPERIODO),
-                        LimpiarEspacios(p.FECHAULTIMALIQUIDACION),
-                        LimpiarEspacios(p.PAGOMINIMOULTIMALIQUIDACIML),
-                        LimpiarEspacios(p.PAGOMINIMOULTIMALIQUIDACIUSD),
-                        LimpiarEspacios(p.PAGOCONTADOML),
-                        LimpiarEspacios(p.PAGOCONTADOUSD),
-                        LimpiarEspacios(p.NOCLIENTEUNICO),
-                        LimpiarEspacios(p.CODIGOBANCO),
-                        LimpiarEspacios(p.CODIGOPRODUCTO),
-                        LimpiarEspacios(p.FECHAVENCEULTIMALIQUIDACION),
-                        LimpiarEspacios(p.MONEDALIMITECOMPRA),
-                        LimpiarEspacios(p.IMPORTELIMITECOMPRA),
-                        LimpiarEspacios(p.SALDOACTUALML),
-                        LimpiarEspacios(p.SALDOACTUALUSD),
-                        LimpiarEspacios(p.TOTALAUTORIZADOFECHAML),
-                        LimpiarEspacios(p.TOTALAUTORIZADOFECHAUSD),
-                        LimpiarEspacios(p.SALDOCONSUMIDOML),
-                        LimpiarEspacios(p.SALDOCONSUMIDOUSD),
-                        LimpiarEspacios(p.CODIGOCASA),
-                        LimpiarEspacios(p.CARTERA),
-                        LimpiarEspacios(p.MODELOLIQUIDACION),
-                        LimpiarEspacios(p.GRUPOAFINIDAD),
-                        LimpiarEspacios(p.CODIGOPOSTALPARTICULAR),
-                        LimpiarEspacios(p.CODIGODEPTOPARTICULAR),
-                        LimpiarEspacios(p.CODIGOPAIS),
-                        LimpiarEspacios(p.ESTADOTARJETA),
-                        LimpiarEspacios(p.SUBESTADO),
-                        LimpiarEspacios(p.CODIGOEMPRESA),
-                        LimpiarEspacios(p.PLANTA),
-                        LimpiarEspacios(p.CALIFICACIONUSUARIO),
-                        LimpiarEspacios(p.FECHACIERREPROXLIQUIDACION),
-                        LimpiarEspacios(p.DIASGRACIACONSECUTIVOS),
-                        LimpiarEspacios(p.LIMITECOMPRASCUOTAS),
-                        LimpiarEspacios(p.LIMITEADELANTO),
-                        LimpiarEspacios(p.LIMITECOMPRASFINANCIACION),
-                        LimpiarEspacios(p.DISPONIBLECOMPRACUOTAS),
-                        LimpiarEspacios(p.DISPONIBLEEXTRAFINANCIAMIENTO),
-                        LimpiarEspacios(p.AUTORIZACIONESCONSUMOSML),
-                        LimpiarEspacios(p.AUTORIZACIONESCONSUMOCUOTAML),
-                        LimpiarEspacios(p.AUTORIZACIONESDISPONEEFECTML),
-                        LimpiarEspacios(p.AUTORIZACIONESCONSUMOSUSD),
-                        LimpiarEspacios(p.AUTORIZACIONESCONSUMOCUOTAUSD),
-                        LimpiarEspacios(p.AUTORIZACIONESDISPONEEFECTUSD),
-                        LimpiarEspacios(p.PAGOSINGRESADOSML),
-                        LimpiarEspacios(p.AJUSTESNETOCREDEBINGRESADOSML),
-                        LimpiarEspacios(p.AJUSTESCREDITOINGRESADOSML),
-                        LimpiarEspacios(p.AJUSTESDEBITOINGRESADOSML),
-                        LimpiarEspacios(p.CONSUMOSINGRESADOSML),
-                        LimpiarEspacios(p.DISPOSICIONESEFECTIVOINGREML),
-                        LimpiarEspacios(p.CUOTASPENDIENTESLIQUIDARML),
-                        LimpiarEspacios(p.CUOTASEXTRAFINPENDIENTELIQML),
-                        LimpiarEspacios(p.PAGOSINGRESADOSUSD),
-                        LimpiarEspacios(p.AJUSTESNETOCREDEBUSD),
-                        LimpiarEspacios(p.AJUSTESCREDITOINGRESADOSUSD),
-                        LimpiarEspacios(p.AJUSTESDEBITOINGRESADOSUSD),
-                        LimpiarEspacios(p.CONSUMOSINGRESADOSUSD),
-                        LimpiarEspacios(p.DISPOSICIONESEFECTIVOINGREUSD),
-                        LimpiarEspacios(p.CUOTASPENDIENTESLIQUIDARUSD),
-                        LimpiarEspacios(p.CUOTASEXTRAFINPENDIENTELIQUSD),
-                        LimpiarEspacios(p.TNAINTERESCONSUMOFINANML),
-                        LimpiarEspacios(p.TNAINTERESFINANCIACIONADEML),
-                        LimpiarEspacios(p.TNAINTERESPUNITORIOML),
-                        LimpiarEspacios(p.TNAINTERESADELANTOML),
-                        LimpiarEspacios(p.TNAINTERESCONSUMOFINANUSD),
-                        LimpiarEspacios(p.TNAINTERESFINANCIACIONADEUSD),
-                        LimpiarEspacios(p.TNAINTERESPUNITORIOUSD),
-                        LimpiarEspacios(p.TNAINTERESADELANTOUSD),
-                        LimpiarEspacios(p.FECHAINGRESOMORAML),
-                        LimpiarEspacios(p.DIASMORAML),
-                        LimpiarEspacios(p.FECHAINGRESOMORAUSD),
-                        LimpiarEspacios(p.DIASMORAUSD),
-                        LimpiarEspacios(p.TIPOCAMBIOCOMPRADOR),
-                        LimpiarEspacios(p.TIPOCAMBIOVENDEDOR),
-                        LimpiarEspacios(p.TIPOCAMBIODESLIZAMIENTO),
-                        LimpiarEspacios(p.CAPITALPAGOMINIMOML),
-                        LimpiarEspacios(p.PAGOMINIMOCARGOML),
-                        LimpiarEspacios(p.PAGOMINIMOINTERESFINANML),
-                        LimpiarEspacios(p.PAGOMINIMOPUNITORIOSML),
-                        LimpiarEspacios(p.CAPITALPAGOMINIMOUSD),
-                        LimpiarEspacios(p.PAGOMINIMOCARGOUSD),
-                        LimpiarEspacios(p.PAGOMINIMOINTERESFINANUSD),
-                        LimpiarEspacios(p.PAGOMINIMOPUNITORIOSUSD),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCAPITLQANTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCARGOLQANTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINFINANLQANTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINPUNITLQANTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCAPITLQANTUSD),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCARGOLQANTUSD),
-                        LimpiarEspacios(p.VALORCUBIERTOMINFINANLQANTUSD),
-                        LimpiarEspacios(p.VALORCUBIERTOMINPUNITLQANTUSD),
-                        LimpiarEspacios(p.FECHACUBRIOMINCAPITALLQANTML),
-                        LimpiarEspacios(p.FECHACUBRIOMINICARGOSLQANTML),
-                        LimpiarEspacios(p.FECHACUBRIOMINFINANCILQANTML),
-                        LimpiarEspacios(p.FECHACUBRIOMINPUNITORLQANTML),
-                        LimpiarEspacios(p.FECHACUBRIOMINCAPITALLQANTUSD),
-                        LimpiarEspacios(p.FECHACUBRIOMINICARGOSLQANTUSD),
-                        LimpiarEspacios(p.FECHACUBRIOMINFINANCILQANTUSD),
-                        LimpiarEspacios(p.FECHACUBRIOMINPUNITORLQANTUSD),
-                        LimpiarEspacios(p.FECHAEGRESOMORAML),
-                        LimpiarEspacios(p.TRAMOMORACLIENTEULTIMALIQUML),
-                        LimpiarEspacios(p.TRAMOMORACLIENTEACTUALML),
-                        LimpiarEspacios(p.FECHAEGRESOMORAUSD),
-                        LimpiarEspacios(p.TRAMOMORACLIENTEULTIMALIQUUSD),
-                        LimpiarEspacios(p.TRAMOMORACLIENTEACTUALUSD),
-                        LimpiarEspacios(p.PUNTOSDISPONIBLES),
-                        LimpiarEspacios(p.FACTOROVERLIMIT),
-                        LimpiarEspacios(p.MARCAPMFIJO),
-                        LimpiarEspacios(p.IMPORTECUOTASPENDIENTELIQUML),
-                        LimpiarEspacios(p.IMPORTECUOTASPENDIENTELIQUUSD),
-                        LimpiarEspacios(p.SALDOZFECHA),
-                        LimpiarEspacios(p.IMPORTECUOTASZPENDIENTE),
-                        LimpiarEspacios(p.IMPORTEAUTORIZACIONCONSUMOZ),
-                        LimpiarEspacios(p.IMPORTECONSUMOSZPERIOACTUAL),
-                        LimpiarEspacios(p.IMPORTEAJUSTEZPERIOACTUAL),
-                        LimpiarEspacios(p.DISPONIBLECONSUMOZ),
-                        LimpiarEspacios(p.FECHAVENCIMIENTOPROXIMA),
-                        LimpiarEspacios(p.SALDOZULTIMALIQUIDACION),
-                        LimpiarEspacios(p.IMPORTECUOTAZOPTADAPAGO),
-                        LimpiarEspacios(p.INTERESSUSPENSOFINANCIACIOML),
-                        LimpiarEspacios(p.INTERESSUSPENSOFINANCIACIOUSD),
-                        LimpiarEspacios(p.INTERESUSPENSOPUNITORIOML),
-                        LimpiarEspacios(p.INTERESUSPENSOPUNITORIOUSD),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCAPITLQACTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCARGOLQACTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINFINANLQACTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINPUNITLQACTML),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCAPITLQACTUSD),
-                        LimpiarEspacios(p.VALORCUBIERTOMINCARGOLQACTUSD),
-                        LimpiarEspacios(p.VAORLCUBIERTOMINFINANLQACTUSD),
-                        LimpiarEspacios(p.VALORCUBIERTOMINPUNITLQACTUSD),
-                        LimpiarEspacios(p.TOTALCUOTASPENDIENTESPLANZ),
-                        LimpiarEspacios(p.FECHAINGRESOMORANIVELACTUAML),
-                        LimpiarEspacios(p.FECHAINGRESOMORANIVELACTUAUSD),
-                        LimpiarEspacios(p.DIASATRASOINGRESOML),
-                        LimpiarEspacios(p.DIASATRASOINGRESOUSD),
-                        LimpiarEspacios(p.DIASATRASOACTUALML),
-                        LimpiarEspacios(p.DIASATRASOACTUALUSD),
-                        LimpiarEspacios(p.PERIODOSIMPAGOSULTIMALIQUIML),
-                        LimpiarEspacios(p.PERIODOSIMPAGOSULTIMALIQUIUSD),
-                        LimpiarEspacios(p.PERIODOSIMPAGOSACTUALML),
-                        LimpiarEspacios(p.PERIODOSIMPAGOSACTUALUSD),
-                        LimpiarEspacios(p.MOROSIDADFECHACIERREVENCIMIEN),
-                        LimpiarEspacios(p.FECHAULTIMOPAGOML),
-                        LimpiarEspacios(p.FECHAULTIMOPAGOUSD),
-                        LimpiarEspacios(p.IMPORTEULTIMOPAGOML),
-                        LimpiarEspacios(p.IMPORTEULTIMOPAGOUSD),
-                        LimpiarEspacios(p.FILLER1),
-                        "21903",
-                        LimpiarEspacios(p.LINEAENARCHIVO),
-                        LimpiarEspacios(p.BINTARJETA),
-                        LimpiarEspacios(p.TARJETAIMPRIMIR),
-                        LimpiarEspacios(p.NOCUENTACLARO),
-                        LimpiarEspacios(p.ProcesadorOrigen)
+                    LimpiarEspacios(p.Admin),
+                    LimpiarEspacios(p.SubAdmin),
+                    LimpiarEspacios(p.NoClienteUnico),
+                    LimpiarEspacios(p.CodigoBanco),
+                    LimpiarEspacios(p.CodigoSucursal),
+                    LimpiarEspacios(p.NumeroCuenta),
+                    LimpiarEspacios(p.NumeroTarjeta),
+                    LimpiarEspacios(p.NumeroTarjetaRes),
+                    LimpiarEspacios(p.BinTarjeta),
+                    LimpiarEspacios(p.TarjetaImprimir),
+                    LimpiarEspacios(p.CodigoProducto),
+                    LimpiarEspacios(p.Cartera),
+                    LimpiarEspacios(p.CodigoOperacion),
+                    LimpiarEspacios(p.GrupoMovimientos),
+                    LimpiarEspacios(p.OrigenIngreso),
+                    LimpiarEspacios(p.Cuotas),
+                    LimpiarEspacios(p.PlanCuotas),
+                    LimpiarEspacios(p.SignoSaldoUsuario),
+                    LimpiarEspacios(p.SignoSaldoEstablecimiento),
+                    LimpiarEspacios(p.SignoCruceEmisor),
+                    LimpiarEspacios(p.SignoCrucePagador),
+                    LimpiarEspacios(p.MotivoCargoReembolso),
+                    LimpiarEspacios(p.TipoFinanciacionUsuario),
+                    LimpiarEspacios(p.NumeroComprobante),
+                    LimpiarEspacios(p.Filler1),
+                    LimpiarEspacios(p.NoCut),
+                    LimpiarEspacios(p.OrigenTransaccion),
+                    LimpiarEspacios(p.PosiEntryMode),
+                    LimpiarEspacios(p.MarcaEcommerce),
+                    LimpiarEspacios(p.NumeroEstablecimiento),
+                    LimpiarEspacios(p.MonedaOriginalMovimiento),
+                    LimpiarEspacios(p.ImporteOriginalMovimiento),
+                    LimpiarEspacios(p.MonedaCruce),
+                    LimpiarEspacios(p.ImporteCruce),
+                    LimpiarEspacios(p.MonedaLiquidar),
+                    LimpiarEspacios(p.ImporteLiquidar),
+                    LimpiarEspacios(p.ImporteTotalPlan),
+                    LimpiarEspacios(p.ImporteLiquidadoPlan),
+                    LimpiarEspacios(p.CuotaNumero),
+                    LimpiarEspacios(p.CantidadCuotasPlan),
+                    LimpiarEspacios(p.FechaOrigen),
+                    LimpiarEspacios(p.FechaPresentacionAdquirente),
+                    LimpiarEspacios(p.FechaPresentacionVasa),
+                    LimpiarEspacios(p.FechaProceso),
+                    LimpiarEspacios(p.HoraProceso),
+                    LimpiarEspacios(p.FechaValor),
+                    LimpiarEspacios(p.FechaCruce),
+                    LimpiarEspacios(p.FechaPagoEstablecimiento),
+                    LimpiarEspacios(p.FechaCinta),
+                    LimpiarEspacios(p.NumeroCinta),
+                    LimpiarEspacios(p.TipoIngresoMovimientoCie),
+                    LimpiarEspacios(p.MarcaRepresentacion),
+                    LimpiarEspacios(p.RubroInternacional),
+                    LimpiarEspacios(p.RubroPropio),
+                    LimpiarEspacios(p.NombreEstablecimiento),
+                    LimpiarEspacios(p.CiudadEstablecimiento),
+                    LimpiarEspacios(p.NoAutorizacion),
+                    LimpiarEspacios(p.IdTerminal),
+                    LimpiarEspacios(p.CanalIngresoExtraFinIntraFin),
+                    LimpiarEspacios(p.CodigoPaisOrigenCupon),
+                    LimpiarEspacios(p.Microfilm),
+                    LimpiarEspacios(p.NumeroCaja),
+                    LimpiarEspacios(p.NumeroLote),
+                    LimpiarEspacios(p.AfectaDisponible),
+                    LimpiarEspacios(p.AfectaPagoMinimo),
+                    LimpiarEspacios(p.PoseeArancelEmisor),
+                    LimpiarEspacios(p.PoseeArancelPagador),
+                    LimpiarEspacios(p.PoseeArancelProcesador),
+                    LimpiarEspacios(p.OperaResumenLimpio),
+                    LimpiarEspacios(p.TarjetaConProblema),
+                    LimpiarEspacios(p.OperaMillaje),
+                    LimpiarEspacios(p.LiquidaUsuario),
+                    LimpiarEspacios(p.TipoPago),
+                    LimpiarEspacios(p.UtilizaLeyendaCodigoOperacion),
+                    LimpiarEspacios(p.BinOrigen),
+                    LimpiarEspacios(p.BinDestino),
+                    LimpiarEspacios(p.AtributoCargoReembolsoInt),
+                    LimpiarEspacios(p.ReservadoPexAdquirente),
+                    LimpiarEspacios(p.CiclosDiferir),
+                    LimpiarEspacios(p.CodigoCampaniaDiferimiento),
+                    LimpiarEspacios(p.InteresDiferimiento),
+                    LimpiarEspacios(p.CodigoComercio),
+                    LimpiarEspacios(p.Filler2),
+                    LimpiarEspacios(p.ArancelEmisor),
+                    LimpiarEspacios(p.ArancelPagador),
+                    LimpiarEspacios(p.ArancelProcesador),
+                    LimpiarEspacios(p.TasaCostoFinanciero),
+                    LimpiarEspacios(p.EstadoResumenLimpio),
+                    LimpiarEspacios(p.IngresoObsCargas),
+                    LimpiarEspacios(p.IngresoObsIntercambioEntrante),
+                    LimpiarEspacios(p.CodigoRazonInternacional),
+                    LimpiarEspacios(p.BancoPagador),
+                    LimpiarEspacios(p.CasaPagadora),
+                    LimpiarEspacios(p.BinPagador),
+                    LimpiarEspacios(p.MarcaLimitePorTarjeta),
+                    LimpiarEspacios(p.AjusteCuota01),
+                    LimpiarEspacios(p.CostoFinanciero),
+                    LimpiarEspacios(p.UnattendedAcceptanceTerminal),
+                    LimpiarEspacios(p.NoReclamo),
+                    LimpiarEspacios(p.NoExpediente),
+                    LimpiarEspacios(p.AutorizacionLocalizada),
+                    LimpiarEspacios(p.NoCutRelacionado),
+                    LimpiarEspacios(p.TipoResolucion),
+                    LimpiarEspacios(p.CaracteristicaAutorizacion),
+                    LimpiarEspacios(p.FuenteAutorizacion),
+                    LimpiarEspacios(p.Millas),
+                    LimpiarEspacios(p.ReglaMillas),
+                    LimpiarEspacios(p.FechaRendicion),
+                    LimpiarEspacios(p.Evento),
+                    LimpiarEspacios(p.ImporteAplicadoUsd),
+                    LimpiarEspacios(p.ImporteAplicadoMl),
+                    LimpiarEspacios(p.ImporteSobranteMo),
+                    LimpiarEspacios((int)p.TipoCambio),
+                    LimpiarEspacios(p.FechaCierrre),
+                    LimpiarEspacios(p.CodigoMkt),
+                    LimpiarEspacios(p.LiquidaEstablecimiento),
+                    LimpiarEspacios(p.NoCuentaUnica),
+                    LimpiarEspacios(p.NumeroComercio),
+                    LimpiarEspacios(p.ModeloArancelPagadorAdquirien),
+                    LimpiarEspacios(p.TasaArancelPagadorAdquirente),
+                    LimpiarEspacios(p.MonedaArancelPagadorAdquirent),
+                    LimpiarEspacios(p.ImporteArancelPagadorAdquiren),
+                    LimpiarEspacios(p.FechaCierreEstablecimiento),
+                    LimpiarEspacios(p.TipoImporteAdicional),
+                    LimpiarEspacios(p.ImporteAdicional),
+                    LimpiarEspacios(p.ImporteAdicionalIncluido),
+                    LimpiarEspacios(p.IdentificaDevolucionIva),
+                    LimpiarEspacios(p.IdentificaNumeroFactura),
+                    LimpiarEspacios(p.TipoAccionPlan),
+                    LimpiarEspacios(p.MillasExcedidas),
+                    LimpiarEspacios(p.ReglaMillasOrig),
+                    LimpiarEspacios(p.CodigoRechazoSaliente),
+                    LimpiarEspacios(p.SettlementFlag),
+                    LimpiarEspacios(p.AcuerdoGas),
+                    LimpiarEspacios(p.Filler3),
+                    LimpiarEspacios(p.Filler4),
+                    LimpiarEspacios(p.ImporteCashback),
+                    LimpiarEspacios(p.Filler5),
+                    LimpiarEspacios(p.TipoCiclo),
+                    LimpiarEspacios(p.IdAdquirenteEmisor),
+                    30870,
+                    LimpiarEspacios(p.LineaEnArchivo),
+                    DateTime.Now.Date,
+                    LimpiarEspacios(p.NoCuentaClaro),
+                    LimpiarEspacios(p.ProcesadorOrigen)
                     );
                 }
 
@@ -987,8 +898,7 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
 
             catch (Exception ex)
             {
-
-                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
 
                 return new DataTable();
             }
@@ -1010,8 +920,6 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                 using (SqlBulkCopy bulkCopy = new SqlBulkCopy(conn))
                 {
                     bulkCopy.DestinationTableName = parametros["ArchivoDestino"];
-                    bulkCopy.BulkCopyTimeout = TimeoutSegundos;
-                    bulkCopy.BatchSize = 5000;
                     bulkCopy.WriteToServer(tableCuentas);
                 }
 
@@ -1022,9 +930,9 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]}  con error {ex.Message.ToString()}");
 
-                return false; 
+                return false;
             }
             finally
             {
@@ -1050,12 +958,10 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaActualizar;
-                    cmd.CommandTimeout = TimeoutSegundos;
                     int rowsAffected = cmd.ExecuteNonQuery();
 
                     if (rowsAffected == 0)
                     {
-                        RegistraProceso("F", $"Actualizar estado archivo: {parametros["ArchivoControl"]} no afectó ningún registro");
                         return false;
                     }
                 }
@@ -1064,9 +970,9 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             catch (Exception ex)
             {
 
-                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]}  con error {ex.Message.ToString()}");
 
-                return false;
+                Dts.TaskResult = (int)ScriptResults.Failure;
 
             }
             finally
@@ -1109,11 +1015,10 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                 using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = "EPosicionDiaria";
-                    cmd.Parameters.Add("@EstadoProceso", SqlDbType.VarChar).Value = estadoProceso;
-                    cmd.Parameters.Add("@Mensaje", SqlDbType.VarChar).Value = mensaje;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "DRendicion";
+                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
+                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
 
                     cmd.ExecuteNonQuery();
                 }
@@ -1121,9 +1026,6 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
             }
             catch (Exception ex)
             {
-                // Si el log falla, al menos queda en el historial del Job / log de SSIS
-                Dts.Events.FireWarning(0, "RegistraProceso",
-                    $"No se pudo registrar en log. Mensaje original: {mensaje} | Error: {ex.Message}", "", 0);
             }
             finally
             {
@@ -1131,7 +1033,6 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
                     cm.ReleaseConnection(conn);
             }
         }
-
         #region ScriptResults declaration
         /// <summary>
         /// This enum provides a convenient shorthand within the scope of this class for setting the
@@ -1148,3 +1049,9 @@ namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
 
 	}
 }
+
+
+
+
+
+Ayudame con este
