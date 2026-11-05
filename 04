@@ -1,1493 +1,211 @@
-import { apiFeedbackAuthorized } from "./APIS";
-import { endpointsAPI } from "./endpointApi";
-
-const base = endpointsAPI.templates;
-
-// Acepta las formas más comunes de respuesta paginada
-const toPage = (result) => {
-  if (Array.isArray(result)) return { items: result, total: result.length };
-  const items = result?.items ?? result?.data ?? result?.records ?? result?.results ?? [];
-  const total = result?.totalCount ?? result?.totalRecords ?? result?.totalItems ?? result?.total ?? items.length;
-  return { items, total };
-};
-
-export const templatesService = {
-  // body: { example, status, pageNumber, pageSize }  (null = sin filtro)
-  filter: async (body) => {
-    const { data } = await apiFeedbackAuthorized.post(`${base}/filter`, body);
-    return toPage(data.data);
-  },
-
-  getById: async (id) => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/${id}`);
-    return data.data;
-  },
-
-  // body: { example, status, markers: [{ markerId, position }] }
-  create: async (body) => {
-    const { data } = await apiFeedbackAuthorized.post(base, body);
-    return data.data;
-  },
-
-  update: async (id, body) => {
-    const { data } = await apiFeedbackAuthorized.put(`${base}/${id}`, body);
-    return data.data;
-  },
-
-  remove: async (id) => {
-    await apiFeedbackAuthorized.delete(`${base}/${id}`);
-  },
-
-  activate: async (id) => {
-    await apiFeedbackAuthorized.put(`${base}/${id}/activate`);
-  },
-
-  // Así está escrito en el backend: "desactivate"
-  deactivate: async (id) => {
-    await apiFeedbackAuthorized.put(`${base}/${id}/desactivate`);
-  },
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const TONE_CLASS = {
-  text: m.toneText,
-  number: m.toneNumber,
-  money: m.toneMoney,
-  date: m.toneDate,
-  bool: m.toneBool,
-};
-
-/** Clase de color según el tipo de valor (mismos tonos que en Marcadores) */
-export const toneClassOf = (type) => (type ? TONE_CLASS[type.tone] ?? m.toneNeutral : m.toneNeutral);
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { findMarkerType } from "../markers/markerTypes";
-
-/** ⚠️ Confirmar con backend: se asume Inactiva = 0, Activa = 1 */
-export const TEMPLATE_STATUS = { INACTIVE: 0, ACTIVE: 1 };
-
-// La API devuelve "Activa" / "Inactiva" en el GET y espera número en el POST
-export const isActiveStatus = (raw) =>
-  raw === TEMPLATE_STATUS.ACTIVE || raw === true || /^activ/i.test(String(raw ?? "").trim());
-
-export const mapTemplate = (t) => ({
-  id: t.id,
-  example: t.example ?? "",
-  active: isActiveStatus(t.status),
-  markers: [...(t.markers ?? [])]
-    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-    .map((x) => ({
-      markerId: x.markerId,
-      position: x.position,
-      value: x.value ?? "",
-      type: findMarkerType(x.valueType),
-    })),
-});
-
-/** items: marcadores en el orden en que quedaron en el constructor */
-export const buildTemplateBody = ({ example, active, items }) => ({
-  example: example.trim(),
-  status: active ? TEMPLATE_STATUS.ACTIVE : TEMPLATE_STATUS.INACTIVE,
-  markers: items.map((it, i) => ({ markerId: it.markerId, position: i + 1 })),
-});
-
-// Compara textos sin tildes, mayúsculas ni espacios extra
-export const normalize = (v) =>
-  String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-
-
-
-
-
-
-
-
-
-
-
-
-/* =========================================================
-   Plantillas
-   ========================================================= */
-
-/* ---- Filtros ---- */
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-
-.search { position: relative; flex: 0 1 340px; }
-.search svg,
-.paletteSearch svg {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #8592a3;
-  pointer-events: none;
-}
-.search input { padding-left: 38px; }
-
-.segmented {
-  display: inline-flex;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid #e1e6ee;
-  border-radius: 10px;
-  background: #f4f6f9;
-}
-.segBtn {
-  height: 32px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  color: #6b7a8f;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.segBtn:hover { color: var(--bp-blue-expert); }
-.segBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 1px; }
-.segBtnOn,
-.segBtnOn:hover {
-  background: #fff;
-  color: var(--bp-blue-expert);
-  box-shadow: 0 1px 3px rgba(0, 57, 100, 0.12);
-}
-
-/* ---- Tabla ---- */
-.tableCard {
-  border: 1px solid #e6ebf1;
-  border-radius: 16px;
-  background: #fff;
-  overflow: hidden;
-}
-
-.table { width: 100%; border-collapse: separate; border-spacing: 0; }
-
-.table th {
-  padding: 12px 16px;
-  border-bottom: 1px solid #e6ebf1;
-  background: #f8fafc;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-align: left;
-  text-transform: uppercase;
-  color: #8592a3;
-  white-space: nowrap;
-}
-
-.table td {
-  padding: 14px 16px;
-  border-bottom: 1px solid #eef1f5;
-  vertical-align: middle;
-}
-.table tbody tr:last-child td { border-bottom: none; }
-.table tbody tr:hover td { background: #fbfcfe; }
-
-.colActions { width: 96px; }
-.colStatus { width: 150px; }
-.cellStructure { width: 46%; }
-
-.rowInactive .chips,
-.rowInactive .example { opacity: 0.55; }
-.rowLoading { opacity: 0.6; transition: opacity 0.15s ease; }
-
-.actionBtns { display: flex; gap: 4px; }
-.actBtn {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #8592a3;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.actBtn:hover { background: #eef4fb; color: var(--bp-blue); }
-.actBtnDanger:hover { background: #fdf0f0; color: var(--bp-red); }
-.actBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 1px; }
-
-/* Marcadores de la plantilla (los colores vienen de Markers.module.css) */
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.example {
-  display: -webkit-box;
-  margin: 0;
-  overflow: hidden;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: #3d4b5c;
-}
-
-/* ---- Switch Activa / Inactiva ---- */
-.switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
-  border: none;
-  background: none;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  color: #8592a3;
-  cursor: pointer;
-}
-.switch:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 3px; border-radius: 6px; }
-.switch:disabled { cursor: progress; opacity: 0.55; }
-
-.switchTrack {
-  position: relative;
-  flex-shrink: 0;
-  width: 38px;
-  height: 22px;
-  border-radius: 999px;
-  background: #d5dce6;
-  transition: background 0.2s ease;
-}
-.switchTrack::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: transform 0.2s ease;
-}
-.switchOn { color: var(--bp-green); }
-.switchOn .switchTrack { background: var(--bp-green); }
-.switchOn .switchTrack::after { transform: translateX(16px); }
-
-/* ---- Paginación ---- */
-.footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid #eef1f5;
-  background: #fbfcfe;
-  font-size: 13px;
-  color: #6b7a8f;
-}
-.footer strong { color: var(--bp-blue-expert); }
-.footerRight { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
-
-.pageSize { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
-.pageSize select { width: auto; height: 32px; padding-top: 0; padding-bottom: 0; }
-
-.pager { display: flex; align-items: center; gap: 4px; }
-.pageBtn {
-  min-width: 32px;
-  height: 32px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0 8px;
-  border: 1px solid #e1e6ee;
-  border-radius: 8px;
-  background: #fff;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  color: #5b6b80;
-  cursor: pointer;
-}
-.pageBtn:hover:not(:disabled) { border-color: #c3ccd9; color: var(--bp-blue-expert); }
-.pageBtn:disabled { opacity: 0.4; cursor: default; }
-.pageBtn:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 1px; }
-.pageBtnOn,
-.pageBtnOn:hover:not(:disabled) { border-color: var(--bp-blue-expert); background: var(--bp-blue-expert); color: #fff; }
-.pageGap { padding: 0 4px; color: #a3adbb; }
-
-/* ---- Estados ---- */
-.skel {
-  display: block;
-  height: 12px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #eef1f5 25%, #f6f8fb 50%, #eef1f5 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.2s infinite;
-}
-
-.emptyCell,
-.table tbody tr:hover .emptyCell { background: #fff; }
-.emptyText { margin: 0; padding: 20px 0; text-align: center; font-size: 14px; color: #8592a3; }
-.empty { padding: 36px 16px 30px; text-align: center; }
-.emptyIcon {
-  width: 56px;
-  height: 56px;
-  display: inline-grid;
-  place-items: center;
-  margin-bottom: 12px;
-  border-radius: 16px;
-  background: #fff6dc;
-  color: #8a5a00;
-}
-.empty h3 { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: var(--bp-blue-expert); }
-.empty p { margin: 0 0 18px; font-size: 14px; color: #6b7a8f; }
-
-.deleteDetail { display: grid; gap: 8px; justify-items: center; text-align: center; }
-.deleteDetail .chips { justify-content: center; }
-.deleteDetail p { margin: 0; font-size: 13px; color: #5b6b80; }
-
-/* =========================================================
-   Modal: constructor de plantilla
-   ========================================================= */
-.form { display: grid; gap: 22px; }
-.formIntro { margin: -4px 0 0; font-size: 13.5px; color: #6b7a8f; }
-
-.block { display: grid; gap: 10px; }
-.blockRow {
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  padding-top: 18px;
-  border-top: 1px solid #eef1f5;
-}
-.blockHead { display: flex; align-items: flex-start; gap: 10px; }
-.blockHead > div { flex: 1; min-width: 0; }
-
-.step {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  margin-top: 1px;
-  border-radius: 50%;
-  background: var(--bp-blue-expert);
-  font-size: 11px;
-  font-weight: 800;
-  color: #fff;
-}
-.blockTitle { margin: 0; font-size: 14px; font-weight: 800; color: var(--bp-blue-expert); }
-.blockTitle label { margin: 0; }
-.blockSub { margin: 2px 0 0; font-size: 12.5px; color: #8592a3; }
-
-.clearBtn {
-  padding: 4px 8px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #8592a3;
-  cursor: pointer;
-}
-.clearBtn:hover { background: #fdf0f0; color: var(--bp-red); }
-
-/* Zona donde se arma la plantilla */
-.builder {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  min-height: 62px;
-  margin: 0;
-  padding: 12px;
-  border: 1.5px dashed #cfd8e3;
-  border-radius: 12px;
-  background: #f8fafc;
-  list-style: none;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.builderFilled { border-style: solid; border-color: #d9e0ea; background: #fff; }
-.builderInvalid { border-color: var(--bp-red); }
-.builderEmpty { width: 100%; text-align: center; font-size: 13px; color: #a3adbb; }
-
-.piece {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 32px;
-  padding: 0 4px;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: grab;
-  user-select: none;
-  animation: pop 0.16s ease-out;
-}
-.piece:active { cursor: grabbing; }
-.piece:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 2px; }
-.pieceDragging { opacity: 0.35; }
-.pieceGrip { opacity: 0.45; }
-
-.pieceRemove {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: inherit;
-  opacity: 0.55;
-  cursor: pointer;
-}
-.pieceRemove:hover { opacity: 1; background: rgba(0, 0, 0, 0.07); }
-
-/* Marcadores disponibles */
-.palette {
-  padding: 14px;
-  border: 1px solid #e6ebf1;
-  border-radius: 12px;
-  background: #fff;
-}
-.paletteHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.paletteLabel {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8592a3;
-}
-.paletteSearch { position: relative; flex: 0 1 220px; }
-.paletteSearch input { height: 32px; padding-left: 34px; font-size: 13px; }
-
-.paletteList { display: flex; flex-wrap: wrap; gap: 8px; max-height: 132px; overflow-y: auto; padding: 2px; }
-.paletteItem {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid #e1e6ee;
-  border-radius: 9px;
-  background: #fff;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--bp-blue-expert);
-  cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
-}
-.paletteItem:hover {
-  border-color: color-mix(in srgb, var(--bp-blue-digital) 50%, white);
-  box-shadow: 0 4px 10px rgba(0, 57, 100, 0.08);
-  transform: translateY(-1px);
-}
-.paletteItem:focus-visible { outline: 2px solid var(--bp-blue-digital); outline-offset: 1px; }
-.paletteDot { width: 8px; height: 8px; border: 1px solid transparent; border-radius: 50%; }
-.paletteMsg { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: #8592a3; }
-
-.newMarkerBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 7px 12px;
-  border: 1px dashed #b9c4d3;
-  border-radius: 9px;
-  background: #fff;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--bp-blue);
-  cursor: pointer;
-}
-.newMarkerBtn:hover { border-color: var(--bp-blue); background: #f3f8fe; }
-
-.newMarker {
-  margin-top: 12px;
-  padding: 12px;
-  border-left: 3px solid var(--bp-yellow-opt);
-  border-radius: 10px;
-  background: #f8fafc;
-}
-.newMarkerGrid { display: grid; grid-template-columns: 1.2fr 1fr auto; align-items: end; gap: 10px; }
-.newMarkerGrid > div { margin: 0; }
-.newMarkerActions { display: flex; gap: 6px; }
-
-/* Ejemplo */
-.guide {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: #f4f8fd;
-}
-.guideLabel {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8592a3;
-}
-.guideText {
-  flex: 1;
-  min-width: 0;
-  background: none;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--bp-blue-fin);
-  word-break: break-word;
-}
-.guideBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: 6px;
-  background: #fff;
-  box-shadow: 0 0 0 1px #dbe6f3;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--bp-blue);
-  cursor: pointer;
-}
-.guideBtn:hover { box-shadow: 0 0 0 1px var(--bp-blue); }
-
-.textarea { height: auto; min-height: 84px; padding-top: 10px; resize: vertical; line-height: 1.45; }
-
-@keyframes shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
-}
-@keyframes pop { from { transform: scale(0.85); opacity: 0; } }
-
-/* ---- Responsive: la tabla pasa a tarjetas ---- */
-@media (max-width: 760px) {
-  .search { flex-basis: 100%; }
-  .segmented { width: 100%; }
-  .segBtn { flex: 1; }
-
-  .table thead { display: none; }
-  .table,
-  .table tbody { display: block; }
-  .table tr {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "structure structure"
-      "example example"
-      "status actions";
-    gap: 10px;
-    padding: 14px 16px;
-    border-bottom: 1px solid #eef1f5;
-  }
-  .table tbody tr:last-child { border-bottom: none; }
-  .table td { display: block; width: auto; padding: 0; border: none; }
-  .cellStructure { grid-area: structure; }
-  .cellExample { grid-area: example; }
-  .cellStatus { grid-area: status; }
-  .cellActions { grid-area: actions; }
-  .emptyCell { grid-column: 1 / -1; }
-
-  .footer,
-  .footerRight { justify-content: center; }
-
-  .newMarkerGrid,
-  .blockRow { grid-template-columns: 1fr; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skel, .piece { animation: none; }
-  .paletteItem:hover { transform: none; }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Check, GripVertical, Loader2, Plus, Search, WandSparkles, X } from "lucide-react";
-import { Modal, useToast } from "../../../../shared/components";
-import { markersService } from "../../../../api/markersService";
-import { templatesService } from "../../../../api/templatesService";
-import { MARKER_TYPES, findMarkerType, toneClassOf } from "../markers/markerTypes";
-import { buildTemplateBody, normalize } from "./templateUtils";
-import styles from "../../../Pages.module.css";
-import t from "./Templates.module.css";
-
-const FORM_ID = "template-form";
-const EMPTY_NEW_MARKER = { open: false, value: "", valueType: "", error: "", saving: false };
-
-const mapMarker = (x) => ({ id: x.id, value: x.value ?? "", type: findMarkerType(x.valueType) });
-
-/**
- * Modal para crear / editar una plantilla.
- * template: null = crear, objeto mapeado (mapTemplate) = editar
- */
-export const TemplateFormModal = ({ open, template, onClose, onSaved }) => {
-  const toast = useToast();
-  const isEdit = Boolean(template);
-
-  // Formulario
-  const [items, setItems] = useState([]); // [{ uid, markerId, value, type }]
-  const [example, setExample] = useState("");
-  const [active, setActive] = useState(true);
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-
-  // Marcadores disponibles
-  const [markers, setMarkers] = useState([]);
-  const [markersLoading, setMarkersLoading] = useState(false);
-  const [markersError, setMarkersError] = useState("");
-  const [paletteSearch, setPaletteSearch] = useState("");
-  const [newMarker, setNewMarker] = useState(EMPTY_NEW_MARKER);
-
-  // Arrastrar y soltar / foco
-  const [dragUid, setDragUid] = useState(null);
-  const uidRef = useRef(0);
-  const pieceRefs = useRef(new Map());
-  const nextUid = () => ++uidRef.current;
-
-  /* ---------- Carga ---------- */
-  const loadMarkers = useCallback(async () => {
-    setMarkersLoading(true);
-    setMarkersError("");
-    try {
-      const data = await markersService.list();
-      const list = data.map(mapMarker).sort((a, b) => a.value.localeCompare(b.value, "es"));
-      setMarkers(list);
-      return list;
-    } catch {
-      setMarkersError("No se pudieron cargar los marcadores.");
-      return [];
-    } finally {
-      setMarkersLoading(false);
+Ahora ayudame con la pagina de indicadores. Te adjunté las imagenes del prototipo..
+Estos son los endpoints que utilizaremos:
+
+GET
+/api/indicators
+Obtiene el listado de indicadores.
+
+POST
+/api/indicators
+Crea un indicador con sus asignaciones de marcadores.
+
+{
+  "name": "string",
+  "minimumValue": 0,
+  "maximumValue": 0,
+  "periodId": 0,
+  "formula": "string",
+  "weight": 0,
+  "type": 0,
+  "rule": 0,
+  "status": 0,
+  "templateId": 0,
+  "markerAssignments": [
+    {
+      "position": 0,
+      "verbId": 0,
+      "unitId": 0,
+      "value": "string"
     }
-  }, []);
+  ]
+}
 
-  // Cada vez que se abre: carga los datos de la plantilla (o limpia) y los marcadores
-  useEffect(() => {
-    if (!open) return;
-    setItems(
-      (template?.markers ?? []).map((x) => ({ uid: ++uidRef.current, markerId: x.markerId, value: x.value, type: x.type }))
-    );
-    setExample(template?.example ?? "");
-    setActive(template ? template.active : true);
-    setErrors({});
-    setSubmitError("");
-    setPaletteSearch("");
-    setNewMarker(EMPTY_NEW_MARKER);
-    loadMarkers();
-  }, [open, template, loadMarkers]);
 
-  /* ---------- Constructor ---------- */
-  const focusPiece = (uid) => requestAnimationFrame(() => pieceRefs.current.get(uid)?.focus());
 
-  const insertMarker = (marker) => {
-    setItems((prev) => [...prev, { uid: nextUid(), markerId: marker.id, value: marker.value, type: marker.type }]);
-    setErrors((e) => ({ ...e, structure: undefined }));
-  };
 
-  const removePiece = (uid) => {
-    setItems((prev) => {
-      const i = prev.findIndex((x) => x.uid === uid);
-      const next = prev.filter((x) => x.uid !== uid);
-      const neighbor = next[i] ?? next[i - 1];
-      if (neighbor) focusPiece(neighbor.uid);
-      return next;
-    });
-  };
+GET
+/api/indicators/{id}
+Obtiene un indicador por su identificador.
 
-  const movePiece = (uid, dir) => {
-    setItems((prev) => {
-      const i = prev.findIndex((x) => x.uid === uid);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-    focusPiece(uid);
-  };
 
-  const reorder = (fromUid, toUid) => {
-    if (fromUid == null || fromUid === toUid) return;
-    setItems((prev) => {
-      const from = prev.findIndex((x) => x.uid === fromUid);
-      const to = prev.findIndex((x) => x.uid === toUid);
-      if (from < 0 || to < 0) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  };
+PUT
+/api/indicators/{id}
+Actualiza un indicador y sus asignaciones de marcadores.
 
-  const handlePieceKey = (e, uid) => {
-    if (e.key === "ArrowLeft") { e.preventDefault(); movePiece(uid, -1); }
-    if (e.key === "ArrowRight") { e.preventDefault(); movePiece(uid, 1); }
-    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); removePiece(uid); }
-  };
-
-  const structureText = items.map((x) => `{${x.value}}`).join(" ");
-
-  /* ---------- Paleta ---------- */
-  const visibleMarkers = useMemo(() => {
-    const q = normalize(paletteSearch);
-    return q ? markers.filter((x) => normalize(x.value).includes(q)) : markers;
-  }, [markers, paletteSearch]);
-
-  /* ---------- Nuevo marcador ---------- */
-  const nmTrimmed = newMarker.value.trim();
-  const nmDuplicate = nmTrimmed ? markers.find((x) => normalize(x.value) === normalize(nmTrimmed)) : null;
-  const canCreateMarker = Boolean(nmTrimmed) && newMarker.valueType !== "" && !nmDuplicate && !newMarker.saving;
-
-  const createMarker = async () => {
-    if (!canCreateMarker) return;
-    setNewMarker((s) => ({ ...s, saving: true, error: "" }));
-    try {
-      await markersService.create({ value: nmTrimmed, valueType: Number(newMarker.valueType) });
-      const list = await loadMarkers();
-      const created = list.find((x) => normalize(x.value) === normalize(nmTrimmed));
-      if (created) insertMarker(created);
-      toast.success("Marcador creado", `{ ${nmTrimmed} } se agregó a la plantilla y ya está disponible para otras.`);
-      setNewMarker(EMPTY_NEW_MARKER);
-    } catch (err) {
-      setNewMarker((s) => ({
-        ...s,
-        saving: false,
-        error: err.noAccess
-          ? "No tienes permiso para crear marcadores."
-          : err.response?.data?.message ?? "No se pudo crear el marcador.",
-      }));
+Request:
+{
+  "name": "string",
+  "minimumValue": 0,
+  "maximumValue": 0,
+  "periodId": 0,
+  "formula": "string",
+  "weight": 0,
+  "type": 0,
+  "rule": 0,
+  "status": 0,
+  "templateId": 0,
+  "markerAssignments": [
+    {
+      "position": 0,
+      "verbId": 0,
+      "unitId": 0,
+      "value": "string"
     }
-  };
-
-  /* ---------- Guardar ---------- */
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const found = {};
-    if (items.length === 0) found.structure = "Agrega al menos un marcador a la plantilla.";
-    if (!example.trim()) found.example = "Escribe el ejemplo de la frase resultante.";
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-
-    setSaving(true);
-    setSubmitError("");
-    const body = buildTemplateBody({ example, active, items });
-    try {
-      if (isEdit) await templatesService.update(template.id, body);
-      else await templatesService.create(body);
-      toast.success(isEdit ? "Plantilla actualizada" : "Plantilla creada", example.trim());
-      onSaved();
-    } catch (err) {
-      setSubmitError(err.noAccess
-        ? `No tienes permiso para ${isEdit ? "editar" : "crear"} plantillas.`
-        : err.response?.data?.message ?? "No se pudo guardar la plantilla. Intenta de nuevo.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleClose = () => { if (!saving) onClose(); };
-
-  /* ---------- Render ---------- */
-  return (
-    <Modal
-      open={open}
-      size="lg"
-      title={isEdit ? "Editar plantilla" : "Nueva plantilla"}
-      onClose={handleClose}
-      footer={
-        <>
-          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving}>
-            {saving ? <Loader2 size={16} className={styles.spin} /> : <Check size={16} />}
-            {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Guardar plantilla"}
-          </button>
-        </>
-      }
-    >
-      <form id={FORM_ID} onSubmit={handleSubmit} noValidate className={t.form}>
-        <p className={t.formIntro}>
-          Construye la plantilla insertando marcadores. Los componentes no se escriben: se eligen de la lista.
-        </p>
-
-        {submitError && (
-          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: 0 }}>
-            <AlertCircle size={18} />
-            <p>{submitError}</p>
-          </div>
-        )}
-
-        {/* ---------- 1. Estructura ---------- */}
-        <section className={t.block}>
-          <div className={t.blockHead}>
-            <span className={t.step}>1</span>
-            <div>
-              <h3 className={t.blockTitle}>Plantilla<span className={styles.required}>*</span></h3>
-              <p className={t.blockSub}>Arrastra para reordenar · usa ← → o Supr con el teclado</p>
-            </div>
-            {items.length > 0 && (
-              <button type="button" className={t.clearBtn} onClick={() => setItems([])}>Vaciar</button>
-            )}
-          </div>
-
-          <ul
-            className={`${t.builder} ${items.length ? t.builderFilled : ""} ${errors.structure ? t.builderInvalid : ""}`}
-            aria-label="Estructura de la plantilla"
-            onDragOver={(e) => e.preventDefault()}
-          >
-            {items.length === 0 ? (
-              <li className={t.builderEmpty}>Elige marcadores de la lista de abajo para construir la plantilla</li>
-            ) : (
-              items.map((it, i) => (
-                <li
-                  key={it.uid}
-                  ref={(el) => (el ? pieceRefs.current.set(it.uid, el) : pieceRefs.current.delete(it.uid))}
-                  className={`${t.piece} ${toneClassOf(it.type)} ${dragUid === it.uid ? t.pieceDragging : ""}`}
-                  tabIndex={0}
-                  draggable
-                  aria-label={`${it.value}, posición ${i + 1} de ${items.length}`}
-                  onDragStart={(e) => {
-                    setDragUid(it.uid);
-                    e.dataTransfer.effectAllowed = "move";
-                    e.dataTransfer.setData("text/plain", String(it.uid));
-                  }}
-                  onDragEnter={() => reorder(dragUid, it.uid)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDragEnd={() => setDragUid(null)}
-                  onKeyDown={(e) => handlePieceKey(e, it.uid)}
-                >
-                  <GripVertical size={13} className={t.pieceGrip} aria-hidden="true" />
-                  <span>{`{ ${it.value} }`}</span>
-                  <button
-                    type="button"
-                    className={t.pieceRemove}
-                    onClick={() => removePiece(it.uid)}
-                    aria-label={`Quitar ${it.value}`}
-                    tabIndex={-1}
-                  >
-                    <X size={12} strokeWidth={2.6} />
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-          {errors.structure && <span className={styles.fieldError}>{errors.structure}</span>}
-
-          {/* Paleta de marcadores */}
-          <div className={t.palette}>
-            <div className={t.paletteHead}>
-              <span className={t.paletteLabel}>Agregar campo</span>
-              {markers.length > 8 && (
-                <div className={t.paletteSearch}>
-                  <Search size={14} />
-                  <input
-                    className={styles.input}
-                    placeholder="Buscar marcador..."
-                    value={paletteSearch}
-                    onChange={(e) => setPaletteSearch(e.target.value)}
-                    aria-label="Buscar marcador"
-                  />
-                </div>
-              )}
-            </div>
-
-            {markersError ? (
-              <p className={t.paletteMsg}>
-                {markersError}{" "}
-                <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={loadMarkers}>Reintentar</button>
-              </p>
-            ) : markersLoading && markers.length === 0 ? (
-              <p className={t.paletteMsg}><Loader2 size={14} className={styles.spin} /> Cargando marcadores...</p>
-            ) : (
-              <div className={t.paletteList}>
-                {visibleMarkers.map((mk) => (
-                  <button
-                    key={mk.id}
-                    type="button"
-                    className={t.paletteItem}
-                    onClick={() => insertMarker(mk)}
-                    title={`Insertar {${mk.value}}${mk.type ? ` · ${mk.type.label}` : ""}`}
-                  >
-                    <span className={`${t.paletteDot} ${toneClassOf(mk.type)}`} aria-hidden="true" />
-                    {`{ ${mk.value} }`}
-                  </button>
-                ))}
-                {visibleMarkers.length === 0 && (
-                  <p className={t.paletteMsg}>
-                    {markers.length === 0 ? "Aún no hay marcadores. Crea el primero." : "Ningún marcador coincide."}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Crear marcador sin salir del modal */}
-            {newMarker.open ? (
-              <div className={t.newMarker}>
-                <div className={t.newMarkerGrid}>
-                  <div className={styles.field}>
-                    <label className={styles.label} htmlFor="nm-value">Nombre</label>
-                    <input
-                      id="nm-value"
-                      className={`${styles.input} ${nmDuplicate ? styles.invalid : ""}`}
-                      placeholder="Ej. Frecuencia"
-                      value={newMarker.value}
-                      maxLength={60}
-                      autoFocus
-                      autoComplete="off"
-                      onChange={(e) => setNewMarker((s) => ({ ...s, value: e.target.value, error: "" }))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") { e.preventDefault(); createMarker(); }
-                        if (e.key === "Escape") { e.stopPropagation(); setNewMarker(EMPTY_NEW_MARKER); }
-                      }}
-                    />
-                  </div>
-                  <div className={styles.field}>
-                    <label className={styles.label} htmlFor="nm-type">Tipo de valor</label>
-                    <select
-                      id="nm-type"
-                      className={styles.select}
-                      value={newMarker.valueType}
-                      onChange={(e) => setNewMarker((s) => ({ ...s, valueType: e.target.value, error: "" }))}
-                    >
-                      <option value="">— Selecciona —</option>
-                      {MARKER_TYPES.map((mt) => <option key={mt.value} value={mt.value}>{mt.label}</option>)}
-                    </select>
-                  </div>
-                  <div className={t.newMarkerActions}>
-                    <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={createMarker} disabled={!canCreateMarker}>
-                      {newMarker.saving ? <Loader2 size={16} className={styles.spin} /> : <Check size={16} />}
-                      Crear
-                    </button>
-                    <button type="button" className={styles.iconBtn} onClick={() => setNewMarker(EMPTY_NEW_MARKER)} aria-label="Cancelar">
-                      <X size={16} />
-                    </button>
-                  </div>
-                </div>
-                {(nmDuplicate || newMarker.error) && (
-                  <span className={styles.fieldError}>
-                    {nmDuplicate ? `Ya existe { ${nmDuplicate.value} }. Elígelo de la lista.` : newMarker.error}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <button type="button" className={t.newMarkerBtn} onClick={() => setNewMarker({ ...EMPTY_NEW_MARKER, open: true })}>
-                <Plus size={15} /> Crear nuevo marcador
-              </button>
-            )}
-          </div>
-        </section>
-
-        {/* ---------- 2. Ejemplo ---------- */}
-        <section className={t.block}>
-          <div className={t.blockHead}>
-            <span className={t.step}>2</span>
-            <div>
-              <h3 className={t.blockTitle}>
-                <label htmlFor="tpl-example">Ejemplo</label><span className={styles.required}>*</span>
-              </h3>
-              <p className={t.blockSub}>Una frase completa del indicador resultante, siguiendo la plantilla</p>
-            </div>
-          </div>
-
-          {items.length > 0 && (
-            <div className={t.guide}>
-              <span className={t.guideLabel}>Guía</span>
-              <code className={t.guideText}>{structureText}</code>
-              {!example.trim() && (
-                <button type="button" className={t.guideBtn} onClick={() => setExample(structureText)}>
-                  <WandSparkles size={14} /> Usar como base
-                </button>
-              )}
-            </div>
-          )}
-
-          <textarea
-            id="tpl-example"
-            className={`${styles.input} ${t.textarea} ${errors.example ? styles.invalid : ""}`}
-            rows={3}
-            maxLength={500}
-            placeholder="Ej. Aumentar las ventas de 10 a 15 para el 31 de diciembre de 2026"
-            value={example}
-            onChange={(e) => { setExample(e.target.value); setErrors((er) => ({ ...er, example: undefined })); }}
-            aria-invalid={!!errors.example}
-          />
-          {errors.example && <span className={styles.fieldError}>{errors.example}</span>}
-        </section>
-
-        {/* ---------- 3. Estado ---------- */}
-        <section className={`${t.block} ${t.blockRow}`}>
-          <div className={t.blockHead}>
-            <span className={t.step}>3</span>
-            <div>
-              <h3 className={t.blockTitle}>Estado</h3>
-              <p className={t.blockSub}>
-                {active ? "Disponible para usarse en otros módulos" : "No estará disponible en otros módulos"}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={active}
-            className={`${t.switch} ${active ? t.switchOn : ""}`}
-            onClick={() => setActive((v) => !v)}
-          >
-            <span className={t.switchTrack} aria-hidden="true" />
-            {active ? "Activa" : "Inactiva"}
-          </button>
-        </section>
-      </form>
-    </Modal>
-  );
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, LayoutTemplate, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { ConfirmDialog, useToast } from "../../../../shared/components";
-import { templatesService } from "../../../../api/templatesService";
-import { toneClassOf } from "../markers/markerTypes";
-import { TemplateFormModal } from "./TemplateFormModal";
-import { TEMPLATE_STATUS, mapTemplate } from "./templateUtils";
-import styles from "../../../Pages.module.css";
-import t from "./Templates.module.css";
-
-const PAGE_SIZES = [10, 20, 50];
-const STATUS_FILTERS = [
-  { value: "all", label: "Todas" },
-  { value: TEMPLATE_STATUS.ACTIVE, label: "Activas" },
-  { value: TEMPLATE_STATUS.INACTIVE, label: "Inactivas" },
-];
-
-// [1, "…", 4, 5, 6, "…", 12]
-const pageList = (page, totalPages) => {
-  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-  const set = new Set([1, totalPages, page - 1, page, page + 1]);
-  const pages = [...set].filter((p) => p >= 1 && p <= totalPages).sort((a, b) => a - b);
-  return pages.flatMap((p, i) => (i > 0 && p - pages[i - 1] > 1 ? ["…", p] : [p]));
-};
-
-const StructureChips = ({ markers }) => (
-  <div className={t.chips}>
-    {markers.map((x, i) => (
-      <span key={`${x.markerId}-${i}`} className={`${t.chip} ${toneClassOf(x.type)}`} title={x.type?.label}>
-        {`{ ${x.value} }`}
-      </span>
-    ))}
-  </div>
-);
-
-export const PlantillasPage = () => {
-  const toast = useToast();
-
-  // Listado
-  const [rows, setRows] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const requestRef = useRef(0);
-
-  // Filtros y paginación
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
-
-  // Acciones
-  const [modal, setModal] = useState({ open: false, template: null });
-  const [toggling, setToggling] = useState(() => new Set());
-  const [toDelete, setToDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-
-  const hasFilters = Boolean(query) || statusFilter !== "all";
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-
-  /* ---------- Carga ---------- */
-  const load = useCallback(async () => {
-    const id = ++requestRef.current;
-    setLoading(true);
-    setError("");
-    try {
-      const { items, total: count } = await templatesService.filter({
-        example: query || null,
-        status: statusFilter === "all" ? null : statusFilter,
-        pageNumber: page,
-        pageSize,
-      });
-      if (id !== requestRef.current) return; // llegó una respuesta más nueva
-      setRows(items.map(mapTemplate));
-      setTotal(count);
-    } catch (err) {
-      if (id !== requestRef.current) return;
-      setError(err.noAccess
-        ? "No tienes permiso para ver las plantillas."
-        : "No se pudieron cargar las plantillas. Intenta de nuevo.");
-    } finally {
-      if (id === requestRef.current) setLoading(false);
-    }
-  }, [query, statusFilter, page, pageSize]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Búsqueda con espera de 350 ms
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setQuery(search.trim());
-      setPage(1);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  /* ---------- Estatus ---------- */
-  const toggleStatus = async (row) => {
-    setToggling((s) => new Set(s).add(row.id));
-    try {
-      if (row.active) await templatesService.deactivate(row.id);
-      else await templatesService.activate(row.id);
-
-      setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, active: !r.active } : r)));
-      toast.success(
-        row.active ? "Plantilla inactivada" : "Plantilla activada",
-        row.active ? "Ya no estará disponible en otros módulos." : "Ya está disponible para usarse en otros módulos."
-      );
-      if (statusFilter !== "all") load(); // deja de cumplir el filtro
-    } catch (err) {
-      toast.error(
-        "No se pudo cambiar el estatus",
-        err.noAccess ? "No tienes permiso para esta acción." : err.response?.data?.message ?? "Intenta de nuevo."
-      );
-    } finally {
-      setToggling((s) => { const n = new Set(s); n.delete(row.id); return n; });
-    }
-  };
-
-  /* ---------- Eliminar ---------- */
-  const openDelete = (row) => {
-    setDeleteError("");
-    setToDelete(row);
-  };
-
-  const confirmDelete = async () => {
-    setDeleting(true);
-    setDeleteError("");
-    try {
-      await templatesService.remove(toDelete.id);
-      toast.success("Plantilla eliminada", toDelete.example);
-      setToDelete(null);
-      if (rows.length === 1 && page > 1) setPage((p) => p - 1);
-      else load();
-    } catch (err) {
-      setDeleteError(err.noAccess
-        ? "No tienes permiso para eliminar plantillas."
-        : err.response?.data?.message ?? "No se pudo eliminar. Es posible que la plantilla esté en uso en otro módulo.");
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  /* ---------- Modal ---------- */
-  const handleSaved = () => {
-    setModal({ open: false, template: null });
-    load();
-  };
-
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
-
-  /* ---------- Render ---------- */
-  return (
-    <>
-      <header className={styles.pageHeader}>
-        <div>
-          <span className={styles.eyebrow}>Plantillas</span>
-          <h1 className={styles.title}>Mantenimiento de plantillas</h1>
-          <p className={styles.subtitle}>Estructuras de indicadores construidas con marcadores.</p>
-        </div>
-        <div className={styles.actions}>
-          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-            onClick={() => setModal({ open: true, template: null })}>
-            <Plus size={18} /> Nueva plantilla
-          </button>
-        </div>
-      </header>
-
-      {error && (
-        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
-          <AlertCircle size={18} />
-          <p>
-            {error}{" "}
-            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={load}>Reintentar</button>
-          </p>
-        </div>
-      )}
-
-      {/* ---------- Filtros ---------- */}
-      <div className={t.toolbar}>
-        <div className={t.search}>
-          <Search size={16} />
-          <input className={styles.input} placeholder="Buscar por ejemplo..." value={search}
-            onChange={(e) => setSearch(e.target.value)} aria-label="Buscar plantilla por ejemplo" />
-        </div>
-
-        <div className={t.segmented} role="group" aria-label="Filtrar por estatus">
-          {STATUS_FILTERS.map((f) => (
-            <button key={f.value} type="button"
-              className={`${t.segBtn} ${statusFilter === f.value ? t.segBtnOn : ""}`}
-              aria-pressed={statusFilter === f.value}
-              onClick={() => { setStatusFilter(f.value); setPage(1); }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ---------- Tabla ---------- */}
-      <div className={t.tableCard}>
-        <table className={t.table}>
-          <thead>
-            <tr>
-              <th className={t.colActions}>Acciones</th>
-              <th>Plantilla</th>
-              <th>Ejemplo</th>
-              <th className={t.colStatus}>Estatus</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && rows.length === 0 ? (
-              Array.from({ length: 4 }, (_, i) => (
-                <tr key={i} aria-hidden="true">
-                  <td><span className={t.skel} style={{ width: 56 }} /></td>
-                  <td><span className={t.skel} style={{ width: `${70 - i * 8}%` }} /></td>
-                  <td><span className={t.skel} style={{ width: `${85 - i * 6}%` }} /></td>
-                  <td><span className={t.skel} style={{ width: 80 }} /></td>
-                </tr>
-              ))
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={4} className={t.emptyCell}>
-                  {!error && (
-                    hasFilters ? (
-                      <p className={t.emptyText}>Ninguna plantilla coincide con la búsqueda o el filtro.</p>
-                    ) : (
-                      <div className={t.empty}>
-                        <span className={t.emptyIcon}><LayoutTemplate size={26} /></span>
-                        <h3>Aún no hay plantillas</h3>
-                        <p>Crea la primera combinando marcadores como {"{ Verbo } { Que } { ValorX }"}.</p>
-                        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-                          onClick={() => setModal({ open: true, template: null })}>
-                          <Plus size={18} /> Nueva plantilla
-                        </button>
-                      </div>
-                    )
-                  )}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id} className={`${!row.active ? t.rowInactive : ""} ${loading ? t.rowLoading : ""}`}>
-                  <td data-label="Acciones" className={t.cellActions}>
-                    <div className={t.actionBtns}>
-                      <button type="button" className={t.actBtn} title="Editar" aria-label={`Editar plantilla ${row.example}`}
-                        onClick={() => setModal({ open: true, template: row })}>
-                        <Pencil size={16} />
-                      </button>
-                      <button type="button" className={`${t.actBtn} ${t.actBtnDanger}`} title="Eliminar"
-                        aria-label={`Eliminar plantilla ${row.example}`} onClick={() => openDelete(row)}>
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                  <td data-label="Plantilla" className={t.cellStructure}>
-                    <StructureChips markers={row.markers} />
-                  </td>
-                  <td data-label="Ejemplo" className={t.cellExample}>
-                    <p className={t.example} title={row.example}>{row.example}</p>
-                  </td>
-                  <td data-label="Estatus" className={t.cellStatus}>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={row.active}
-                      aria-label={`Estatus de ${row.example}`}
-                      className={`${t.switch} ${row.active ? t.switchOn : ""}`}
-                      disabled={toggling.has(row.id)}
-                      onClick={() => toggleStatus(row)}
-                    >
-                      <span className={t.switchTrack} aria-hidden="true" />
-                      {row.active ? "Activa" : "Inactiva"}
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-
-        {/* ---------- Paginación ---------- */}
-        {total > 0 && (
-          <div className={t.footer}>
-            <span>
-              Mostrando <strong>{from}–{to}</strong> de <strong>{total}</strong>
-            </span>
-
-            <div className={t.footerRight}>
-              <label className={t.pageSize}>
-                Filas
-                <select className={styles.select} value={pageSize}
-                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
-                  {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-
-              <nav className={t.pager} aria-label="Paginación">
-                <button type="button" className={t.pageBtn} disabled={page === 1}
-                  onClick={() => setPage((p) => p - 1)} aria-label="Página anterior">
-                  <ChevronLeft size={16} />
-                </button>
-                {pageList(page, totalPages).map((p, i) =>
-                  p === "…" ? (
-                    <span key={`gap-${i}`} className={t.pageGap}>…</span>
-                  ) : (
-                    <button key={p} type="button" className={`${t.pageBtn} ${p === page ? t.pageBtnOn : ""}`}
-                      aria-current={p === page ? "page" : undefined} onClick={() => setPage(p)}>
-                      {p}
-                    </button>
-                  )
-                )}
-                <button type="button" className={t.pageBtn} disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)} aria-label="Página siguiente">
-                  <ChevronRight size={16} />
-                </button>
-              </nav>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <TemplateFormModal
-        open={modal.open}
-        template={modal.template}
-        onClose={() => setModal({ open: false, template: null })}
-        onSaved={handleSaved}
-      />
-
-      <ConfirmDialog
-        open={Boolean(toDelete)}
-        danger
-        title="¿Eliminar plantilla?"
-        message="Si la plantilla está en uso en otro módulo no se podrá eliminar. Esta acción no se puede deshacer."
-        detail={toDelete && (
-          <div className={t.deleteDetail}>
-            <StructureChips markers={toDelete.markers} />
-            <p>{toDelete.example}</p>
-          </div>
-        )}
-        confirmText={deleting ? "Eliminando..." : "Sí, eliminar"}
-        loading={deleting}
-        error={deleteError}
-        onConfirm={confirmDelete}
-        onCancel={() => setToDelete(null)}
-      />
-    </>
-  );
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      {
-        key: "plantillas",
-        pageId: null, // Pendiente: aún no existe en la BD
-        label: "Plantillas",
-        description: "Estructuras de indicadores construidas con marcadores.",
-        icon: LayoutTemplate,
-        path: "plantillas",
-        component: PlantillasPage,
-      },
-
+  ]
+}
+
+
+
+DELETE
+/api/indicators/{id}
+Elimina un indicador.
+
+
+PUT
+/api/indicators/{id}/activate
+Activa un indicador.
+
+No se manda request solo el parametro,o sea el id 
+
+
+PUT
+/api/indicators/{id}/desactivate
+Desactiva un indicador.
+
+
+
+POST
+/api/indicators/filter
+Obtiene los indicadores filtrados y paginados.
+Request
+{
+  "name": "string",
+  "type": 0,
+  "status": 0,
+  "templateId": 0,
+  "period": "string",
+  "pageNumber": 0,
+  "pageSize": 0
+}
+
+
+GET
+/api/verbs
+Obtiene el listado de verbos.
+
+
+
+GET
+/api/units
+Obtiene el listado de unidades.
+
+
+
+Estos son los requerimientos:
+
+Al ingresar al módulo, el sistema no debe cargar indicadores automáticamente
+El sistema debe mostrar los siguientes filtros iniciales:
+- Tipo (Todos, Numérico, Cualitativo, Operativo, Actitudinal, Ventas)
+- Campo de búsqueda por nombre del indicador
+El listado debe permanecer vacío hasta que el usuario aplique un filtro o búsqueda
+Al aplicar filtros, el sistema debe mostrar un listado con las columnas:
+- Estatus
+- Indicador (frase construida)
+- Tipo
+- Última modificación
+- Acciones (editar / eliminar)
+
+
+
+El estatus del indicador debe representarse visualmente (activo / inactivo).
+El listado debe soportar paginación cuando existan múltiples registros
+
+l sistema debe permitir crear un indicador mediante el botón Crear indicador.
+Para crear un indicador, el sistema debe requerir obligatoriamente:
+- Tipo de indicador
+- Selección de una plantilla, proveniente de Mantenimiento de plantillas
+Al seleccionar la plantilla, el sistema debe mostrar dinámicamente los campos definidos por dicha plantilla.
+El sistema debe permitir construir el indicador solo mediante los campos definidos por la plantilla
+
+El usuario no debe poder ingresar texto libre para construir la frase del indicador
+El botón Previsualizar debe mostrar la frase completa del indicador de forma solo lectura.
+El sistema debe permitir guardar el indicador únicamente si:
+- El tipo fue seleccionado
+- La plantilla fue seleccionada
+- Todos los campos de la plantilla fueron completados
+- La forma de cálculo fue configurada correctamente
+Al guardar el indicador, el sistema debe mostrar el mensaje:
+“¡Indicador guardado exitosamente!”
+El sistema debe permitir modificar únicamente indicadores que no estén restringidos por reglas de negocio.
+El sistema debe permitir eliminar un indicador mediante la acción Eliminar
+Después del guardado, el sistema debe regresar al listado de indicadores.
+El sistema debe permitir editar un indicador existente mediante la acción Editar
+Al editar, el sistema debe cargar:
+- Tipo del indicador
+- Plantilla seleccionada
+- Valores de los campos de la plantilla
+- Configuración de la forma de cálculo
+El sistema debe permitir configurar la forma de cálculo del indicador mediante una acción específica (Forma de cálculo).
+La configuración debe permitir definir:
+- Unidad de medida
+- Valor mínimo
+- Valor máximo
+- Peso
+- Regla
+- Fórmula de cálculo
+El sistema debe validar que:
+- El valor mínimo sea menor o igual al valor máximo
+- Los campos obligatorios estén completos
+Al guardar la forma de cálculo, el sistema debe mostrar el mensaje:
+“¡Forma de cálculo guardada exitosamente!”
+
+El sistema debe permitir guardar el indicador únicamente si:
+- El tipo fue seleccionado
+- La plantilla fue seleccionada
+- Todos los campos de la plantilla fueron completados
+- La forma de cálculo fue configurada correctamente
+Al guardar el indicador, el sistema debe mostrar el mensaje:
+“¡Indicador guardado exitosamente!”
+
+Después del guardado, el sistema debe regresar al listado de indicadores.
+El sistema debe permitir editar un indicador existente mediante la acción Editar
+Al editar, el sistema debe cargar:
+- Tipo del indicador
+- Plantilla seleccionada
+- Valores de los campos de la plantilla
+- Configuración de la forma de cálculo
+
+El sistema debe permitir modificar únicamente indicadores que no estén restringidos por reglas de negocio.
+El sistema debe permitir eliminar un indicador mediante la acción Eliminar
+
+
+Antes de eliminar, el sistema debe mostrar el mensaje de confirmación:
+“Esta acción eliminará un indicador ¿Desea continuar?”
+
+Si el usuario selecciona No, no debe realizarse ningún cambio.
+Si el usuario selecciona Sí, el indicador debe eliminarse y desaparecer del listado.
+El sistema debe manejar como mínimo los estados:
+- Activo
+- Inactivo
+ Los indicadores inactivos deben:
+- Permanecer visibles en el listado
+- No estar disponibles para procesos posteriores (asignación o coaching)
+Toda acción realizada sobre indicadores debe registrarse en auditoría indicando:
+- Usuario
+- Indicador afectado
+- Acción realizada (crear, editar, eliminar, configurar cálculo)
+- Fecha y hora
+Antes de eliminar, el sistema debe mostrar el mensaje de confirmación:
+“Esta acción eliminará un indicador ¿Desea continuar?”
+Prototipo
+Si el valor que se registra esta debajo del valor mínimo deberá mostrarse en color rojo (no satisfactorio), caso contrario verde "satisfactorio
