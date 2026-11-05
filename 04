@@ -6,7 +6,7 @@
 
 #region Namespaces
 using Microsoft.SqlServer.Dts.Runtime;
-using ST_a5d188e31b5a44e599b008f105924707.Models;
+using ST_2a6149f1a9d94f22a9da4ffa2c9522bf.Models;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -16,7 +16,7 @@ using System.Diagnostics;
 using System.Globalization;
 #endregion
 
-namespace ST_a5d188e31b5a44e599b008f105924707
+namespace ST_2a6149f1a9d94f22a9da4ffa2c9522bf
 {
     /// <summary>
     /// ScriptMain is the entry point class of the script.  Do not change the name, attributes,
@@ -35,20 +35,17 @@ namespace ST_a5d188e31b5a44e599b008f105924707
         private const int TIMEOUT_DEFAULT = 600;
 
         // Filas que se acumulan en memoria antes de enviarlas a SQL Server.
-        // Se puede cambiar con el parámetro "TamanoLote" (proceso ETarjetas o General).
+        // Se puede cambiar con el parámetro "TamanoLote" (proceso EPosicionDiaria o General).
         private const int LOTE_DEFAULT = 10000;
 
-        // Valor fijo de larId para este proceso (igual que en la versión anterior)
-        private const int LAR_ID = 23261;
+        // Valor fijo de larId para este proceso (antes era "21903")
+        private const int LAR_ID = 21903;
 
-        // Columnas destino que se redondean a entero (igual que el (int)Math.Round de antes):
-        // NoPlasticoGenerado, GrupoAfinidad, NoProceso, ImporteCargo, CodigoOcupacion,
-        // PorcentajeLimiteCompra*, LineaEnArchivo
-        private static readonly HashSet<int> ColumnasRedondeo = new HashSet<int> { 3, 12, 27, 31, 37, 46, 47, 48, 49, 97 };
-
-        // Columnas que antes NO pasaban por LimpiarEspacios (se copian tal cual vienen):
-        // EstadoHabilitar, ApellidoTarjeta, NombreTarjeta
-        private static readonly HashSet<int> ColumnasSinTrim = new HashSet<int> { 19, 77, 78 };
+        // Posiciones fijas dentro de la tabla destino (161 columnas):
+        // 0..154 vienen del AS400 en el mismo orden, 155 = larId (fijo),
+        // 156..159 vienen del AS400 corridas una posición, 160 = ProcesadorOrigen (fijo)
+        private const int COL_LARID = 155;
+        private const int COL_PROCESADOR = 160;
 
         public int TimeoutSegundos
         {
@@ -107,7 +104,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             long filas;
 
             // Lee del AS400 y carga a BANDEJAVASA por lotes (incluye PreParseo antes del primer lote)
-            if (!CargarTarjetas(out filas))
+            if (!CargarPosiciones(out filas))
                 return false;
 
             if (!PostParseo())
@@ -126,7 +123,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
         /// sin cargar todo en memoria. Si no hay registros, no ejecuta PreParseo (igual que antes).
         /// Todo el insert va en una transacción: si algo falla, no quedan datos a medias.
         /// </summary>
-        public bool CargarTarjetas(out long filas)
+        public bool CargarPosiciones(out long filas)
         {
             filas = 0;
             string etapa = "leer AS400";
@@ -232,16 +229,16 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             for (int c = 0; c < destino.Length; c++)
             {
                 // Columnas fijas
-                if (c == 96) { destino[c] = LAR_ID; continue; }        // larId
-                if (c == 105) { destino[c] = "LOCAL"; continue; }      // ProcesadorOrigen
+                if (c == COL_LARID) { destino[c] = LAR_ID; continue; }          // larId
+                if (c == COL_PROCESADOR) { destino[c] = "LOCAL"; continue; }   // ProcesadorOrigen
 
-                // Columnas 0..95 vienen en el mismo orden; 97..104 vienen corridas una posición
-                int idxOrigen = c < 96 ? c : c - 1;
+                // Columnas 0..154 vienen en el mismo orden; 156..159 vienen corridas una posición
+                int idxOrigen = c < COL_LARID ? c : c - 1;
                 object valor = origen[idxOrigen];
 
                 try
                 {
-                    destino[c] = ConvertirValor(valor, dt.Columns[c].DataType, c);
+                    destino[c] = ConvertirValor(valor, dt.Columns[c].DataType);
                 }
                 catch (Exception ex)
                 {
@@ -250,17 +247,14 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             }
         }
 
-        private static object ConvertirValor(object valor, Type tipo, int columna)
+        private static object ConvertirValor(object valor, Type tipo)
         {
             if (valor == null || valor is DBNull)
                 return DBNull.Value;
 
             if (tipo == typeof(string))
             {
-                string s = valor as string ?? Convert.ToString(valor, CultureInfo.InvariantCulture);
-                if (ColumnasSinTrim.Contains(columna))
-                    return s;
-                s = s.Trim();
+                string s = (valor as string ?? Convert.ToString(valor, CultureInfo.InvariantCulture)).Trim();
                 return s.Length == 0 ? (object)DBNull.Value : s;
             }
 
@@ -275,8 +269,6 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             }
 
             decimal d = Convert.ToDecimal(valor, CultureInfo.InvariantCulture);
-            if (ColumnasRedondeo.Contains(columna))
-                d = Math.Round(d);
 
             if (tipo == typeof(short)) return Convert.ToInt16(d);
             if (tipo == typeof(byte)) return Convert.ToByte(d);
@@ -288,110 +280,165 @@ namespace ST_a5d188e31b5a44e599b008f105924707
         private DataTable CrearEstructura()
         {
             DataTable dt = new DataTable();
+            dt.Columns.Add("NoUsuario", typeof(string));
             dt.Columns.Add("NumeroTarjeta", typeof(string));
             dt.Columns.Add("NumeroTarjetaRes", typeof(string));
-            dt.Columns.Add("LongitudNoTarjeta", typeof(string));
-            dt.Columns.Add("NoPlasticoGenerado", typeof(int));
+            dt.Columns.Add("FechaGeneracion", typeof(DateTime));
+            dt.Columns.Add("DisponibleCompraML", typeof(decimal));
+            dt.Columns.Add("DisponibleRetiroML", typeof(decimal));
+            dt.Columns.Add("SaldoUltimaLiquidacionML", typeof(decimal));
+            dt.Columns.Add("SaldoUltimaLiquidacionUSD", typeof(decimal));
+            dt.Columns.Add("PuntosAcumuladosPeriodo", typeof(int));
+            dt.Columns.Add("FechaUltimaLiquidacion", typeof(DateTime));
+            dt.Columns.Add("PagoMinimoUltimaLiquidacionML", typeof(decimal));
+            dt.Columns.Add("PagoMinimoUltimaLiquidacionUSD", typeof(decimal));
+            dt.Columns.Add("PagoContadoML", typeof(decimal));
+            dt.Columns.Add("PagoContadoUSD", typeof(decimal));
+            dt.Columns.Add("NoClienteUnico", typeof(string));
             dt.Columns.Add("CodigoBanco", typeof(short));
-            dt.Columns.Add("CodigoCasa", typeof(short));
-            dt.Columns.Add("NoUsuario", typeof(string));
-            dt.Columns.Add("NombreCliente", typeof(string));
-            dt.Columns.Add("NombreTarjetaImprimir", typeof(string));
             dt.Columns.Add("CodigoProducto", typeof(string));
+            dt.Columns.Add("FechaVenceUltimaLiquidacion", typeof(DateTime));
+            dt.Columns.Add("MonedaLimiteCompra", typeof(string));
+            dt.Columns.Add("ImporteLimiteCompra", typeof(decimal));
+            dt.Columns.Add("SaldoActualML", typeof(decimal));
+            dt.Columns.Add("SaldoActualUSD", typeof(decimal));
+            dt.Columns.Add("TotalAutorizadoFechaML", typeof(decimal));
+            dt.Columns.Add("TotalAutorizadoFechaUSD", typeof(decimal));
+            dt.Columns.Add("SaldoConsumidoML", typeof(decimal));
+            dt.Columns.Add("SaldoConsumidoUSD", typeof(decimal));
+            dt.Columns.Add("CodigoCasa", typeof(string));
             dt.Columns.Add("Cartera", typeof(short));
             dt.Columns.Add("ModeloLiquidacion", typeof(short));
-            dt.Columns.Add("GrupoAfinidad", typeof(int));
-            dt.Columns.Add("CodigoPais", typeof(short));
-            dt.Columns.Add("TipoDocumento", typeof(string));
-            dt.Columns.Add("NoDocumento", typeof(string));
-            dt.Columns.Add("EstadoTarjeta", typeof(short));
-            dt.Columns.Add("FechaAltaTarjeta", typeof(DateTime));
-            dt.Columns.Add("CategoriaTarjeta", typeof(string));
-            dt.Columns.Add("EstadoHabilitar", typeof(string));
-            dt.Columns.Add("Admin", typeof(short));
-            dt.Columns.Add("SubAdmin", typeof(short));
-            dt.Columns.Add("FechaRenovacion", typeof(DateTime));
-            dt.Columns.Add("FechaInicioVigencia", typeof(DateTime));
-            dt.Columns.Add("FechaFinVigencia", typeof(DateTime));
-            dt.Columns.Add("FechaProceso", typeof(DateTime));
-            dt.Columns.Add("SubEstado", typeof(byte));
-            dt.Columns.Add("NoProceso", typeof(int));
-            dt.Columns.Add("BonificacionCargo", typeof(string));
-            dt.Columns.Add("CantidadCuotasCargo", typeof(string));
-            dt.Columns.Add("MarcaCobroCargo", typeof(string));
-            dt.Columns.Add("ImporteCargo", typeof(int));
-            dt.Columns.Add("FechaGeneraCargo", typeof(DateTime));
-            dt.Columns.Add("Nacionalidad", typeof(string));
-            dt.Columns.Add("Sexo", typeof(string));
-            dt.Columns.Add("EstadoCivil", typeof(string));
-            dt.Columns.Add("FechaNacimiento", typeof(DateTime));
-            dt.Columns.Add("CodigoOcupacion", typeof(int));
-            dt.Columns.Add("Denominacion4LineaEmbozado", typeof(string));
-            dt.Columns.Add("FechaCargoRenovacion", typeof(DateTime));
-            dt.Columns.Add("VigenciaAnteriorTarjeta", typeof(byte));
-            dt.Columns.Add("VigenciaActualTarjeta", typeof(byte));
-            dt.Columns.Add("IndicadorLimiteCompra", typeof(string));
-            dt.Columns.Add("IndicadorLimiteCompraCuotas", typeof(string));
-            dt.Columns.Add("IndicadorLimiteCompraAdelanto", typeof(string));
-            dt.Columns.Add("IndicadorLimiteCompraTransaccion", typeof(string));
-            dt.Columns.Add("PorcentajeLimiteCompra", typeof(int));
-            dt.Columns.Add("PorcentajeLimiteCompraCuotas", typeof(int));
-            dt.Columns.Add("PorcentajeLimiteCompraAdelantos", typeof(int));
-            dt.Columns.Add("PorcentajeLimiteCompraTransaccion", typeof(int));
-            dt.Columns.Add("UltimoProcesoABM", typeof(string));
-            dt.Columns.Add("CentroCosto", typeof(string));
-            dt.Columns.Add("Empresa", typeof(string));
+            dt.Columns.Add("GrupoAfinidad", typeof(short));
+            dt.Columns.Add("CodigoPostalParticular", typeof(string));
+            dt.Columns.Add("CodigoDeptoParticular", typeof(string));
+            dt.Columns.Add("CodigoPais", typeof(string));
+            dt.Columns.Add("EstadoTarjeta", typeof(byte));
+            dt.Columns.Add("SubEstado", typeof(string));
+            dt.Columns.Add("CodigoEmpresa", typeof(string));
             dt.Columns.Add("Planta", typeof(string));
-            dt.Columns.Add("CentroCostoTarjeta", typeof(string));
-            dt.Columns.Add("FechaReposicion", typeof(DateTime));
-            dt.Columns.Add("NoTarjetaAnterior", typeof(string));
-            dt.Columns.Add("NoTarjetaAnteriorRes", typeof(string));
-            dt.Columns.Add("NoTarjetaNuevo", typeof(string));
-            dt.Columns.Add("NoTarjetaNuevoRes", typeof(string));
-            dt.Columns.Add("MarcaFuncionarioNovedadABM", typeof(string));
-            dt.Columns.Add("MarcaOrigenNovedadABM", typeof(string));
-            dt.Columns.Add("Supervisor", typeof(string));
-            dt.Columns.Add("Funcionario", typeof(string));
-            dt.Columns.Add("NoClienteUnico", typeof(string));
-            dt.Columns.Add("IndicativoEmbozado", typeof(string));
-            dt.Columns.Add("Seguro01", typeof(string));
-            dt.Columns.Add("Seguro02", typeof(string));
-            dt.Columns.Add("NoSolicitudABM", typeof(string));
-            dt.Columns.Add("ProductoTipo", typeof(string));
-            dt.Columns.Add("NoTarjetaOriginal", typeof(string));
-            dt.Columns.Add("NoTarjetaOriginalRes", typeof(string));
-            dt.Columns.Add("MarcaTarjetaRelacionada", typeof(string));
-            dt.Columns.Add("Seguro03", typeof(string));
-            dt.Columns.Add("Seguro04", typeof(string));
-            dt.Columns.Add("Seguro05", typeof(string));
-            dt.Columns.Add("PerfilConsumo", typeof(string));
-            dt.Columns.Add("ApellidoTarjeta", typeof(string));
-            dt.Columns.Add("NombreTarjeta", typeof(string));
-            dt.Columns.Add("NombreAmpliado", typeof(string));
-            dt.Columns.Add("Reembozado", typeof(string));
+            dt.Columns.Add("CalificacionUsuario", typeof(string));
+            dt.Columns.Add("FechaCierreProxLiquidacion", typeof(DateTime));
+            dt.Columns.Add("DiasGraciaConsecutivos", typeof(byte));
+            dt.Columns.Add("LimiteComprasCuotas", typeof(decimal));
+            dt.Columns.Add("LimiteAdelanto", typeof(decimal));
+            dt.Columns.Add("LimiteComprasFinanciacion", typeof(decimal));
+            dt.Columns.Add("DisponibleCompraCuotas", typeof(decimal));
+            dt.Columns.Add("DisponibleExtraFinanciamiento", typeof(decimal));
+            dt.Columns.Add("AutorizacionesConsumosML", typeof(decimal));
+            dt.Columns.Add("AutorizacionesConsumoCuotasML", typeof(decimal));
+            dt.Columns.Add("AutorizacionesDisponeEfecticoML", typeof(decimal));
+            dt.Columns.Add("AutorizacionesConsumosUSD", typeof(decimal));
+            dt.Columns.Add("AutorizacionesConsumoCuotasUSD", typeof(decimal));
+            dt.Columns.Add("AutorizacionesDisponeEfectivoUSD", typeof(decimal));
+            dt.Columns.Add("PagosIngresadosML", typeof(decimal));
+            dt.Columns.Add("AjustesNetoCreDebIngresadosML", typeof(decimal));
+            dt.Columns.Add("AjustesCreditoIngresadosML", typeof(decimal));
+            dt.Columns.Add("AjustesDebitoIngresadosML", typeof(decimal));
+            dt.Columns.Add("ConsumosIngresadosML", typeof(decimal));
+            dt.Columns.Add("DisposicionesEfectivoIngresadosML", typeof(decimal));
+            dt.Columns.Add("CuotasPendientesLiquidarML", typeof(decimal));
+            dt.Columns.Add("CuotasExtraFinPendienteLiquidarML", typeof(decimal));
+            dt.Columns.Add("PagosIngresadosUSD", typeof(decimal));
+            dt.Columns.Add("AjustesNetoCreDebUSD", typeof(decimal));
+            dt.Columns.Add("AjustesCreditoIngresadosUSD", typeof(decimal));
+            dt.Columns.Add("AjustesDebitoIngresadosUSD", typeof(decimal));
+            dt.Columns.Add("ConsumosIngresadosUSD", typeof(decimal));
+            dt.Columns.Add("DisposicionesEfectivoIngresadosUSD", typeof(decimal));
+            dt.Columns.Add("CuotasPendientesLiquidarUSD", typeof(decimal));
+            dt.Columns.Add("CuotasExtraFinPendienteLiquidarUSD", typeof(decimal));
+            dt.Columns.Add("TNAInteresConsumoFinanML", typeof(decimal));
+            dt.Columns.Add("TNAInteresFinanciacionAdeML", typeof(decimal));
+            dt.Columns.Add("TNAInteresPunitorioML", typeof(decimal));
+            dt.Columns.Add("TNAInteresAdelantoML", typeof(decimal));
+            dt.Columns.Add("TNAInteresConsumoFinanUSD", typeof(decimal));
+            dt.Columns.Add("TNAInteresFinanciacionAdeUSD", typeof(decimal));
+            dt.Columns.Add("TNAInteresPunitorioUSD", typeof(decimal));
+            dt.Columns.Add("TNAInteresAdelantoUSD", typeof(decimal));
+            dt.Columns.Add("FechaIngresoMoraML", typeof(DateTime));
+            dt.Columns.Add("DiasMoraML", typeof(short));
+            dt.Columns.Add("FechaIngresoMoraUSD", typeof(DateTime));
+            dt.Columns.Add("DiasMoraUSD", typeof(short));
+            dt.Columns.Add("TipoCambioComprador", typeof(decimal));
+            dt.Columns.Add("TipoCambioVendedor", typeof(decimal));
+            dt.Columns.Add("TipoCambioDeslizamiento", typeof(decimal));
+            dt.Columns.Add("CapitalPagoMinimoML", typeof(decimal));
+            dt.Columns.Add("PagoMinimoCargoML", typeof(decimal));
+            dt.Columns.Add("PagoMinimoInteresFinanML", typeof(decimal));
+            dt.Columns.Add("PagoMinimoPunitoriosML", typeof(decimal));
+            dt.Columns.Add("CapitalPagoMinimoUSD", typeof(decimal));
+            dt.Columns.Add("PagoMinimoCargoUSD", typeof(decimal));
+            dt.Columns.Add("PagoMinimoInteresFinanUSD", typeof(decimal));
+            dt.Columns.Add("PagoMinimoPunitoriosUSD", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCapitalLqAntML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCargoLqAntML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoFinanciacionLqAntML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoPunitorioLqAntML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCapitalLqAntUSD", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCargoLqAntUSD", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoFinanciacionLqAntUSD", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoPunitorioLqAntUSD", typeof(decimal));
+            dt.Columns.Add("FechaCubrioMinimoCapitalLqAntML", typeof(DateTime));
+            dt.Columns.Add("FechaCubrioMinimoCargosLqAntML", typeof(DateTime));
+            dt.Columns.Add("FechaCubrioMinimoFinanciacionLqAntML", typeof(DateTime));
+            dt.Columns.Add("FechaCubrioMinimoPunitorioLqAntML", typeof(DateTime));
+            dt.Columns.Add("FechaCubrioMinimoCapitalLqAntUSD", typeof(DateTime));
+            dt.Columns.Add("FechaCubrioMinimoCargoLqAntUSD", typeof(DateTime));
+            dt.Columns.Add("FechaCubrioFinanciacionLqAntUSD", typeof(DateTime));
+            dt.Columns.Add("FechaCubrioPunitorioLqAntUSD", typeof(DateTime));
+            dt.Columns.Add("FechaEgresoMoraML", typeof(DateTime));
+            dt.Columns.Add("TramoMoraClienteUltimaLiquidacionML", typeof(short));
+            dt.Columns.Add("TramoMoraClienteActualML", typeof(short));
+            dt.Columns.Add("FechaEgresoMoraUSD", typeof(DateTime));
+            dt.Columns.Add("TramoMoraClienteUltimaLiquidacionUSD", typeof(short));
+            dt.Columns.Add("TramoMoraClienteActualUSD", typeof(short));
+            dt.Columns.Add("PuntosDisponibles", typeof(int));
+            dt.Columns.Add("FactorOverLimit", typeof(decimal));
+            dt.Columns.Add("MarcaPMFijo", typeof(string));
+            dt.Columns.Add("ImporteCuotasPendienteLiquidacionML", typeof(decimal));
+            dt.Columns.Add("ImporteCuotasPendienteLiquidacionUSD", typeof(decimal));
+            dt.Columns.Add("SaldoZFecha", typeof(decimal));
+            dt.Columns.Add("ImporteCuotasZPendiente", typeof(decimal));
+            dt.Columns.Add("ImporteAutorizacionConsumoZ", typeof(decimal));
+            dt.Columns.Add("ImporteConsumosZPerioActual", typeof(decimal));
+            dt.Columns.Add("ImporteAjusteZPerioActual", typeof(decimal));
+            dt.Columns.Add("DisponibleConsumoZ", typeof(decimal));
+            dt.Columns.Add("FechaVencimientoProxima", typeof(DateTime));
+            dt.Columns.Add("SaldoZUltimaLiquidacion", typeof(decimal));
+            dt.Columns.Add("ImporteCuotaZOptadaPago", typeof(decimal));
+            dt.Columns.Add("InteresSuspensoFinanciacionML", typeof(decimal));
+            dt.Columns.Add("InteresSuspensoFinanciacionUSD", typeof(decimal));
+            dt.Columns.Add("IntereSuspensoPunitorioML", typeof(decimal));
+            dt.Columns.Add("IntereSuspensoPunitorioUSD", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCapitalLqActML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCargosLqActML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoFinanciacionLqActML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoPunitorioLqActML", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCapitalLqActUSD", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoCargoLqActUSD", typeof(decimal));
+            dt.Columns.Add("VaorlCubiertoMinimoFinanciacionLqActUSD", typeof(decimal));
+            dt.Columns.Add("ValorCubiertoMinimoPunitorioLqActUSD", typeof(decimal));
+            dt.Columns.Add("TotalCuotasPendientesPlanZ", typeof(decimal));
+            dt.Columns.Add("FechaIngresoMoraNivelActualML", typeof(DateTime));
+            dt.Columns.Add("FechaIngresoMoraNivelActualUSD", typeof(DateTime));
+            dt.Columns.Add("DiasAtrasoIngresoML", typeof(short));
+            dt.Columns.Add("DiasAtrasoIngresoUSD", typeof(short));
+            dt.Columns.Add("DiasAtrasoActualML", typeof(short));
+            dt.Columns.Add("DiasAtrasoActualUSD", typeof(short));
+            dt.Columns.Add("PeriodosImpagosUltimaLiquidacionML", typeof(byte));
+            dt.Columns.Add("PeriodosImpagosUltimaLiquidacionUSD", typeof(byte));
+            dt.Columns.Add("PeriodosImpagosActualML", typeof(byte));
+            dt.Columns.Add("PeriodosImpagosActualUSD", typeof(byte));
+            dt.Columns.Add("MorosidadFechaCierreVencimiento", typeof(byte));
+            dt.Columns.Add("FechaUltimoPagoML", typeof(DateTime));
+            dt.Columns.Add("FechaUltimoPagoUSD", typeof(DateTime));
+            dt.Columns.Add("ImporteUltimoPagoML", typeof(decimal));
+            dt.Columns.Add("ImporteUltimoPagoUSD", typeof(decimal));
             dt.Columns.Add("Filler1", typeof(string));
-            dt.Columns.Add("AltaPuntoVenta", typeof(string));
-            dt.Columns.Add("ImporteTarjetaLimiteCompra", typeof(decimal));
-            dt.Columns.Add("ImporteTarjetaLimiteCompraCuotas", typeof(decimal));
-            dt.Columns.Add("ImporteTarjetaLimiteCompraAdelantos", typeof(decimal));
-            dt.Columns.Add("ImporteTarjetaLimite", typeof(decimal));
-            dt.Columns.Add("CodigoProblemaTarjeta", typeof(string));
-            dt.Columns.Add("Telefono1", typeof(string));
-            dt.Columns.Add("Telefono2", typeof(string));
-            dt.Columns.Add("MarcaOrigenTarjeta", typeof(string));
-            dt.Columns.Add("MarcaPlastico", typeof(string));
-            dt.Columns.Add("MarcaTarjetaSospechosa", typeof(string));
-            dt.Columns.Add("MarcaTarjetaVencida", typeof(string));
-            dt.Columns.Add("NoEmpleadoCtaEmpresa", typeof(string));
-            dt.Columns.Add("Filler2", typeof(string));
             dt.Columns.Add("larId", typeof(int));
             dt.Columns.Add("LineaEnArchivo", typeof(int));
             dt.Columns.Add("BinTarjeta", typeof(string));
             dt.Columns.Add("TarjetaImprimir", typeof(string));
-            dt.Columns.Add("BinTarjetaNueva", typeof(string));
-            dt.Columns.Add("TarjetaNuevaImprimir", typeof(string));
-            dt.Columns.Add("BinTarjetaAnterior", typeof(string));
-            dt.Columns.Add("TarjetaAnteriorImprimir", typeof(string));
             dt.Columns.Add("NoCuentaClaro", typeof(string));
             dt.Columns.Add("ProcesadorOrigen", typeof(string));
             return dt;
@@ -408,7 +455,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 if (conn == null)
                     throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
 
-                CargarParametrosProceso(conn, "ETarjetas");
+                CargarParametrosProceso(conn, "EPosicionDiaria");
                 CargarParametrosProceso(conn, "General");
                 return true;
             }
@@ -522,6 +569,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
             if (estadoProceso == "G")
                 return RealizarMovimiento();
 
+            // (Corregido antes: este mensaje solo se registra cuando de verdad se agotan los reintentos)
             RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
             return false;
         }
@@ -654,7 +702,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.CommandTimeout = TimeoutSegundos;
-                    cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = "Etarjetas";
+                    cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = "EPosicionDiaria";
                     cmd.Parameters.Add("@EstadoProceso", SqlDbType.VarChar).Value = estadoProceso;
                     cmd.Parameters.Add("@Mensaje", SqlDbType.VarChar).Value = mensaje;
                     cmd.ExecuteNonQuery();
