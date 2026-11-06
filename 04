@@ -1,18 +1,18 @@
--- 1. ¿Cuántas filas nulas devuelve la vista y de qué tipo?
-SELECT RELA_TIPR, COUNT(*) AS filas
-FROM uvw_CobranzasRelacionesTC
-WHERE RELA_IDEN IS NULL
-GROUP BY RELA_TIPR;
+Para Excel
+ExcelJS (mi recomendación)
+Permite todo lo que un reporte con marca necesita: insertar el logo como imagen, combinar celdas para el título, colores y bordes, formatos de número, fecha y moneda, ancho de columnas, encabezado fijo al hacer scroll y filtros en las columnas.
+Es gratuita y no tiene versión de pago con funciones bloqueadas.
+La desventaja es que pesa bastante. Se resuelve cargándola solo cuando el usuario presiona “Exportar”, así no hace más lenta la aplicación.
 
--- 2. Cuentas en Saldos sin documento en ETarjetas
-SELECT s.NoCuentaClaro, s.Cif
-FROM uvw_SaldosVasa s
-WHERE s.CategoriaTarjeta = '0'
-  AND NOT EXISTS (SELECT 1 FROM ETarjetas et
-                  WHERE et.NoCuentaClaro = s.NoCuentaClaro
-                    AND et.NoDocumento IS NOT NULL);
 
--- 3. Empresariales sin cédula
-SELECT No_Cliente, NoCuentaClaro
-FROM uvw_CobranzasCuentas
-WHERE No_Cedula IS NULL;
+
+
+
+
+
+Para PDF (si también lo necesitan)
+pdfmake
+El documento se describe como un objeto JSON: encabezado, tablas, pie de página.
+Eso encaja perfecto con la parametrización, porque el encabezado literalmente es un dato.
+Repite el encabezado y el pie en cada página (por ejemplo “Página 1 de 5”) sin hacer nada extra.
+También pesa, así que se carga solo al exportar.
