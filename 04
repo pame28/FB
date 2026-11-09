@@ -1,3 +1,4 @@
+Ahora ayudame con este por favor
 #region Help:  Introduction to the script task
 /* The Script Task allows you to perform virtually any operation that can be accomplished in
  * a .Net application within the context of an Integration Services control flow. 
@@ -9,7 +10,7 @@
 
 #region Namespaces
 using Microsoft.SqlServer.Dts.Runtime;
-using ST_692e41e1b688459e9ae9ac7ada1fc4b1.Models;
+using ST_f5b3686da9674ca19cd452f095fbcd61.Models;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -18,7 +19,7 @@ using System.Data.SqlClient;
 using System.Windows.Forms;
 #endregion
 
-namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
+namespace ST_f5b3686da9674ca19cd452f095fbcd61
 {
     /// <summary>
     /// ScriptMain is the entry point class of the script.  Do not change the name, attributes,
@@ -92,45 +93,28 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
         /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
         /// To open Help, press F1.
         /// </summary>
-        /// 
         public static DateTime date = DateTime.Now;
         public static string fecha_generacion = string.Empty; //date.ToString("yyyy-MM-dd");
         public Dictionary<string, string> parametros = new Dictionary<string, string>();
         public string sql_ConsultaEstado = string.Empty;
         public string sql_ConsultaOrigen = string.Empty;
         public string sql_ConsultaActualizar = string.Empty;
-
-        // Timeout por defecto (segundos) si el parámetro "TimeoutSegundos" no existe en la tabla
-        // de parametrización o trae un valor inválido. 0 = sin límite.
-        private const int TIMEOUT_DEFAULT = 600;
-
-        /// <summary>
-        /// Timeout (en segundos) para comandos y bulk copy, leído del parámetro "TimeoutSegundos"
-        /// (del proceso "HEstadoCuenta" o de "General"). Si no existe o no es válido, usa TIMEOUT_DEFAULT.
-        /// </summary>
-        public int TimeoutSegundos
-        {
-            get
-            {
-                string valor;
-                int segundos;
-                if (parametros.TryGetValue("TimeoutSegundos", out valor) &&
-                    int.TryParse(valor, out segundos) && segundos >= 0)
-                {
-                    return segundos;
-                }
-                return TIMEOUT_DEFAULT;
-            }
-        }
-
         public void Main()
-		{
+        {
+            // TODO: Add your code here
+
             if (ObtieneParametros())
             {
 
                 fecha_generacion = parametros["FechaProceso"];
                 ParseaConsultas();
                 var estado_proceso = ObtenerEstadoProceso();
+
+                if (estado_proceso == null)
+                {
+                    Dts.TaskResult = (int)ScriptResults.Failure;
+                    return;
+                }
 
                 if (estado_proceso == null)
                 {
@@ -171,16 +155,12 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
 
         public bool RealizarMovimiento()
         {
-            List<HEstadoCuenta> resultado = ObtenerInfoAs400();
-
-            // null = hubo error al leer AS400 (ya quedó registrado en el log)
-            if (resultado == null)
-                return false;
-
+            List<DEstadoCuenta> resultado = ObtenerInfoAs400();
             if (resultado.Count == 0)
             {
                 RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
-                return false;
+                UpdateArchivoAS400();
+                return true;
             }
 
             if (!PreParseo())
@@ -216,16 +196,29 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                     throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
-                // Primero los del proceso (tienen prioridad) y luego los generales.
-                // Si un parámetro existe en ambos, se queda el valor de "HEstadoCuenta".
-                CargarParametrosProceso(conn, "HEstadoCuenta");
-                CargarParametrosProceso(conn, "General");
+                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "DEstadoCuenta";
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string idParametro = reader["IdParametro"].ToString();
+                            string valorParametro = reader["ValorParametro"].ToString();
+
+                            if (!parametros.ContainsKey(idParametro))
+                                parametros.Add(idParametro, valorParametro);
+                        }
+                    }
+                }
 
                 return true;
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message}");
+                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -233,29 +226,6 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             {
                 if (conn != null)
                     cm.ReleaseConnection(conn);
-            }
-        }
-
-        private void CargarParametrosProceso(SqlConnection conn, string proceso)
-        {
-            using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
-            {
-                cmd.CommandType = CommandType.StoredProcedure;
-                // Aquí TimeoutSegundos puede no estar cargado aún, así que usa TIMEOUT_DEFAULT
-                cmd.CommandTimeout = TimeoutSegundos;
-                cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = proceso;
-
-                using (SqlDataReader reader = cmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string idParametro = reader["IdParametro"].ToString();
-                        string valorParametro = reader["ValorParametro"].ToString();
-
-                        if (!parametros.ContainsKey(idParametro))
-                            parametros.Add(idParametro, valorParametro);
-                    }
-                }
             }
         }
 
@@ -294,14 +264,13 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
                 }
 
 
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaEstado;
-                    cmd.CommandTimeout = TimeoutSegundos;
                     using (IDataReader reader = cmd.ExecuteReader())
                     {
 
@@ -315,7 +284,8 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener estado proceso:  {sql_ConsultaEstado}  | ERROR :  {ex.Message} ");
+                RegistraProceso("F", $"Falló obtener estado proceso:  {sql_ConsultaEstado}  | ERROR :  {ex.Message.ToString()} ");
+                Dts.TaskResult = (int)ScriptResults.Failure;
                 return null;
             }
             finally
@@ -341,14 +311,12 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
 
             if (estadoProceso == "G")
             {
+                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
+
                 return RealizarMovimiento();
             }
             else
             {
-                // Corregido: antes este mensaje se registraba cuando el estado SÍ llegaba a "G",
-                // y cuando se agotaban los reintentos no se registraba nada.
-                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
-
                 return false;
             }
         }
@@ -362,12 +330,9 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             };
         }
 
-        /// <summary>
-        /// Devuelve la lista de estados de cuenta del AS400, o null si ocurrió un error al leer.
-        /// </summary>
-        public List<HEstadoCuenta> ObtenerInfoAs400()
+        public List<DEstadoCuenta> ObtenerInfoAs400()
         {
-            List<HEstadoCuenta> hEstadoCuentas = new List<HEstadoCuenta>();
+            List<DEstadoCuenta> hDetalleCuentas = new List<DEstadoCuenta>();
             ConnectionManager cm = Dts.Connections["AS400"];
             OleDbConnection conn = null;
 
@@ -376,97 +341,44 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
                 }
 
                 {
                     using (IDbCommand cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = sql_ConsultaOrigen;
-                        cmd.CommandTimeout = TimeoutSegundos;
                         using (IDataReader reader = cmd.ExecuteReader())
                         {
                             while (reader.Read())
                             {
-                                HEstadoCuenta hEstado = new HEstadoCuenta();
+                                DEstadoCuenta dEstado = new DEstadoCuenta();
+
+                                DEstadoCuenta hEstado = new DEstadoCuenta();
 
                                 hEstado.Origen = reader.GetString(0);
-                                hEstado.Emisor = reader.GetString(1);
-                                hEstado.NoCuenta = reader.GetString(2);
-                                hEstado.NombreThTit = reader.GetString(3);
-                                hEstado.EmisorMadre = reader.GetString(4);
-                                hEstado.CuentaMadre = reader.GetString(5);
-                                hEstado.NombreEmpresa = reader.GetString(6);
-                                hEstado.TipoTarjeta = reader.GetString(7);
-                                hEstado.NoTarjeta = reader.GetString(8);
-                                hEstado.FechaPago = reader.GetString(9);
-                                hEstado.FechaCorte = reader.GetString(10);
-                                hEstado.PagoContadoMn = reader.GetDecimal(11);
-                                hEstado.PagoMinimoMn = reader.GetDecimal(12);
-                                hEstado.SaldoVencidoMn = reader.GetDecimal(13);
-                                hEstado.SaldoAnteriorMn = reader.GetDecimal(14);
-                                hEstado.SaldoFinalMn = reader.GetDecimal(15);
-                                hEstado.ComprasDebMn = reader.GetDecimal(16);
-                                hEstado.PagosCredMn = reader.GetDecimal(17);
-                                hEstado.SobregiroMn = reader.GetDecimal(18);
-                                hEstado.CuotaMesMn = reader.GetDecimal(19);
-                                hEstado.PagoContadoMe = reader.GetDecimal(20);
-                                hEstado.PagoMinimoMe = reader.GetDecimal(21);
-                                hEstado.SaldoVencidoMe = reader.GetDecimal(22);
-                                hEstado.SaldoAnteriorMe = reader.GetDecimal(23);
-                                hEstado.SaldoFinalMe = reader.GetDecimal(24);
-                                hEstado.ComprasDebMe = reader.GetDecimal(25);
-                                hEstado.PagosCredMe = reader.GetDecimal(26);
-                                hEstado.SobregiroMe = reader.GetDecimal(27);
-                                hEstado.CuotaMesMe = reader.GetDecimal(28);
-                                hEstado.MonedaLimCre = reader.GetString(29);
-                                hEstado.LimiteCredito = reader.GetDecimal(30);
-                                hEstado.DisponibleCtaMn = reader.GetDecimal(31);
-                                hEstado.DisponibleCtaMe = reader.GetDecimal(32);
-                                hEstado.DisponibleRetMn = reader.GetDecimal(33);
-                                hEstado.DisponibleRetMe = reader.GetDecimal(34);
-                                hEstado.PtsSaldoAnt = reader.GetDecimal(35);
-                                hEstado.PtsGanados = reader.GetDecimal(36);
-                                hEstado.PtsUsados = reader.GetDecimal(37);
-                                hEstado.PtsSaldoActual = reader.GetDecimal(38);
-                                hEstado.MonedaLimEf = reader.GetString(39);
-                                hEstado.EfLimite = reader.GetDecimal(40);
-                                hEstado.EfSaldoMn = reader.GetDecimal(41);
-                                hEstado.EfDebitosMn = reader.GetDecimal(42);
-                                hEstado.EfCreditosMn = reader.GetDecimal(43);
-                                hEstado.EfSaldoMe = reader.GetDecimal(44);
-                                hEstado.EfDebitosMe = reader.GetDecimal(45);
-                                hEstado.EfCreditosMe = reader.GetDecimal(46);
-                                hEstado.EfDisponibleMn = reader.GetDecimal(47);
-                                hEstado.EfDisponibleMe = reader.GetDecimal(48);
-                                hEstado.TasaIntAnualMn = reader.GetDecimal(49);
-                                hEstado.TasaIntAnualMe = reader.GetDecimal(50);
-                                hEstado.Direccion1 = reader.GetString(51);
-                                hEstado.Direccion2 = reader.GetString(52);
-                                hEstado.Direccion3 = reader.GetString(53);
-                                hEstado.ApdoPostal = reader.GetString(54);
-                                hEstado.Ciudad = reader.GetString(55);
-                                hEstado.Mensaje1 = reader.GetString(56);
-                                hEstado.Mensaje2 = reader.GetString(57);
-                                hEstado.Mensaje3 = reader.GetString(58);
-                                hEstado.Mensaje4 = reader.GetString(59);
-                                hEstado.Mensaje5 = reader.GetString(60);
-                                hEstado.TarjetaImprimir = reader.GetString(61);
-                                hEstado.CostoAnualTotMn = reader.GetDecimal(62);
-                                hEstado.CostoAnualTotMe = reader.GetDecimal(63);
-                                hEstado.PlazoCancDeudaMn = reader.GetDecimal(64);
-                                hEstado.PlazoCancDeudaMe = reader.GetDecimal(65);
-                                hEstado.InteresPagoMinMn = reader.GetDecimal(66);
-                                hEstado.InteresPagoMinMe = reader.GetDecimal(67);
-                                hEstado.Correo = reader.GetString(68);
-                                hEstado.FechaCarga = reader.GetString(69);
-                                hEstado.LimiteCreditoMn = reader.GetDecimal(70);
-                                hEstado.InteresCorrienteMn = reader.GetDecimal(71);
-                                hEstado.InteresCorrienteMe = reader.GetDecimal(72);
-                                hEstado.NoCuentaClaro = reader.GetString(73);
+                                hEstado.FechaCarga = reader.GetString(1);
+                                hEstado.CodigoEmisor = reader.GetString(2);
+                                hEstado.EcDetalleNoCuenta = reader.GetString(3);
+                                hEstado.FechaCorte = reader.GetString(4);
+                                hEstado.EcDetalleNoTarjeta = reader.GetString(5);
+                                hEstado.NombreThP = reader.GetString(6);
+                                hEstado.EcDetalleEmisorMadre = reader.GetString(7);
+                                hEstado.EcDetalleCuentaMadre = reader.GetString(8);
+                                hEstado.NoAutorizacion = reader.GetString(9);
+                                hEstado.FechaConsumo = reader.GetString(10);
+                                hEstado.CodigoMov = reader.GetString(11);
+                                hEstado.DescripcionMov = reader.GetString(12);
+                                hEstado.MonedaMov = reader.GetString(13);
+                                hEstado.MontoMov = reader.GetDecimal(14);
+                                hEstado.TarjetaImprimir = reader.GetString(15);
+                                hEstado.TasaEfectivaAnualEfMn = reader.GetDecimal(16);
+                                hEstado.TasaEfectivaAnualEfMe = reader.GetDecimal(17);
+                                hEstado.NoCuentaClaro = reader.GetString(18);
+                                hEstado.Mcc = reader.GetString(19);
                                 hEstado.ProcesadorOrigen = "LOCAL";
 
-                                hEstadoCuentas.Add(hEstado);
+                                hDetalleCuentas.Add(hEstado);
                             }
                         }
                     }
@@ -475,8 +387,9 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message}");
-                return null;
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
 
             }
             finally
@@ -485,7 +398,7 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                     cm.ReleaseConnection(conn);
             }
 
-            return hEstadoCuentas;
+            return hDetalleCuentas;
         }
 
         public bool PreParseo()
@@ -504,9 +417,8 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                 using (SqlCommand cmd = new SqlCommand(parametros["PreParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -514,7 +426,7 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -541,9 +453,8 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                 using (SqlCommand cmd = new SqlCommand(parametros["PostParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -551,7 +462,7 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -562,7 +473,7 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             }
         }
 
-        public DataTable ConvertirADataTable(List<HEstadoCuenta> hEstados)
+        public DataTable ConvertirADataTable(List<DEstadoCuenta> hEstados)
         {
 
             try
@@ -571,171 +482,60 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
 
                 dt.Columns.Add("idRow", typeof(int));
                 dt.Columns.Add("Origen", typeof(string));
-                dt.Columns.Add("Emisor", typeof(string));
-                dt.Columns.Add("No_Cuenta", typeof(string));
-                dt.Columns.Add("Nombre_TH_Tit", typeof(string));
-                dt.Columns.Add("Emisor_Madre", typeof(string));
-                dt.Columns.Add("Cuenta_Madre", typeof(string));
-                dt.Columns.Add("Nombre_Empresa", typeof(string));
-                dt.Columns.Add("Tipo_Tarjeta", typeof(string));
-                dt.Columns.Add("No_Tarjeta", typeof(string));
-                dt.Columns.Add("Fecha_Pago", typeof(DateTime));
-                dt.Columns.Add("Fecha_Corte", typeof(DateTime));
-                dt.Columns.Add("Pago_Contado_MN", typeof(decimal));
-                dt.Columns.Add("Pago_Minimo_MN", typeof(decimal));
-                dt.Columns.Add("Saldo_Vencido_MN", typeof(decimal));
-                dt.Columns.Add("Saldo_Anterior_MN", typeof(decimal));
-                dt.Columns.Add("Saldo_Final_MN", typeof(decimal));
-                dt.Columns.Add("Compras_Deb_MN", typeof(decimal));
-                dt.Columns.Add("Pagos_Cred_MN", typeof(decimal));
-                dt.Columns.Add("Sobregiro_MN", typeof(decimal));
-                dt.Columns.Add("Cuota_Mes_MN", typeof(decimal));
-                dt.Columns.Add("Pago_Contado_ME", typeof(decimal));
-                dt.Columns.Add("Pago_Minimo_ME", typeof(decimal));
-                dt.Columns.Add("Saldo_Vencido_ME", typeof(decimal));
-                dt.Columns.Add("Saldo_Anterior_ME", typeof(decimal));
-                dt.Columns.Add("Saldo_Final_ME", typeof(decimal));
-                dt.Columns.Add("Compras_Deb_ME", typeof(decimal));
-                dt.Columns.Add("Pagos_Cred_ME", typeof(decimal));
-                dt.Columns.Add("Sobregiro_ME", typeof(decimal));
-                dt.Columns.Add("Cuota_Mes_ME", typeof(decimal));
-                dt.Columns.Add("Moneda_Lim_Cre", typeof(string));
-                dt.Columns.Add("Limite_Credito", typeof(decimal));
-                dt.Columns.Add("Disponible_Cta_MN", typeof(decimal));
-                dt.Columns.Add("Disponible_Cta_ME", typeof(decimal));
-                dt.Columns.Add("Disponible_Ret_MN", typeof(decimal));
-                dt.Columns.Add("Disponible_Ret_ME", typeof(decimal));
-                dt.Columns.Add("PTS_Saldo_Ant", typeof(decimal));
-                dt.Columns.Add("PTS_Ganados", typeof(decimal));
-                dt.Columns.Add("PTS_Usuados", typeof(decimal));
-                dt.Columns.Add("PTS_Saldo_Actual", typeof(decimal));
-                dt.Columns.Add("Moneda_Lim_EF", typeof(string));
-                dt.Columns.Add("EF_Limite", typeof(decimal));
-                dt.Columns.Add("EF_Saldo_MN", typeof(decimal));
-                dt.Columns.Add("EF_Debitos_MN", typeof(decimal));
-                dt.Columns.Add("EF_Creditos_MN", typeof(decimal));
-                dt.Columns.Add("EF_Saldo_ME", typeof(decimal));
-                dt.Columns.Add("EF_Debitos_ME", typeof(decimal));
-                dt.Columns.Add("EF_Creditos_ME", typeof(decimal));
-                dt.Columns.Add("EF_Disponible_MN", typeof(decimal));
-                dt.Columns.Add("EF_Disponible_ME", typeof(decimal));
-                dt.Columns.Add("Tasa_Int_Anual_MN", typeof(decimal));
-                dt.Columns.Add("Tasa_Int_Anual_ME", typeof(decimal));
-                dt.Columns.Add("Direccion_1", typeof(string));
-                dt.Columns.Add("Direccion_2", typeof(string));
-                dt.Columns.Add("Direccion_3", typeof(string));
-                dt.Columns.Add("Apdo_Postal", typeof(string));
-                dt.Columns.Add("Cidudad", typeof(string));
-                dt.Columns.Add("Mensaje_1", typeof(string));
-                dt.Columns.Add("Mensaje_2", typeof(string));
-                dt.Columns.Add("Mensaje_3", typeof(string));
-                dt.Columns.Add("Mensaje_4", typeof(string));
-                dt.Columns.Add("Mensaje_5", typeof(string));
-                dt.Columns.Add("Tarjeta_Imprimir", typeof(string));
-                dt.Columns.Add("Costo_Anual_Tot_MN", typeof(decimal));
-                dt.Columns.Add("Costo_Anual_Tot_ME", typeof(decimal));
-                dt.Columns.Add("Plazo_Canc_Deuda_MN", typeof(int));
-                dt.Columns.Add("Plazo_Canc_Deuda_ME", typeof(int));
-                dt.Columns.Add("Interes_Pago_Min_MN", typeof(decimal));
-                dt.Columns.Add("Interes_Pago_Min_ME", typeof(decimal));
-                dt.Columns.Add("Correo", typeof(string));
                 dt.Columns.Add("FechaCarga", typeof(DateTime));
-                dt.Columns.Add("Limite_CreditoMN", typeof(decimal));
-                dt.Columns.Add("Interes_Corriente_MN", typeof(decimal));
-                dt.Columns.Add("Interes_Corriente_ME", typeof(decimal));
+                dt.Columns.Add("Codigo_Emisor", typeof(string));
+                dt.Columns.Add("EC_DetalleNo_Cuenta", typeof(string));
+                dt.Columns.Add("Fecha_Corte", typeof(DateTime));
+                dt.Columns.Add("EC_DetalleNo_Tarjeta", typeof(string));
+                dt.Columns.Add("Nombre_TH_P", typeof(string));
+                dt.Columns.Add("EC_DetalleEmisor_Madre", typeof(string));
+                dt.Columns.Add("EC_DetalleCuenta_Madre", typeof(string));
+                dt.Columns.Add("No_Autorizacion", typeof(string));
+                dt.Columns.Add("Fecha_Consumo", typeof(DateTime));
+                dt.Columns.Add("Codigo_Mov", typeof(string));
+                dt.Columns.Add("Descripcion_Mov", typeof(string));
+                dt.Columns.Add("Moneda_Mov", typeof(string));
+                dt.Columns.Add("Monto_Mov", typeof(decimal));
+                dt.Columns.Add("Tarjeta_Imprimir", typeof(string));
+                dt.Columns.Add("Tasa_Efectiva_Anual_EF_MN", typeof(decimal));
+                dt.Columns.Add("Tasa_Efectiva_Anual_EF_ME", typeof(decimal));
                 dt.Columns.Add("NoCuentaClaro", typeof(string));
                 dt.Columns.Add("ProcesadorOrigen", typeof(string));
-
-
 
                 foreach (var h in hEstados)
                 {
                     dt.Rows.Add(
-                     0,
-                     LimpiarEspacios(h.Origen),
-                     LimpiarEspacios(h.Emisor),
-                     LimpiarEspacios(h.NoCuenta),
-                     LimpiarEspacios(h.NombreThTit),
-                     LimpiarEspacios(h.EmisorMadre),
-                     LimpiarEspacios(h.CuentaMadre),
-                     LimpiarEspacios(h.NombreEmpresa),
-                     LimpiarEspacios(h.TipoTarjeta),
-                     LimpiarEspacios(h.NoTarjeta),
-                     LimpiarEspacios(h.FechaPago),
-                     LimpiarEspacios(h.FechaCorte),
-                     LimpiarEspacios(h.PagoContadoMn),
-                     LimpiarEspacios(h.PagoMinimoMn),
-                     LimpiarEspacios(h.SaldoVencidoMn),
-                     LimpiarEspacios(h.SaldoAnteriorMn),
-                     LimpiarEspacios(h.SaldoFinalMn),
-                     LimpiarEspacios(h.ComprasDebMn),
-                     LimpiarEspacios(h.PagosCredMn),
-                     LimpiarEspacios(h.SobregiroMn),
-                     LimpiarEspacios(h.CuotaMesMn),
-                     LimpiarEspacios(h.PagoContadoMe),
-                     LimpiarEspacios(h.PagoMinimoMe),
-                     LimpiarEspacios(h.SaldoVencidoMe),
-                     LimpiarEspacios(h.SaldoAnteriorMe),
-                     LimpiarEspacios(h.SaldoFinalMe),
-                     LimpiarEspacios(h.ComprasDebMe),
-                     LimpiarEspacios(h.PagosCredMe),
-                     LimpiarEspacios(h.SobregiroMe),
-                     LimpiarEspacios(h.CuotaMesMe),
-                     LimpiarEspacios(h.MonedaLimCre),
-                     LimpiarEspacios(h.LimiteCredito),
-                     LimpiarEspacios(h.DisponibleCtaMn),
-                     LimpiarEspacios(h.DisponibleCtaMe),
-                     LimpiarEspacios(h.DisponibleRetMn),
-                     LimpiarEspacios(h.DisponibleRetMe),
-                     LimpiarEspacios(h.PtsSaldoAnt),
-                     LimpiarEspacios(h.PtsGanados),
-                     LimpiarEspacios(h.PtsUsados),
-                     LimpiarEspacios(h.PtsSaldoActual),
-                     LimpiarEspacios(h.MonedaLimEf),
-                     LimpiarEspacios(h.EfLimite),
-                     LimpiarEspacios(h.EfSaldoMn),
-                     LimpiarEspacios(h.EfDebitosMn),
-                     LimpiarEspacios(h.EfCreditosMn),
-                     LimpiarEspacios(h.EfSaldoMe),
-                     LimpiarEspacios(h.EfDebitosMe),
-                     LimpiarEspacios(h.EfCreditosMe),
-                     LimpiarEspacios(h.EfDisponibleMn),
-                     LimpiarEspacios(h.EfDisponibleMe),
-                     LimpiarEspacios(h.TasaIntAnualMn),
-                     LimpiarEspacios(h.TasaIntAnualMe),
-                     LimpiarEspacios(h.Direccion1),
-                     LimpiarEspacios(h.Direccion2),
-                     LimpiarEspacios(h.Direccion3),
-                     LimpiarEspacios(h.ApdoPostal),
-                     LimpiarEspacios(h.Ciudad),
-                     LimpiarEspacios(h.Mensaje1),
-                     LimpiarEspacios(h.Mensaje2),
-                     LimpiarEspacios(h.Mensaje3),
-                     LimpiarEspacios(h.Mensaje4),
-                     LimpiarEspacios(h.Mensaje5),
-                     LimpiarEspacios(h.TarjetaImprimir),
-                     LimpiarEspacios(h.CostoAnualTotMn),
-                     LimpiarEspacios(h.CostoAnualTotMe),
-                     LimpiarEspacios(h.PlazoCancDeudaMn),
-                     LimpiarEspacios(h.PlazoCancDeudaMe),
-                     LimpiarEspacios(h.InteresPagoMinMn),
-                     LimpiarEspacios(h.InteresPagoMinMe),
-                     LimpiarEspacios(h.Correo),
-                     LimpiarEspacios(h.FechaCarga),
-                     LimpiarEspacios(h.LimiteCreditoMn),
-                     LimpiarEspacios(h.InteresCorrienteMn),
-                     LimpiarEspacios(h.InteresCorrienteMe),
-                     LimpiarEspacios(h.NoCuentaClaro),
-                     LimpiarEspacios(h.ProcesadorOrigen)
+                        0, // idRow, puedes dejarlo en 0 si es autoincremental en SQL
+                        LimpiarEspacios(h.Origen),
+                        h.FechaCarga,
+                        LimpiarEspacios(h.CodigoEmisor),
+                        LimpiarEspacios(h.EcDetalleNoCuenta),
+                        h.FechaCorte,
+                        LimpiarEspacios(h.EcDetalleNoTarjeta),
+                        LimpiarEspacios(h.NombreThP),
+                        LimpiarEspacios(h.EcDetalleEmisorMadre),
+                        LimpiarEspacios(h.EcDetalleCuentaMadre),
+                        LimpiarEspacios(h.NoAutorizacion),
+                        h.FechaConsumo,
+                        LimpiarEspacios(h.CodigoMov),
+                        LimpiarEspacios(h.DescripcionMov),
+                        LimpiarEspacios(h.MonedaMov),
+                        h.MontoMov,
+                        LimpiarEspacios(h.TarjetaImprimir),
+                        h.TasaEfectivaAnualEfMn,
+                        h.TasaEfectivaAnualEfMe,
+                        LimpiarEspacios(h.NoCuentaClaro),
+                        LimpiarEspacios(h.ProcesadorOrigen)
                     );
                 }
+
 
                 return dt;
             }
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
 
                 return new DataTable();
             }
@@ -757,8 +557,6 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                 using (SqlBulkCopy bulkCopy = new SqlBulkCopy(conn))
                 {
                     bulkCopy.DestinationTableName = parametros["ArchivoDestino"];
-                    bulkCopy.BulkCopyTimeout = TimeoutSegundos;
-                    bulkCopy.BatchSize = 5000;
                     bulkCopy.WriteToServer(tableCuentas);
                 }
 
@@ -769,7 +567,7 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -797,12 +595,10 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaActualizar;
-                    cmd.CommandTimeout = TimeoutSegundos;
                     int rowsAffected = cmd.ExecuteNonQuery();
 
                     if (rowsAffected == 0)
                     {
-                        RegistraProceso("F", $"Actualizar estado archivo: {parametros["ArchivoControl"]} no afectó ningún registro");
                         return false;
                     }
                 }
@@ -811,9 +607,9 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             catch (Exception ex)
             {
 
-                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message.ToString()}");
 
-                return false;
+                Dts.TaskResult = (int)ScriptResults.Failure;
 
             }
             finally
@@ -856,11 +652,10 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                 using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = "HEstadoCuenta";
-                    cmd.Parameters.Add("@EstadoProceso", SqlDbType.VarChar).Value = estadoProceso;
-                    cmd.Parameters.Add("@Mensaje", SqlDbType.VarChar).Value = mensaje;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "DEstadoCuenta";
+                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
+                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
 
                     cmd.ExecuteNonQuery();
                 }
@@ -868,9 +663,6 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
             }
             catch (Exception ex)
             {
-                // Si el log falla, al menos queda en el historial del Job / log de SSIS
-                Dts.Events.FireWarning(0, "RegistraProceso",
-                    $"No se pudo registrar en log. Mensaje original: {mensaje} | Error: {ex.Message}", "", 0);
             }
             finally
             {
@@ -878,7 +670,6 @@ namespace ST_692e41e1b688459e9ae9ac7ada1fc4b1
                     cm.ReleaseConnection(conn);
             }
         }
-
 
         #region ScriptResults declaration
         /// <summary>
