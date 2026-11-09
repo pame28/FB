@@ -1,3 +1,6 @@
+Ayudame con este tambien 
+
+
 #region Help:  Introduction to the script task
 /* The Script Task allows you to perform virtually any operation that can be accomplished in
  * a .Net application within the context of an Integration Services control flow. 
@@ -9,7 +12,7 @@
 
 #region Namespaces
 using Microsoft.SqlServer.Dts.Runtime;
-using ST_f5b3686da9674ca19cd452f095fbcd61.Models;
+using ST_dfa6a40cff584fef9f3453f46e682fbe.Models;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -18,7 +21,7 @@ using System.Data.SqlClient;
 using System.Windows.Forms;
 #endregion
 
-namespace ST_f5b3686da9674ca19cd452f095fbcd61
+namespace ST_dfa6a40cff584fef9f3453f46e682fbe
 {
     /// <summary>
     /// ScriptMain is the entry point class of the script.  Do not change the name, attributes,
@@ -98,32 +101,10 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
         public string sql_ConsultaEstado = string.Empty;
         public string sql_ConsultaOrigen = string.Empty;
         public string sql_ConsultaActualizar = string.Empty;
-
-        // Timeout por defecto (segundos) si el parámetro "TimeoutSegundos" no existe en la tabla
-        // de parametrización o trae un valor inválido. 0 = sin límite.
-        private const int TIMEOUT_DEFAULT = 600;
-
-        /// <summary>
-        /// Timeout (en segundos) para comandos y bulk copy, leído del parámetro "TimeoutSegundos"
-        /// (del proceso "DEstadoCuenta" o de "General"). Si no existe o no es válido, usa TIMEOUT_DEFAULT.
-        /// </summary>
-        public int TimeoutSegundos
-        {
-            get
-            {
-                string valor;
-                int segundos;
-                if (parametros.TryGetValue("TimeoutSegundos", out valor) &&
-                    int.TryParse(valor, out segundos) && segundos >= 0)
-                {
-                    return segundos;
-                }
-                return TIMEOUT_DEFAULT;
-            }
-        }
-
         public void Main()
         {
+            // TODO: Add your code here
+
             if (ObtieneParametros())
             {
 
@@ -170,14 +151,7 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
 
         public bool RealizarMovimiento()
         {
-            List<DEstadoCuenta> resultado = ObtenerInfoAs400();
-
-            // null = hubo error al leer AS400 (ya quedó registrado en el log).
-            // Importante: sin esto, un error de lectura se trataba como "0 registros"
-            // y el archivo se marcaba como procesado en AS400.
-            if (resultado == null)
-                return false;
-
+            List<Financiamiento> resultado = ObtenerInfoAs400();
             if (resultado.Count == 0)
             {
                 RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
@@ -218,16 +192,29 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                     throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
                 }
 
-                // Primero los del proceso (tienen prioridad) y luego los generales.
-                // Si un parámetro existe en ambos, se queda el valor de "DEstadoCuenta".
-                CargarParametrosProceso(conn, "DEstadoCuenta");
-                CargarParametrosProceso(conn, "General");
+                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "Financiamientos";
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string idParametro = reader["IdParametro"].ToString();
+                            string valorParametro = reader["ValorParametro"].ToString();
+
+                            if (!parametros.ContainsKey(idParametro))
+                                parametros.Add(idParametro, valorParametro);
+                        }
+                    }
+                }
 
                 return true;
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message}");
+                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -235,29 +222,6 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             {
                 if (conn != null)
                     cm.ReleaseConnection(conn);
-            }
-        }
-
-        private void CargarParametrosProceso(SqlConnection conn, string proceso)
-        {
-            using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
-            {
-                cmd.CommandType = CommandType.StoredProcedure;
-                // Aquí TimeoutSegundos puede no estar cargado aún, así que usa TIMEOUT_DEFAULT
-                cmd.CommandTimeout = TimeoutSegundos;
-                cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = proceso;
-
-                using (SqlDataReader reader = cmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string idParametro = reader["IdParametro"].ToString();
-                        string valorParametro = reader["ValorParametro"].ToString();
-
-                        if (!parametros.ContainsKey(idParametro))
-                            parametros.Add(idParametro, valorParametro);
-                    }
-                }
             }
         }
 
@@ -296,14 +260,13 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
                 }
 
 
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaEstado;
-                    cmd.CommandTimeout = TimeoutSegundos;
                     using (IDataReader reader = cmd.ExecuteReader())
                     {
 
@@ -317,7 +280,9 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener estado proceso:  {sql_ConsultaEstado}  | ERROR :  {ex.Message} ");
+                RegistraProceso("F", $"Falló obtener estado proceso {sql_ConsultaEstado} con error {ex.Message.ToString()}");
+                
+                Dts.TaskResult = (int)ScriptResults.Failure;
                 return null;
             }
             finally
@@ -343,14 +308,12 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
 
             if (estadoProceso == "G")
             {
+                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
+
                 return RealizarMovimiento();
             }
             else
             {
-                // Corregido: antes este mensaje se registraba cuando el estado SÍ llegaba a "G",
-                // y cuando se agotaban los reintentos no se registraba nada.
-                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
-
                 return false;
             }
         }
@@ -364,12 +327,9 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             };
         }
 
-        /// <summary>
-        /// Devuelve la lista de detalles de estado de cuenta del AS400, o null si ocurrió un error al leer.
-        /// </summary>
-        public List<DEstadoCuenta> ObtenerInfoAs400()
+        public List<Financiamiento> ObtenerInfoAs400()
         {
-            List<DEstadoCuenta> hDetalleCuentas = new List<DEstadoCuenta>();
+            List<Financiamiento> financiamientos = new List<Financiamiento>();
             ConnectionManager cm = Dts.Connections["AS400"];
             OleDbConnection conn = null;
 
@@ -378,43 +338,40 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                 conn = cm.AcquireConnection(null) as OleDbConnection;
                 if (conn == null)
                 {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
                 }
 
                 {
                     using (IDbCommand cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = sql_ConsultaOrigen;
-                        cmd.CommandTimeout = TimeoutSegundos;
                         using (IDataReader reader = cmd.ExecuteReader())
                         {
                             while (reader.Read())
                             {
-                                DEstadoCuenta hEstado = new DEstadoCuenta();
+                                Financiamiento financiamiento = new Financiamiento();
 
-                                hEstado.Origen = reader.GetString(0);
-                                hEstado.FechaCarga = reader.GetString(1);
-                                hEstado.CodigoEmisor = reader.GetString(2);
-                                hEstado.EcDetalleNoCuenta = reader.GetString(3);
-                                hEstado.FechaCorte = reader.GetString(4);
-                                hEstado.EcDetalleNoTarjeta = reader.GetString(5);
-                                hEstado.NombreThP = reader.GetString(6);
-                                hEstado.EcDetalleEmisorMadre = reader.GetString(7);
-                                hEstado.EcDetalleCuentaMadre = reader.GetString(8);
-                                hEstado.NoAutorizacion = reader.GetString(9);
-                                hEstado.FechaConsumo = reader.GetString(10);
-                                hEstado.CodigoMov = reader.GetString(11);
-                                hEstado.DescripcionMov = reader.GetString(12);
-                                hEstado.MonedaMov = reader.GetString(13);
-                                hEstado.MontoMov = reader.GetDecimal(14);
-                                hEstado.TarjetaImprimir = reader.GetString(15);
-                                hEstado.TasaEfectivaAnualEfMn = reader.GetDecimal(16);
-                                hEstado.TasaEfectivaAnualEfMe = reader.GetDecimal(17);
-                                hEstado.NoCuentaClaro = reader.GetString(18);
-                                hEstado.Mcc = reader.GetString(19);
-                                hEstado.ProcesadorOrigen = "LOCAL";
+                                financiamiento.NumeroCuenta = reader.GetString(0);
+                                financiamiento.GrupoMovimientos = reader.GetString(1);
+                                financiamiento.CodigoOperacion = reader.GetString(2);
+                                financiamiento.NoCutRelacionado = reader.GetString(3);
+                                financiamiento.MonedaMovimiento = reader.GetString(4);
+                                financiamiento.Importe = reader.GetDecimal(5);
+                                financiamiento.ImporteTotalPlan = reader.GetDecimal(6);
+                                financiamiento.InteresCuotaLiquida = reader.GetDecimal(7);
+                                financiamiento.PlanCuotaCapitalPend = reader.GetDecimal(8);
+                                financiamiento.PlanCuotaInteresPend = reader.GetDecimal(9);
+                                financiamiento.PlanExtraTasa = reader.GetDecimal(10);
+                                financiamiento.NoCuotaLiquidada = reader.GetDecimal(11);
+                                financiamiento.CantidadCuotasPlan = reader.GetDecimal(12);
+                                financiamiento.NombreTarjeta = reader.GetString(13);
+                                financiamiento.EsIntra = reader.GetString(14);
+                                financiamiento.EsExtra = reader.GetString(15);
+                                financiamiento.FechaCierre = reader.GetString(16);
+                                financiamiento.FechaOtorgamiento = reader.GetString(17);
 
-                                hDetalleCuentas.Add(hEstado);
+                                financiamiento.ProcesadorOrigen = "LOCAL";
+                                financiamientos.Add(financiamiento);
                             }
                         }
                     }
@@ -423,8 +380,9 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message}");
-                return null;
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
 
             }
             finally
@@ -433,7 +391,7 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                     cm.ReleaseConnection(conn);
             }
 
-            return hDetalleCuentas;
+            return financiamientos;
         }
 
         public bool PreParseo()
@@ -452,9 +410,8 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                 using (SqlCommand cmd = new SqlCommand(parametros["PreParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -462,7 +419,7 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -489,9 +446,8 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                 using (SqlCommand cmd = new SqlCommand(parametros["PostParseo"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Archivo", SqlDbType.VarChar).Value = parametros["NombreArchivo"];
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
                     cmd.ExecuteNonQuery();
                 }
 
@@ -499,7 +455,7 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             }
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -510,69 +466,67 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             }
         }
 
-        public DataTable ConvertirADataTable(List<DEstadoCuenta> hEstados)
+        public DataTable ConvertirADataTable(List<Financiamiento> financiamientos)
         {
 
             try
             {
                 DataTable dt = new DataTable();
 
-                dt.Columns.Add("idRow", typeof(int));
-                dt.Columns.Add("Origen", typeof(string));
-                dt.Columns.Add("FechaCarga", typeof(DateTime));
-                dt.Columns.Add("Codigo_Emisor", typeof(string));
-                dt.Columns.Add("EC_DetalleNo_Cuenta", typeof(string));
-                dt.Columns.Add("Fecha_Corte", typeof(DateTime));
-                dt.Columns.Add("EC_DetalleNo_Tarjeta", typeof(string));
-                dt.Columns.Add("Nombre_TH_P", typeof(string));
-                dt.Columns.Add("EC_DetalleEmisor_Madre", typeof(string));
-                dt.Columns.Add("EC_DetalleCuenta_Madre", typeof(string));
-                dt.Columns.Add("No_Autorizacion", typeof(string));
-                dt.Columns.Add("Fecha_Consumo", typeof(DateTime));
-                dt.Columns.Add("Codigo_Mov", typeof(string));
-                dt.Columns.Add("Descripcion_Mov", typeof(string));
-                dt.Columns.Add("Moneda_Mov", typeof(string));
-                dt.Columns.Add("Monto_Mov", typeof(decimal));
-                dt.Columns.Add("Tarjeta_Imprimir", typeof(string));
-                dt.Columns.Add("Tasa_Efectiva_Anual_EF_MN", typeof(decimal));
-                dt.Columns.Add("Tasa_Efectiva_Anual_EF_ME", typeof(decimal));
-                dt.Columns.Add("NoCuentaClaro", typeof(string));
+                dt.Columns.Add("NumeroCuenta", typeof(string));
+                dt.Columns.Add("GrupoMovimientos", typeof(string));
+                dt.Columns.Add("CodigoOperacion", typeof(string));
+                dt.Columns.Add("NoCutRelacionado", typeof(string));
+                dt.Columns.Add("MonedaMovimiento", typeof(string));
+                dt.Columns.Add("Importe", typeof(decimal));
+                dt.Columns.Add("ImporteTotalPlan", typeof(decimal));
+                dt.Columns.Add("InteresCuotaLiquida", typeof(decimal));
+                dt.Columns.Add("PlanCuotaCapitalPend", typeof(decimal));
+                dt.Columns.Add("PlanCuotaInteresPend", typeof(decimal));
+                dt.Columns.Add("PlanExtraTasa", typeof(decimal));
+                dt.Columns.Add("NoCuotaLiquidada", typeof(byte));       
+                dt.Columns.Add("CantidadCuotasPlan", typeof(byte));     
+                dt.Columns.Add("NombreTarjeta", typeof(string));
+                dt.Columns.Add("EsIntra", typeof(bool));               
+                dt.Columns.Add("EsExtra", typeof(bool));              
+                dt.Columns.Add("FechaCierre", typeof(DateTime));      
+                dt.Columns.Add("FechaOtorgamiento", typeof(DateTime));  
                 dt.Columns.Add("ProcesadorOrigen", typeof(string));
 
-                foreach (var h in hEstados)
+                bool esIntra;
+                bool esExtra;
+                foreach (var h in financiamientos)
                 {
+                    esIntra = h.EsIntra == "1";
+                    esExtra = h.EsExtra == "1";
                     dt.Rows.Add(
-                        0, // idRow, puedes dejarlo en 0 si es autoincremental en SQL
-                        LimpiarEspacios(h.Origen),
-                        h.FechaCarga,
-                        LimpiarEspacios(h.CodigoEmisor),
-                        LimpiarEspacios(h.EcDetalleNoCuenta),
-                        h.FechaCorte,
-                        LimpiarEspacios(h.EcDetalleNoTarjeta),
-                        LimpiarEspacios(h.NombreThP),
-                        LimpiarEspacios(h.EcDetalleEmisorMadre),
-                        LimpiarEspacios(h.EcDetalleCuentaMadre),
-                        LimpiarEspacios(h.NoAutorizacion),
-                        h.FechaConsumo,
-                        LimpiarEspacios(h.CodigoMov),
-                        LimpiarEspacios(h.DescripcionMov),
-                        LimpiarEspacios(h.MonedaMov),
-                        h.MontoMov,
-                        LimpiarEspacios(h.TarjetaImprimir),
-                        h.TasaEfectivaAnualEfMn,
-                        h.TasaEfectivaAnualEfMe,
-                        LimpiarEspacios(h.NoCuentaClaro),
+                        LimpiarEspacios(h.NumeroCuenta),
+                        LimpiarEspacios(h.GrupoMovimientos),
+                        LimpiarEspacios(h.CodigoOperacion),
+                        LimpiarEspacios(h.NoCutRelacionado),
+                        LimpiarEspacios(h.MonedaMovimiento),
+                        h.Importe,
+                        h.ImporteTotalPlan,
+                        h.InteresCuotaLiquida,
+                        h.PlanCuotaCapitalPend,
+                        h.PlanCuotaInteresPend,
+                        h.PlanExtraTasa,
+                        h.NoCuotaLiquidada,
+                        h.CantidadCuotasPlan,
+                        LimpiarEspacios(h.NombreTarjeta),
+                        esIntra,
+                        esExtra,
+                        h.FechaCierre,
+                        h.FechaOtorgamiento,
                         LimpiarEspacios(h.ProcesadorOrigen)
                     );
                 }
-
-
                 return dt;
             }
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
 
                 return new DataTable();
             }
@@ -594,8 +548,6 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                 using (SqlBulkCopy bulkCopy = new SqlBulkCopy(conn))
                 {
                     bulkCopy.DestinationTableName = parametros["ArchivoDestino"];
-                    bulkCopy.BulkCopyTimeout = TimeoutSegundos;
-                    bulkCopy.BatchSize = 5000;
                     bulkCopy.WriteToServer(tableCuentas);
                 }
 
@@ -606,7 +558,7 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
 
             catch (Exception ex)
             {
-                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
 
                 return false;
             }
@@ -634,12 +586,10 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                 using (IDbCommand cmd = conn.CreateCommand())
                 {
                     cmd.CommandText = sql_ConsultaActualizar;
-                    cmd.CommandTimeout = TimeoutSegundos;
                     int rowsAffected = cmd.ExecuteNonQuery();
 
                     if (rowsAffected == 0)
                     {
-                        RegistraProceso("F", $"Actualizar estado archivo: {parametros["ArchivoControl"]} no afectó ningún registro");
                         return false;
                     }
                 }
@@ -648,9 +598,9 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             catch (Exception ex)
             {
 
-                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message}");
+                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message.ToString()}");
 
-                return false;
+                Dts.TaskResult = (int)ScriptResults.Failure;
 
             }
             finally
@@ -693,11 +643,10 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
                 using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.CommandTimeout = TimeoutSegundos;
 
-                    cmd.Parameters.Add("@Proceso", SqlDbType.VarChar).Value = "DEstadoCuenta";
-                    cmd.Parameters.Add("@EstadoProceso", SqlDbType.VarChar).Value = estadoProceso;
-                    cmd.Parameters.Add("@Mensaje", SqlDbType.VarChar).Value = mensaje;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "Financiamientos";
+                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
+                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
 
                     cmd.ExecuteNonQuery();
                 }
@@ -705,9 +654,6 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
             }
             catch (Exception ex)
             {
-                // Si el log falla, al menos queda en el historial del Job / log de SSIS
-                Dts.Events.FireWarning(0, "RegistraProceso",
-                    $"No se pudo registrar en log. Mensaje original: {mensaje} | Error: {ex.Message}", "", 0);
             }
             finally
             {
