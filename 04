@@ -1,8 +1,45 @@
-Ayudame a realizar un query, mas bien un update 
+SELECT CUO.CodigoTransaccion,
+       CUO.NumeroTarjeta AS TarjetaActual,
+       MIG.NumeroTarjeta AS TarjetaNueva
+FROM CuotasPendientes CUO
+INNER JOIN CuotasPendientes_mig MIG
+        ON CUO.CodigoTransaccion = MIG.CodigoCore
+WHERE (CUO.NumeroTarjeta IS NULL OR LTRIM(RTRIM(CUO.NumeroTarjeta)) = '')
+  AND MIG.NumeroTarjeta IS NOT NULL
+  AND LTRIM(RTRIM(MIG.NumeroTarjeta)) <> '';
 
-Te doy contexto:
-Tengo dos tablas .. una de ellas tiene el campo NumeroTarjeta Vacio (tablas CuotasPendientes CUO)
-Hay otra tabla que si tiene (CuotasPendientes_mig AS MIG )ese NumeroTarjeta si hacemos un Join entre ambas tablas por el campo CUO.CodigoTransaccion = MIG.CodigoCore
-Podemos llenarlo.. ayudame a hacer el update porfis
 
+
+
+
+
+
+BEGIN TRAN;
+
+UPDATE CUO
+SET    CUO.NumeroTarjeta = MIG.NumeroTarjeta
+FROM   CuotasPendientes CUO
+INNER JOIN CuotasPendientes_mig MIG
+        ON CUO.CodigoTransaccion = MIG.CodigoCore
+WHERE (CUO.NumeroTarjeta IS NULL OR LTRIM(RTRIM(CUO.NumeroTarjeta)) = '')
+  AND MIG.NumeroTarjeta IS NOT NULL
+  AND LTRIM(RTRIM(MIG.NumeroTarjeta)) <> '';
+
+SELECT @@ROWCOUNT AS FilasActualizadas;
+
+-- Si el número de filas coincide con el SELECT del paso 1:
+-- COMMIT;
+-- Si algo no cuadra:
+-- ROLLBACK;
+
+
+
+
+
+
+
+SELECT CodigoCore, COUNT(DISTINCT NumeroTarjeta) AS TarjetasDistintas
+FROM CuotasPendientes_mig
+GROUP BY CodigoCore
+HAVING COUNT(DISTINCT NumeroTarjeta) > 1;
 
