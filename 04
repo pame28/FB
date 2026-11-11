@@ -1,45 +1,409 @@
-SELECT CUO.CodigoTransaccion,
-       CUO.NumeroTarjeta AS TarjetaActual,
-       MIG.NumeroTarjeta AS TarjetaNueva
-FROM CuotasPendientes CUO
-INNER JOIN CuotasPendientes_mig MIG
-        ON CUO.CodigoTransaccion = MIG.CodigoCore
-WHERE (CUO.NumeroTarjeta IS NULL OR LTRIM(RTRIM(CUO.NumeroTarjeta)) = '')
-  AND MIG.NumeroTarjeta IS NOT NULL
-  AND LTRIM(RTRIM(MIG.NumeroTarjeta)) <> '';
+Msg 8152, Level 16, State 14, Procedure usp_PostParseoNP, Line 293 [Batch Start Line 18]
+
+String or binary data would be truncated.The statement has been terminated.
+
+
+Completion time: 2026-11-11T16:17:31.1088488-06:00
 
 
 
 
 
+USE [BandejaVASA_PRD]
+GO
+
+/****** Object:  StoredProcedure [dbo].[usp_PostParseoNP]    Script Date: 11/11/2026 16:18:52 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
 
 
-BEGIN TRAN;
+-- =============================================
 
-UPDATE CUO
-SET    CUO.NumeroTarjeta = MIG.NumeroTarjeta
-FROM   CuotasPendientes CUO
-INNER JOIN CuotasPendientes_mig MIG
-        ON CUO.CodigoTransaccion = MIG.CodigoCore
-WHERE (CUO.NumeroTarjeta IS NULL OR LTRIM(RTRIM(CUO.NumeroTarjeta)) = '')
-  AND MIG.NumeroTarjeta IS NOT NULL
-  AND LTRIM(RTRIM(MIG.NumeroTarjeta)) <> '';
+-- Author:		Carlos Aguilar
 
-SELECT @@ROWCOUNT AS FilasActualizadas;
+-- Create date: 2026-02-18
 
--- Si el número de filas coincide con el SELECT del paso 1:
--- COMMIT;
--- Si algo no cuadra:
--- ROLLBACK;
+-- Description:	Ejecuta proceso luego de truncar tablas
 
+-- =============================================
 
+CREATE PROCEDURE [dbo].[usp_PostParseoNP] 
 
+	@Archivo VARCHAR(50)
 
+AS
 
+BEGIN
 
+    -- SET NOCOUNT ON added to prevent extra result sets from
 
-SELECT CodigoCore, COUNT(DISTINCT NumeroTarjeta) AS TarjetasDistintas
-FROM CuotasPendientes_mig
-GROUP BY CodigoCore
-HAVING COUNT(DISTINCT NumeroTarjeta) > 1;
+    -- interfering with SELECT statements.
+
+    SET NOCOUNT ON;
+
+    IF (@Archivo='701TARDESNP')
+
+    BEGIN
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP'
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		ALTER INDEX IX_CuentasTarjetas ON dbo.ETarjetas REBUILD;
+
+		ALTER INDEX IX_ETarjetas ON dbo.ETarjetas REBUILD;
+
+		ALTER INDEX idx_NoTarjetaRptFinan ON dbo.ETarjetas REBUILD;
+
+		ALTER INDEX idx_EstHabilitar ON dbo.ETarjetas REBUILD;
+
+		/*#####################################################
+
+		* Corregimos los nombres de las tarjetas en un campo nuevo
+
+		*######################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Corregimos los nombres de las tarjetas en un campo nuevo'
+
+		UPDATE
+
+			ETarjetas
+
+		SET
+
+			NombreTarjetaImprimir = dbo.ufn_NombreTarjeta(NombreCliente,'/')
+
+			,NoCuentaClaro = NoUsuario
+
+			WHERE ProcesadorOrigen = 'LOCAL'
+ 
+		UPDATE ETarjetas SET NombreTarjeta=NombreTarjeta+' '
+
+		WHERE CharIndex(' ', NombreTarjeta)=0 AND ProcesadorOrigen='LOCAL'
+
+		UPDATE ETarjetas SET ApellidoTarjeta=ApellidoTarjeta+' '
+
+		WHERE CharIndex(' ', ApellidoTarjeta)=0 AND ProcesadorOrigen='LOCAL'
+
+		/*#####################################################
+
+		* Creamos las nuevas equivalenciasl
+
+		*######################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Creamos las nuevas equivalenciasl'
+
+		EXEC usp_EqCreateNP @Archivo
+
+        /*############################################################################
+
+        * Coloca las equivalencias en el archivo
+
+        *#############################################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Coloca las equivalencias en el archivo'
+
+        EXEC usp_EqUpdateNP @Archivo
+ 
+ 
+		UPDATE ParArchivosEntrada set aeFechaDescarga = DATEADD(DAY, -1, GETDATE()) WHERE aeNombre = @Archivo
+
+        /*############################################################################
+
+        * Actualizamos el campo que se utiliza para identificar la tarjetas titulares de las empresas
+
+        * Ya que la CNBS exige que se mantenga el numero de operacion
+
+        *#############################################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Actualizamos el campo que se utiliza para identificar la tarjetas titulares de las empresas'
+
+        UPDATE e
+
+		SET e.NoEmpleadoCtaEmpresa = 'T'
+
+		FROM ETarjetas e
+
+		INNER JOIN TarjetasTitulares tt
+
+		ON e.NumeroTarjeta = tt.NumeroTarjeta
+
+		WHERE e.ProcesadorOrigen = 'LOCAL'
+
+    END
+
+    IF (@Archivo='701USUDESNP')
+
+    BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		ALTER INDEX Idx_Usuarios ON dbo.EUsuarios REBUILD;
+
+		ALTER INDEX idx_UsuariosModeloLiq ON dbo.EUsuarios REBUILD;
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP'
+
+    	/*#####################################################
+
+		* Creamos las nuevas cuentas
+
+		*######################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Creamos las nuevas cuentas'
+ 
+		Update EUsuarios Set NoCuentaClaro = NoUsuario WHERE ProcesadorOrigen = 'LOCAL'
+ 
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: usp_EqCreate'
+
+    	EXEC usp_EqCreateNP @Archivo
+
+        /*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas 
+
+        *#############################################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Colocamos las equivalencias de las Cuentas '
+
+        EXEC usp_EqUpdateNP @Archivo
+
+    END
+
+    IF(@Archivo  = '701CABLIQNP')
+
+	BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo'
+
+		Update HEstadoCuenta Set NoCuentaClaro = No_Cuenta
+
+		/*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas 
+
+        *#############################################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo: Colocamos las equivalencias de las Cuentas '
+
+         EXEC usp_EqUpdateNP @Archivo
+ 
+    END
+ 
+	IF(@Archivo  = '701FINACIAMIENTONP')
+
+	BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		/*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas 
+
+        *#############################################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo: Colocamos las equivalencias de las Cuentas '
+
+         EXEC usp_EqUpdateNP @Archivo 
+
+    END 
+
+	IF(@Archivo  = '701DETLIQNP')
+
+	BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo'
+
+		Update DEstadoCuenta Set NoCuentaClaro = EC_DETALLENO_CUENTA
+
+ 
+		/*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas 
+
+        *#############################################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo: usp_EqUpdate Colocamos las equivalencias de las Cuentas  '
+
+         EXEC usp_EqUpdateNP @Archivo
+
+	END	
+
+	IF(@Archivo  = '701PCRENDIRNP')
+
+	BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo'
+
+		ALTER INDEX idx_CuentaTarjeta ON dbo.DRendicion REBUILD;
+ 
+ 
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: ACTUALIZACION NoCuentaClaro'
+
+		Update DRendicion Set NoCuentaClaro = NumeroCuenta
+
+		WHERE ProcesadorOrigen = 'LOCAL'
+
+		/*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas 
+
+        *#############################################################################*/
+
+         EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: usp_EqUpdate'
+
+		 EXEC usp_EqUpdateNP @Archivo
+
+		  EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Colocamos las equivalencias de las Cuentas '
+
+         Update
+
+			dbo.DRendicion
+
+         Set
+
+			FechaCarga = (Select aeFechaDescarga From dbo.ParArchivosEntrada Where aeNombre = @Archivo)
+
+         Where
+
+			FechaCarga Is Null
+
+			AND ProcesadorOrigen = 'LOCAL'																   																								  
+
+	END
+
+	IF(@Archivo  = '701FIADORESNP')
+
+	BEGIN
+
+		 EXEC usp_LimpiarNulosNP @Archivo
+
+		 EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: NoCuentaClaro'
+ 
+		Update EMaestroFiadores Set NoCuentaClaro = NoUsuario WHERE ProcesadorOrigen = 'LOCAL'
+ 
+		/*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas 
+
+        *#############################################################################*/
+
+		 EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: Colocamos las equivalencias de las Cuentas '
+
+        EXEC usp_EqUpdateNP @Archivo
+
+	END
+
+	IF(@Archivo  = '701CUO_PENDNP')
+
+	BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		 EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: NoCuentaClaro'
+ 
+		Update CuotasPendientes Set NoCuentaClaro = NumeroCuenta WHERE ProcesadorOrigen = 'LOCAL'
+
+		/*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas y Tarjetas en el archivo de Cuotas Pendientes (Extras) 
+
+        *#############################################################################*/
+
+        EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: usp_EqUpdate'
+
+		EXEC usp_EqUpdateNP @Archivo
+
+	END
+ 
+	IF(@Archivo  = '701CONTRATOSNP')
+
+	BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		 EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: 701CONTRATOSNP'
+ 
+        EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: 701CONTRATOSNP'
+
+		EXEC usp_EqUpdateNP @Archivo
+
+	END
+ 
+	IF(@Archivo  = '701POSICIONNP')
+
+	BEGIN
+
+		EXEC usp_LimpiarNulosNP @Archivo
+
+		 EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: usp_EqUpdateNP'
+ 
+		ALTER INDEX [idx_CuentaTarjeta] ON [dbo].[EPosicionDiaria] REBUILD;
+
+		ALTER INDEX [idx_NumeroTarjeta] ON [dbo].[EPosicionDiaria] REBUILD;
+ 
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: NoCuentaClaro'
+
+		Update EPosicionDiaria Set NoCuentaClaro = NoUsuario WHERE ProcesadorOrigen = 'LOCAL'
+ 
+		/*###########################################################################
+
+        * Colocamos las equivalencias de las Cuentas y Tarjetas en el archivo de Posicion Diaria 
+
+        *#############################################################################*/
+
+        EXEC usp_logProcesoTC @Archivo, 'usp_PostParseoNP: usp_EqUpdateNP'
+
+		EXEC usp_EqUpdateNP @Archivo
+ 
+		/*###########################################################################
+
+		*ACTUALIZAMOS LA TASA DE INTERES DE LAS TARJETAS CON TASA CERO
+
+		*############################################################################*/
+
+		EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo: ACTUALIZAMOS LA TASA DE INTERES '
+
+		UPDATE A
+
+		SET A.TNAInteresConsumoFinanML=B.TasaML,A.TNAInteresFinanciacionAdeML=B.TasaML,A.TNAInteresConsumoFinanUSD=B.TasaUSD,A.TNAInteresFinanciacionAdeUSD=B.TasaUSD
+
+		FROM [EPosicionDiaria] AS A
+
+		INNER JOIN [dbo].[ParModelosLiquidacion] AS B
+
+		ON A.ModeloLiquidacion = B.ModeloLiquidacion
+
+		WHERE A.NUMEROTARJETA <> '0000000000000000' AND A.TNAInteresConsumoFinanML = 0 AND
+
+		A.TNAInteresFinanciacionAdeML=0 AND A.TNAInteresConsumoFinanUSD = 0 AND A.TNAInteresFinanciacionAdeUSD = 0
+
+		AND A.ProcesadorOrigen = 'LOCAL'
+
+	END
+
+ 
+	IF(@Archivo  = '701_Parametria_Tabla49')
+
+	BEGIN
+
+	 EXEC usp_logProcesoTC @Archivo, 'usp_PostParseo: Usp_ActualizaTasasModLiq'
+
+	 EXEC Usp_ActualizaTasasModLiq
+
+	END
+ 
+END
+
+GO
+
 
