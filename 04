@@ -1,11 +1,5 @@
-DECLARE @id BIGINT = (
-    SELECT MAX(execution_id)
-    FROM SSISDB.catalog.executions
-    WHERE package_name LIKE '%MAESTRO CUENTAS%'
-);
-
-SELECT message_time, message_source_name, message
-FROM SSISDB.catalog.event_messages
-WHERE operation_id = @id
-  AND message_type IN (120, 130)   -- 120 = Error, 130 = Tarea fallida
-ORDER BY message_time;
+SELECT TOP 10 h.run_date, h.run_time, h.step_name, h.message
+FROM msdb.dbo.sysjobhistory h
+JOIN msdb.dbo.sysjobs j ON j.job_id = h.job_id
+WHERE j.name LIKE '%MAESTRO CUENTAS%'
+ORDER BY h.instance_id DESC;
