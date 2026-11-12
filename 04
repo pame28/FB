@@ -1,4 +1,97 @@
-https://exportadora-cafe-dem-psuazo.netlify.app
+USE [DescargaInformacionProcesador]
+GO
+/****** Object:  StoredProcedure [dbo].[sp_RegistraProceso]    Script Date: 12/11/2026 14:28:54 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ ALTER PROCEDURE [dbo].[sp_RegistraProceso] 
+
+  @Proceso NVARCHAR(100),
+
+  @EstadoProceso NVARCHAR(5),
+
+  @Mensaje NVARCHAR(500)
+
+AS
+
+BEGIN
+
+    SET NOCOUNT ON;
+ 
+	IF EXISTS(SELECT 1  FROM ParametrosDescargaTablas WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso' 
+
+          AND ValorParametro = 'true')
+
+	BEGIN
+
+		RETURN;
+
+	END
+ 
+    -- Registrar proceso en ParametrosEjecucionDescarga
+
+    DECLARE @Hoy VARCHAR(10) = CONVERT(VARCHAR(10), GETDATE() -1, 23); -- YYYY-MM-DD
+ 
+	IF EXISTS(SELECT 1 FROM ParametrosEjecucionDescarga 
+
+	WHERE Proceso = @Proceso AND FechaProceso = @Hoy)
+
+	BEGIN
+
+	PRINT 'YA EXISTE REGISTRO'
+
+	END
+
+	ELSE
+
+	BEGIN
+
+		INSERT INTO ParametrosEjecucionDescarga (Proceso, FechaProceso, EstadoProceso, Mensaje)
+
+		VALUES (@Proceso, @Hoy, @EstadoProceso, @Mensaje);
+
+	END
+ 
+ 
+    IF EXISTS (
+
+        SELECT 1 
+
+        FROM ParametrosDescargaTablas 
+
+        WHERE Proceso = 'General'
+
+          AND IdParametro = 'FechaProceso' 
+
+          AND ValorParametro = @Hoy
+
+    )
+
+    BEGIN
+
+        PRINT 'La fecha ya está registrada, no se actualiza.';
+
+    END
+
+    ELSE
+
+    BEGIN
+
+        UPDATE ParametrosDescargaTablas
+
+        SET ValorParametro = @Hoy
+
+        WHERE Proceso = 'General'
+
+          AND IdParametro = 'FechaProceso';
+
+    END
+
+END
+
+
+
 
 
 
