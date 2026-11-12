@@ -1,112 +1,1058 @@
-Id	Proceso	IdParametro	ValorParametro
-7	Eusuarios	ConsultaOrigen	  SELECT NoUsuario,Admin,SubAdmin,NoClienteUnico,CodigoBanco,CodigoCasa,CodigoPais,DenominacionCuenta,CodigoProducto,ImporteLimiteCompra,MonedaLimiteCompra,FactorLimiteCompraCuotas,Cartera,ModeloLiquidacion,GrupoAfinidad,EstadoCuenta,SubEstado,FechaAltaCuenta,CondicionFrenteIVA,RTN,FormaPago,CambioCasa,CasaAnterior,FechaCambioCasa,CasaFutura,CarteraAnterior,FechaCarteraFutura,CodigoCarteraFutura,NoCambioAffinity,FechaCambioAffinity,FechaBajaCuenta,NoProcesoABM,FechaProcesoABM,MarcaOrigenNovedadABM,MarcaFuncionarioNovedadABM,LEFT(Supervisor,8) AS Supervisor,LEFT(Funcionario,8) AS Funcionario,NoSolicitudABM,DomicilioParticular1,NoPuertaParticular,DomicilioParticular2,DomicilioParticular3,CodigoPostalParticular,BarrioParticular,CiudadParticular,CodigoDeptoParticular,CodigoPaisParticular,Telefono,DomicilioCorrespondencia1,NoPuertaCorrespondencia,DomicilioCorrespondencia2,DomicilioCorrespondencia3,CodigoPostalCorrespondencia,BarrioCorrespondencia,CiudadCorrespondencia,CodigoDeptoCorrespondencia,CodigoPaisCorrespondencia,CasillaCorreoCorrespondencia,UsuEmailUsuario,UsuEmailDominio,TipoCuenta1,MonedaCuenta1,CasaCuenta1,NumeroCuenta1,TipoCuenta2,MonedaCuenta2,CasaCuenta2,NumeroCuenta2,TipoCuenta3,MonedaCuenta3,CasaCuenta3,NumeroCuenta3,PorcentajeLimiteFinanciacion,PorcentajeExigenciaPagoMinimo,CentroCosto,CodigoEmpresa,Planta,Agrupamiento,Filler1,LimiteAcumuladoTarjeta,Seguro01,Seguro02,CalificacionCuenta,FechaVencimientoCuenta,Filler2,Filler3,Seguro03,Seguro04,Seguro05,Filler4,FormaEnvioEstadoCuenta,Reglas,CodigoVendedor,NombreUsuario,Filler5,AltaPuntoVenta,Filler6,TipoLimiteTarjeta,MoraCuenta,CuentaSobregirada,CuentaGestionJudicial,CuentaArregloPago,CuentaPenalizada,Filler7,NoCuentaClaro,LineaEnArchivo FROM {ARCHIVO_ORIGEN}
+using Microsoft.SqlServer.Dts.Runtime;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.OleDb;
+using System.Data.SqlClient;
+using System.Diagnostics;
+using System.Globalization;
+using System.Threading;
+
+
+namespace ST_2ee0b0b42b00429599fceb041023e5cc
+{
+	[Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPointAttribute]
+	public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+	{
+		#region Constantes
+		private const string NombreProceso = "Eusuarios";
+		private const string EstadoGenerado = "G";      // estado que AS400 debe tener antes de descargar
+
+		// Estados que se envian al SP de registro.
+		private const string LogInfo = "I";
+		private const string LogError = "F";
+		private const string LogExito = "E";
+
+		private const int MaxLongitudMensaje = 500;
+		private const string FormatoFecha = "yyyy-MM-dd";
+
+		private const int ColumnasOrigen = 106;         // columnas que devuelve la consulta de AS400 (0..105)
+		private const int PosicionLarId = 105;          // larId se inserta entre NoCuentaClaro (104) y LineaEnArchivo
+		private const int ColumnasDestino = ColumnasOrigen + 2; // + larId + ProcesadorOrigen
+		private const int LarIdPorDefecto = 23255;
+
+		// Columnas con regla de negocio propia (posiciones en la tabla destino)
+		private const int ColFactorLimiteCompraCuotas = 11;   // redondeo a 1 decimal, rango -99.9 .. 99.9
+		private const int ColGrupoAfinidad = 14;              // numerico en AS400, texto de max 4 caracteres en destino
+		private const int MaxLongitudGrupoAfinidad = 4;
+		private static readonly DateTime FechaMinima = new DateTime(1900, 1, 1);
+		private const string ProcesadorOrigen = "LOCAL";
+		#endregion
+
+		#region Estado del proceso
+		private readonly Dictionary<string, string> parametros = new Dictionary<string, string>();
+		private readonly Stopwatch _swTotal = Stopwatch.StartNew();
+
+		private string _fechaGeneracion = string.Empty;
+		private string _sqlConsultaEstado = string.Empty;
+		private string _sqlConsultaOrigen = string.Empty;
+		private string _sqlConsultaActualizar = string.Empty;
+
+		// Configuracion
+		private int _timeoutSql = 1800;
+		private int _timeoutAs400 = 1800;
+		private int _tamanoLote = 10000;
+		private int _logCadaFilas = 50000;
+		private bool _logDetallado = true;
+		private bool _bulkTableLock = false;
+		private int _larId = LarIdPorDefecto;
+
+
+		// Para trazabilidad en caso de error
+		private string _fase = string.Empty;
+		private long _filasLeidas = 0;
+		private long _filasInsertadas = 0;
+		private long _ticksLectura = 0;      // tiempo acumulado leyendo de AS400
+		private long _ticksConversion = 0;   // tiempo acumulado convirtiendo filas
+		private long _ticksBulk = 0;         // tiempo acumulado en SqlBulkCopy.WriteToServer
+		private string _ultimoError = null;
+		#endregion
+
+		public void Main()
+		{
+			bool ok = false;
+
+			try
+			{
+				ok = Ejecutar();
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Error no controlado en el script", ex);
+			}
+
+			if (!ok)
+			{
+				Dts.Events.FireError(0, NombreProceso, _ultimoError ?? "El proceso termino con error.", "", 0);
+			}
+
+			Dts.TaskResult = (int)(ok ? ScriptResults.Success : ScriptResults.Failure);
+		}
+
+		private bool Ejecutar()
+		{
+			if (!ObtieneParametros())
+				return false;
+
+			if (!ValidarParametros())
+				return false;
+
+			CargarConfiguracion();
+			_fechaGeneracion = parametros["FechaProceso"];
+			ParseaConsultas();
+
+			Info("Inicio proceso. FechaProceso=" + _fechaGeneracion + ", Archivo=" + parametros["NombreArchivo"] +
+				 ", TamanoLote=" + _tamanoLote + ", TimeoutSql=" + _timeoutSql + "s, TimeoutAs400=" + _timeoutAs400 + "s");
+
+			string estadoProceso = ObtenerEstadoProceso();
+			if (estadoProceso == null)
+				return false;
+
+			Info("Estado en AS400: '" + estadoProceso + "' (inicial esperado: '" + parametros["EstadoInicial"] + "')");
+
+			if (estadoProceso != parametros["EstadoInicial"])
+				return RealizarReintento(estadoProceso);
+
+			return RealizarMovimiento();
+		}
+
+		#region Flujo principal
+		private bool RealizarMovimiento()
+		{
+			if (!ExtraerYCargar())
+				return false;
+
+			if (!EjecutarSpConArchivo("PostParseo"))
+				return false;
+
+			if (!UpdateArchivoAS400())
+				return false;
+
+			Log(LogExito, "Proceso ejecutado exitosamente. Filas cargadas: " + _filasInsertadas.ToString("N0"));
+			return true;
+		}
+
+		/// <summary>
+		/// Lee de AS400 e inserta en SQL Server por lotes con SqlBulkCopy.
+		/// </summary>
+		private bool ExtraerYCargar()
+		{
+			Stopwatch sw = Stopwatch.StartNew();
+			_fase = "conectando a AS400";
+			_filasLeidas = 0;
+			_filasInsertadas = 0;
+
+			ConnectionManager cmAs400 = Dts.Connections["AS400"];
+			OleDbConnection connAs400 = null;
+
+			try
+			{
+				connAs400 = Adquirir<OleDbConnection>(cmAs400);
+
+				using (IDbCommand cmd = connAs400.CreateCommand())
+				{
+					cmd.CommandText = _sqlConsultaOrigen;
+					cmd.CommandTimeout = _timeoutAs400;
+
+					_fase = "ejecutando consulta de origen en AS400";
+					Info("Ejecutando consulta de origen en AS400: " + parametros["ArchiviOrigen"]);
+
+					using (IDataReader reader = cmd.ExecuteReader())
+					{
+						if (reader.FieldCount < ColumnasOrigen)
+							throw new InvalidOperationException("La consulta de origen devolvio " + reader.FieldCount +
+								" columnas y se esperaban " + ColumnasOrigen + ".");
+
+						// Se lee la primera fila ANTES del PreParseo: si AS400 no trae datos no se limpia la tabla destino.
+						_fase = "leyendo primer registro de AS400";
+						if (!reader.Read())
+						{
+							Log(LogError, "No se encontraron registros en AS400 para el dia " + _fechaGeneracion);
+							return false;
+						}
+
+						Info("AS400 respondio el primer registro en " + Fmt(sw));
+
+						if (!EjecutarSpConArchivo("PreParseo"))
+							return false;
+
+						CargarLotes(reader);
+					}
+				}
+
+				Info("Extraccion y carga finalizadas: " + _filasInsertadas.ToString("N0") + " filas en " + Fmt(sw));
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo " + _fase + " (filas leidas=" + _filasLeidas.ToString("N0") +
+						 ", insertadas=" + _filasInsertadas.ToString("N0") + ", transcurrido " + Fmt(sw) + ")", ex);
+				return false;
+			}
+			finally
+			{
+				if (connAs400 != null)
+					cmAs400.ReleaseConnection(connAs400);
+			}
+		}
+
+		private void CargarLotes(IDataReader reader)
+		{
+			Stopwatch swCarga = Stopwatch.StartNew();
+			ConnectionManager cmSql = Dts.Connections["BANDEJAVASA"];
+			SqlConnection connSql = null;
+
+			DataTable lote = CrearTablaLote();
+			object[] buffer = new object[reader.FieldCount];
+			object[] fila = new object[ColumnasDestino];
+			Type[] tipos = new Type[ColumnasDestino];
+			string[] nombres = new string[ColumnasDestino];
+			for (int c = 0; c < ColumnasDestino; c++)
+			{
+				tipos[c] = lote.Columns[c].DataType;
+				nombres[c] = lote.Columns[c].ColumnName;
+			}
+			long proximoLog = _logCadaFilas;
+
+			try
+			{
+				_fase = "conectando a SQL Server (BANDEJAVASA)";
+				connSql = Adquirir<SqlConnection>(cmSql);
+
+				SqlBulkCopyOptions opciones = _bulkTableLock ? SqlBulkCopyOptions.TableLock : SqlBulkCopyOptions.Default;
+
+				using (SqlBulkCopy bulk = new SqlBulkCopy(connSql, opciones, null))
+				{
+					bulk.DestinationTableName = parametros["ArchivoDestino"];
+					bulk.BulkCopyTimeout = _timeoutSql;
+
+					Info("Iniciando bulk insert hacia " + parametros["ArchivoDestino"]);
+
+					do
+					{
+						_fase = "leyendo AS400";
+						long t0 = Stopwatch.GetTimestamp();
+						reader.GetValues(buffer);
+						long t1 = Stopwatch.GetTimestamp();
+
+						_fase = "convirtiendo fila " + (_filasLeidas + 1).ToString("N0");
+						LlenarFila(buffer, fila, tipos, nombres);
+						lote.Rows.Add(fila);
+
+						_ticksLectura += t1 - t0;
+						_ticksConversion += Stopwatch.GetTimestamp() - t1;
+						_filasLeidas++;
+
+						if (lote.Rows.Count >= _tamanoLote)
+						{
+							EscribirLote(bulk, lote);
+
+							if (_filasInsertadas >= proximoLog)
+							{
+								Info("Avance: " + _filasInsertadas.ToString("N0") + " filas insertadas en " + Fmt(swCarga) +
+									 " | " + ResumenTiempos());
+								proximoLog += _logCadaFilas;
+							}
+						}
+
+						_fase = "leyendo AS400";
+					}
+					while (LeerFila(reader));
+
+					if (lote.Rows.Count > 0)
+						EscribirLote(bulk, lote);
+				}
+
+				double segundos = Math.Max(1.0, swCarga.Elapsed.TotalSeconds);
+				Info("Bulk insert terminado: " + _filasInsertadas.ToString("N0") + " filas en " + Fmt(swCarga) +
+					 " (~" + ((long)(_filasInsertadas / segundos)).ToString("N0") + " filas/seg) | " + ResumenTiempos());
+			}
+			finally
+			{
+				if (connSql != null)
+					cmSql.ReleaseConnection(connSql);
+			}
+		}
+
+		private void EscribirLote(SqlBulkCopy bulk, DataTable lote)
+		{
+			_fase = "bulk insert";
+			int filas = lote.Rows.Count;
+
+			long t0 = Stopwatch.GetTimestamp();
+			bulk.WriteToServer(lote);
+			_ticksBulk += Stopwatch.GetTimestamp() - t0;
+
+			_filasInsertadas += filas;
+			lote.Clear();
+		}
+
+		// Read() con medicion de tiempo (cuanto espera el script a que AS400 entregue la siguiente fila).
+		private bool LeerFila(IDataReader reader)
+		{
+			long t0 = Stopwatch.GetTimestamp();
+			bool hayFila = reader.Read();
+			_ticksLectura += Stopwatch.GetTimestamp() - t0;
+			return hayFila;
+		}
+
+		private string ResumenTiempos()
+		{
+			return "lectura AS400=" + FmtTicks(_ticksLectura) + ", conversion=" + FmtTicks(_ticksConversion) +
+				   ", bulk SQL=" + FmtTicks(_ticksBulk);
+		}
+
+		private static string FmtTicks(long ticks)
+		{
+			return TimeSpan.FromSeconds(ticks / (double)Stopwatch.Frequency).ToString(@"hh\:mm\:ss");
+		}
+
+		/// <summary>
+		/// Espera mientras el AS400 coloca la informacion del archivo si este no ha sido generado a la hora de ejecucion del proceso
+		/// </summary>
+		private bool RealizarReintento(string estadoProceso)
+		{
+			int cantidad = ParamInt("CantidadReintentos", 0);
+			int minutos = ParamInt("MinutosReintentos", 1);
+			int intento = 0;
+
+			while (estadoProceso != EstadoGenerado && intento < cantidad)
+			{
+				intento++;
+				Info("Estado '" + estadoProceso + "' distinto de '" + EstadoGenerado + "'. Reintento " + intento + "/" + cantidad +
+					 ", esperando " + minutos + " min.");
+
+				Thread.Sleep(TimeSpan.FromMinutes(minutos));
+				estadoProceso = ObtenerEstadoProceso();
+				if (estadoProceso == null)
+					return false;
+			}
+
+			if (estadoProceso == EstadoGenerado)
+			{
+				Info("Estado '" + EstadoGenerado + "' detectado tras " + intento + " reintento(s). Iniciando movimiento.");
+				return RealizarMovimiento();
+			}
+
+			Log(LogError, "Fallo reintentos: " + cantidad + " intentos de " + minutos + " min c/u, no se actualizo estado " +
+						  EstadoGenerado + " en AS400 (ultimo estado: '" + estadoProceso + "')");
+			return false;
+		}
+		#endregion
+
+		#region Parametros y consultas
+		private bool ObtieneParametros()
+		{
+			ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+			SqlConnection conn = null;
+
+			try
+			{
+				conn = Adquirir<SqlConnection>(cm);
+
+				using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+				{
+					cmd.CommandType = CommandType.StoredProcedure;
+					cmd.CommandTimeout = 120;
+					cmd.Parameters.Add(new SqlParameter("@Proceso", NombreProceso));
+
+					using (SqlDataReader reader = cmd.ExecuteReader())
+					{
+						while (reader.Read())
+						{
+							string idParametro = reader["IdParametro"].ToString();
+							string valorParametro = reader["ValorParametro"].ToString();
+
+							if (!parametros.ContainsKey(idParametro))
+								parametros.Add(idParametro, valorParametro);
+						}
+					}
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo obtener informacion desde usp_GetParametersByProcess", ex);
+				return false;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		private bool ValidarParametros()
+		{
+			string[] requeridos =
+			{
+				"FechaProceso", "EstadoInicial", "EstadoFinal", "ArchivoControl", "ArchivoGenerado",
+				"ArchiviOrigen",
+				"ConsultaEstado", "ConsultaOrigen", "ConsultaActualizar", "Usuario",
+				"PreParseo", "PostParseo", "NombreArchivo", "ArchivoDestino", "SegundosTimeoutSql"
+				,"SegundosTimeoutAs400"
+				,"TamanoLote"
+				,"LogCadaFilas"
+				,"LogDetallado"
+				,"BulkTableLock"
+			};
+
+			List<string> faltantes = new List<string>();
+			foreach (string clave in requeridos)
+			{
+				string valor;
+				if (!parametros.TryGetValue(clave, out valor) || string.IsNullOrWhiteSpace(valor))
+					faltantes.Add(clave);
+			}
+
+			if (faltantes.Count > 0)
+			{
+				Log(LogError, "Faltan parametros requeridos: " + string.Join(", ", faltantes));
+				return false;
+			}
+
+			string sp;
+			if (!parametros.TryGetValue("RegistroProceso", out sp) || string.IsNullOrWhiteSpace(sp))
+				Dts.Events.FireWarning(0, NombreProceso, "Parametro RegistroProceso no definido: no se registrara en la BD.", "", 0);
+
+			return true;
+		}
+
+		private void CargarConfiguracion()
+		{
+			_timeoutSql = ParamInt("SegundosTimeoutSql", 1800);
+			_timeoutAs400 = ParamInt("SegundosTimeoutAs400", 1800);
+			_tamanoLote = Math.Max(1, ParamInt("TamanoLote", 10000));
+			_logCadaFilas = Math.Max(1, ParamInt("LogCadaFilas", 50000));
+			_logDetallado = ParamBool("LogDetallado", true);
+			_bulkTableLock = ParamBool("BulkTableLock", false);
+			_larId = ParamInt("LarId", LarIdPorDefecto);
+		}
+
+		private int ParamInt(string clave, int porDefecto)
+		{
+			string texto;
+			int valor;
+			if (parametros.TryGetValue(clave, out texto) && int.TryParse(texto, out valor) && valor >= 0)
+				return valor;
+			return porDefecto;
+		}
+
+		private bool ParamBool(string clave, bool porDefecto)
+		{
+			string texto;
+			if (!parametros.TryGetValue(clave, out texto) || string.IsNullOrWhiteSpace(texto))
+				return porDefecto;
+
+			texto = texto.Trim();
+			return texto == "1" || texto.Equals("true", StringComparison.OrdinalIgnoreCase) || texto.Equals("S", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private void ParseaConsultas()
+		{
+			string hora = DateTime.Now.ToString("HHmmss");
+			string fecha = DateTime.Now.ToString(FormatoFecha);
+
+			_sqlConsultaEstado = parametros["ConsultaEstado"]
+				.Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+				.Replace("{FECHA_GENERACION}", "'" + _fechaGeneracion + "'")
+				.Replace("{ESTADO_INICIAL}", "'" + parametros["EstadoInicial"] + "'")
+				.Replace("{ARCHIVO_GENERADO}", "'" + parametros["ArchivoGenerado"] + "'");
+
+			_sqlConsultaOrigen = parametros["ConsultaOrigen"]
+				.Replace("{ARCHIVO_ORIGEN}", parametros["ArchiviOrigen"]);
+
+			_sqlConsultaActualizar = parametros["ConsultaActualizar"]
+				.Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+				.Replace("{ESTADO_FINAL}", "'" + parametros["EstadoFinal"] + "'")
+				.Replace("{FECHA_PROCESADO}", "'" + fecha + "'")
+				.Replace("{HORA_PROCESADO}", "'" + hora + "'")
+				.Replace("{USER}", "'" + parametros["Usuario"] + "'")
+				.Replace("{FECHA_GENERACION}", "'" + _fechaGeneracion + "'")
+				.Replace("{ESTADO_INICIAL}", "'" + parametros["EstadoInicial"] + "'")
+				.Replace("{ARCHIVO_GENERADO}", "'" + parametros["ArchivoGenerado"] + "'");
+		}
+		#endregion
+
+		#region Acceso a AS400 / SQL Server
+		private string ObtenerEstadoProceso()
+		{
+			ConnectionManager cm = Dts.Connections["AS400"];
+			OleDbConnection conn = null;
+
+			try
+			{
+				conn = Adquirir<OleDbConnection>(cm);
+
+				using (IDbCommand cmd = conn.CreateCommand())
+				{
+					cmd.CommandText = _sqlConsultaEstado;
+					cmd.CommandTimeout = _timeoutAs400;
+
+					string estado = string.Empty;
+					using (IDataReader reader = cmd.ExecuteReader())
+					{
+						while (reader.Read())
+							estado = Convert.ToString(reader.GetValue(0)).Trim();
+					}
+					return estado;
+				}
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo obtener estado proceso. Consulta: " + _sqlConsultaEstado, ex);
+				return null;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		/// <summary>Ejecuta el SP PreParseo o PostParseo</summary>
+		private bool EjecutarSpConArchivo(string claveParametro)
+		{
+			Stopwatch sw = Stopwatch.StartNew();
+			ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
+			SqlConnection conn = null;
+
+			try
+			{
+				Info("Inicia " + claveParametro + " (" + parametros[claveParametro] + ") @Archivo=" + parametros["NombreArchivo"]);
+
+				conn = Adquirir<SqlConnection>(cm);
+
+				using (SqlCommand cmd = new SqlCommand(parametros[claveParametro], conn))
+				{
+					cmd.CommandType = CommandType.StoredProcedure;
+					cmd.CommandTimeout = _timeoutSql;
+					cmd.Parameters.Add(new SqlParameter("@Archivo", parametros["NombreArchivo"]));
+					cmd.ExecuteNonQuery();
+				}
+
+				Info("Finaliza " + claveParametro + " en " + Fmt(sw));
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo " + claveParametro + " " + parametros["NombreArchivo"] + " (tras " + Fmt(sw) + ")", ex);
+				return false;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		private bool UpdateArchivoAS400()
+		{
+			Stopwatch sw = Stopwatch.StartNew();
+			ConnectionManager cm = Dts.Connections["AS400"];
+			OleDbConnection conn = null;
+
+			try
+			{
+				Info("Actualizando estado del archivo de control en AS400: " + parametros["ArchivoControl"]);
+
+				conn = Adquirir<OleDbConnection>(cm);
+
+				using (IDbCommand cmd = conn.CreateCommand())
+				{
+					cmd.CommandText = _sqlConsultaActualizar;
+					cmd.CommandTimeout = _timeoutAs400;
+					int filas = cmd.ExecuteNonQuery();
+
+					if (filas == 0)
+					{
+						Log(LogError, "La actualizacion de estado en AS400 no afecto registros: " + parametros["ArchivoControl"]);
+						return false;
+					}
+
+					Info("Estado actualizado en AS400 (" + filas + " fila(s)) en " + Fmt(sw));
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo actualizar estado archivo: " + parametros["ArchivoControl"], ex);
+				return false;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		private static T Adquirir<T>(ConnectionManager cm) where T : class
+		{
+			T conexion = cm.AcquireConnection(null) as T;
+			if (conexion == null)
+				throw new InvalidOperationException("No se pudo obtener la conexion '" + cm.Name + "' desde el Connection Manager.");
+			return conexion;
+		}
+		#endregion
+
+		#region Transformacion de filas
+		/// <summary>
+		/// Mapea una fila de AS400 (106 columnas) a la fila destino (108 columnas):
+		/// inserta larId en la posicion 105 y ProcesadorOrigen al final.
+		/// El TRIM ya viene resuelto desde la consulta de AS400 (los textos sin valor llegan como cadena vacia).
+		/// </summary>
+		private void LlenarFila(object[] origen, object[] destino, Type[] tipos, string[] nombres)
+		{
+			for (int i = 0; i < PosicionLarId; i++)
+				destino[i] = Convertir(origen[i], tipos[i], nombres[i]);
+
+			destino[PosicionLarId] = _larId;
+
+			for (int i = PosicionLarId; i < ColumnasOrigen; i++)
+				destino[i + 1] = Convertir(origen[i], tipos[i + 1], nombres[i + 1]);
+
+			destino[ColumnasDestino - 1] = ProcesadorOrigen;
+
+			// Reglas de negocio que ya tenia el proceso de Eusuarios
+			destino[ColFactorLimiteCompraCuotas] = AjustarFactor(destino[ColFactorLimiteCompraCuotas]);
+			destino[ColGrupoAfinidad] = RecortarTexto(destino[ColGrupoAfinidad], MaxLongitudGrupoAfinidad);
+		}
+
+		/// <summary>
+		/// Conversion tipada.
+		/// - Numericos de AS400 (decimal) a decimal/int/short/byte sin pasar por texto.
+		/// - Numerico de AS400 hacia columna texto (GrupoAfinidad): ToString invariante.
+		/// - Texto hacia columna numerica (FormaPago): vacio = NULL, si no se convierte.
+		/// - Fechas: yyyy-MM-dd; invalida o menor a 1900 = 1900-01-01 (comportamiento anterior).
+		/// </summary>
+		private static object Convertir(object valor, Type destino, string columna)
+		{
+			if (valor == null || valor == DBNull.Value)
+				return DBNull.Value;
+
+			string texto = valor as string;
+			if (texto != null)
+			{
+				if (destino == typeof(string))
+					return texto;
+
+				if (destino == typeof(DateTime))
+					return ConvertirFecha(texto);
+
+				if (texto.Trim().Length == 0)
+					return DBNull.Value;
+
+				try
+				{
+					return Convert.ChangeType(texto.Trim(), destino, CultureInfo.InvariantCulture);
+				}
+				catch (Exception ex)
+				{
+					throw new FormatException("El valor '" + texto + "' no se puede convertir a " + destino.Name +
+											  " para la columna '" + columna + "': " + ex.Message, ex);
+				}
+			}
+
+			if (destino == typeof(string))
+				return Convert.ToString(valor, CultureInfo.InvariantCulture);
+
+			if (destino == typeof(decimal))
+				return Convert.ToDecimal(valor);
+
+			if (destino == typeof(int) || destino == typeof(short) || destino == typeof(byte))
+			{
+				decimal d = Convert.ToDecimal(valor);
+				try
+				{
+					return Convert.ChangeType(d, destino);
+				}
+				catch (OverflowException)
+				{
+					throw new OverflowException("El valor " + d + " no cabe en " + destino.Name + " (columna '" + columna + "').");
+				}
+			}
+
+			return valor;
+		}
+
+		private static DateTime ConvertirFecha(string texto)
+		{
+			DateTime fecha;
+			if (!DateTime.TryParseExact(texto, FormatoFecha, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out fecha) &&
+				!DateTime.TryParse(texto, out fecha))
+				return FechaMinima;
+
+			return fecha.Year < 1900 ? FechaMinima : fecha;
+		}
+
+		// Redondeo a 1 decimal (alejandose de cero) y limite -99.9 .. 99.9
+		private static object AjustarFactor(object valor)
+		{
+			if (!(valor is decimal))
+				return valor;
+
+			decimal factor = Math.Round((decimal)valor, 1, MidpointRounding.AwayFromZero);
+			return Math.Min(Math.Max(factor, -99.9m), 99.9m);
+		}
+
+		private static object RecortarTexto(object valor, int maximo)
+		{
+			string texto = valor as string;
+			if (texto == null || texto.Length <= maximo)
+				return valor;
+			return texto.Substring(0, maximo);
+		}
+
+		private static readonly Type S = typeof(string);
+		private static readonly Type I16 = typeof(short);
+		private static readonly Type I32 = typeof(int);
+		private static readonly Type U8 = typeof(byte);
+		private static readonly Type DEC = typeof(decimal);
+		private static readonly Type FEC = typeof(DateTime);
+
+		private static void Col(DataTable dt, string nombre, Type tipo)
+		{
+			dt.Columns.Add(nombre, tipo);
+		}
+
+		// El orden de las columnas debe coincidir con el de la tabla destino (SqlBulkCopy mapea por posicion).
+		private static DataTable CrearTablaLote()
+		{
+			DataTable dt = new DataTable();
+			Col(dt, "NoUsuario", S);                               // 0
+			Col(dt, "Admin", I16);                                 // 1
+			Col(dt, "SubAdmin", I16);                              // 2
+			Col(dt, "NoClienteUnico", S);                          // 3
+			Col(dt, "CodigoBanco", I16);                           // 4
+			Col(dt, "CodigoCasa", I16);                            // 5
+			Col(dt, "CodigoPais", I16);                            // 6
+			Col(dt, "DenominacionCuenta", S);                      // 7
+			Col(dt, "CodigoProducto", S);                          // 8
+			Col(dt, "ImporteLimiteCompra", DEC);                   // 9
+			Col(dt, "MonedaLimiteCompra", S);                      // 10
+			Col(dt, "FactorLimiteCompraCuotas", DEC);              // 11
+			Col(dt, "Cartera", I16);                               // 12
+			Col(dt, "ModeloLiquidacion", I16);                     // 13
+			Col(dt, "GrupoAfinidad", S);                           // 14
+			Col(dt, "EstadoCuenta", I16);                          // 15
+			Col(dt, "SubEstado", U8);                              // 16
+			Col(dt, "FechaAltaCuenta", FEC);                       // 17
+			Col(dt, "CondicionFrenteIVA", S);                      // 18
+			Col(dt, "RTN", S);                                     // 19
+			Col(dt, "FormaPago", U8);                              // 20
+			Col(dt, "CambioCasa", S);                              // 21
+			Col(dt, "CasaAnterior", I16);                          // 22
+			Col(dt, "FechaCambioCasa", FEC);                       // 23
+			Col(dt, "CasaFutura", I16);                            // 24
+			Col(dt, "CarteraAnterior", I16);                       // 25
+			Col(dt, "FechaCarteraFutura", FEC);                    // 26
+			Col(dt, "CodigoCarteraFutura", I16);                   // 27
+			Col(dt, "NoCambioAffinity", U8);                       // 28
+			Col(dt, "FechaCambioAffinity", FEC);                   // 29
+			Col(dt, "FechaBajaCuenta", FEC);                       // 30
+			Col(dt, "NoProcesoABM", I32);                          // 31
+			Col(dt, "FechaProcesoABM", FEC);                       // 32
+			Col(dt, "MarcaOrigenNovedadABM", S);                   // 33
+			Col(dt, "MarcaFuncionarioNovedadABM", S);              // 34
+			Col(dt, "Supervisor", S);                              // 35
+			Col(dt, "Funcionario", S);                             // 36
+			Col(dt, "NoSolicitudABM", S);                          // 37
+			Col(dt, "DomicilioParticular1", S);                    // 38
+			Col(dt, "NoPuertaParticular", S);                      // 39
+			Col(dt, "DomicilioParticular2", S);                    // 40
+			Col(dt, "DomicilioParticular3", S);                    // 41
+			Col(dt, "CodigoPostalParticular", S);                  // 42
+			Col(dt, "BarrioParticular", S);                        // 43
+			Col(dt, "CiudadParticular", S);                        // 44
+			Col(dt, "CodigoDeptoParticular", S);                   // 45
+			Col(dt, "CodigoPaisParticular", S);                    // 46
+			Col(dt, "Telefono", S);                                // 47
+			Col(dt, "DomicilioCorrespondencia1", S);               // 48
+			Col(dt, "NoPuertaCorrespondencia", S);                 // 49
+			Col(dt, "DomicilioCorrespondencia2", S);               // 50
+			Col(dt, "DomicilioCorrespondencia3", S);               // 51
+			Col(dt, "CodigoPostalCorrespondencia", S);             // 52
+			Col(dt, "BarrioCorrespondencia", S);                   // 53
+			Col(dt, "CiudadCorrespondencia", S);                   // 54
+			Col(dt, "CodigoDeptoCorrespondencia", S);              // 55
+			Col(dt, "CodigoPaisCorrespondencia", S);               // 56
+			Col(dt, "CasillaCorreoCorrespondencia", S);            // 57
+			Col(dt, "UsuEmailUsuario", S);                         // 58
+			Col(dt, "UsuEmailDominio", S);                         // 59
+			Col(dt, "TipoCuenta1", S);                             // 60
+			Col(dt, "MonedaCuenta1", S);                           // 61
+			Col(dt, "CasaCuenta1", S);                             // 62
+			Col(dt, "NumeroCuenta1", S);                           // 63
+			Col(dt, "TipoCuenta2", S);                             // 64
+			Col(dt, "MonedaCuenta2", S);                           // 65
+			Col(dt, "CasaCuenta2", S);                             // 66
+			Col(dt, "NumeroCuenta2", S);                           // 67
+			Col(dt, "TipoCuenta3", S);                             // 68
+			Col(dt, "MonedaCuenta3", S);                           // 69
+			Col(dt, "CasaCuenta3", S);                             // 70
+			Col(dt, "NumeroCuenta3", S);                           // 71
+			Col(dt, "PorcentajeLimiteFinanciacion", S);            // 72
+			Col(dt, "PorcentajeExigenciaPagoMinimo", S);           // 73
+			Col(dt, "CentroCosto", S);                             // 74
+			Col(dt, "CodigoEmpresa", S);                           // 75
+			Col(dt, "Planta", S);                                  // 76
+			Col(dt, "Agrupamiento", S);                            // 77
+			Col(dt, "Filler1", S);                                 // 78
+			Col(dt, "LimiteAcumuladoTarjeta", S);                  // 79
+			Col(dt, "Seguro01", S);                                // 80
+			Col(dt, "Seguro02", S);                                // 81
+			Col(dt, "CalificacionCuenta", S);                      // 82
+			Col(dt, "FechaVencimientoCuenta", FEC);                // 83
+			Col(dt, "Filler2", S);                                 // 84
+			Col(dt, "Filler3", S);                                 // 85
+			Col(dt, "Seguro03", S);                                // 86
+			Col(dt, "Seguro04", S);                                // 87
+			Col(dt, "Seguro05", S);                                // 88
+			Col(dt, "Filler4", S);                                 // 89
+			Col(dt, "FormaEnvioEstadoCuenta", S);                  // 90
+			Col(dt, "Reglas", S);                                  // 91
+			Col(dt, "CodigoVendedor", S);                          // 92
+			Col(dt, "NombreUsuario", S);                           // 93
+			Col(dt, "Filler5", S);                                 // 94
+			Col(dt, "AltaPuntoVenta", S);                          // 95
+			Col(dt, "Filler6", S);                                 // 96
+			Col(dt, "TipoLimiteTarjeta", S);                       // 97
+			Col(dt, "MoraCuenta", S);                              // 98
+			Col(dt, "CuentaSobregirada", S);                       // 99
+			Col(dt, "CuentaGestionJudicial", S);                   // 100
+			Col(dt, "CuentaArregloPago", S);                       // 101
+			Col(dt, "CuentaPenalizada", S);                        // 102
+			Col(dt, "Filler7", S);                                 // 103
+			Col(dt, "NoCuentaClaro", S);                           // 104
+			Col(dt, "larId", I32);                                 // 105  // no viene de AS400
+			Col(dt, "LineaEnArchivo", I32);                        // 106
+			Col(dt, "ProcesadorOrigen", S);                        // 107  // no viene de AS400
+			return dt;
+		}
+		#endregion
+
+		#region Logging
+		private static string Fmt(Stopwatch sw)
+		{
+			return sw.Elapsed.ToString(@"hh\:mm\:ss");
+		}
+
+		private void Info(string mensaje)
+		{
+			Log(LogInfo, mensaje);
+		}
+
+		private void ErrorLog(string contexto, Exception ex)
+		{
+			Log(LogError, contexto + ": " + ex.GetType().Name + " - " + ex.Message);
+		}
+
+		/// <summary>
+		/// Escribe siempre en los eventos de SSIS (visibles en SSISDB / consola) y, segun el estado,
+		/// en la tabla de log de la BD mediante el SP RegistroProceso.
+		/// </summary>
+		private void Log(string estado, string mensaje)
+		{
+			string texto = "[" + Fmt(_swTotal) + "] " + mensaje;
+			bool fireAgain = true;
+
+			if (estado == LogError)
+			{
+				_ultimoError = mensaje;
+				Dts.Events.FireWarning(0, NombreProceso, "ERROR: " + texto, "", 0);
+			}
+			else
+			{
+				Dts.Events.FireInformation(0, NombreProceso, texto, "", 0, ref fireAgain);
+			}
+
+			if (estado == LogInfo && !_logDetallado)
+				return;
+
+			EscribirLogBd(estado, texto);
+		}
+
+		private void EscribirLogBd(string estado, string mensaje)
+		{
+			string sp;
+			if (!parametros.TryGetValue("RegistroProceso", out sp) || string.IsNullOrWhiteSpace(sp))
+				return;
+
+			if (mensaje.Length > MaxLongitudMensaje)
+				mensaje = mensaje.Substring(0, MaxLongitudMensaje - 3) + "...";
+
+			ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+			SqlConnection conn = null;
+
+			try
+			{
+				conn = Adquirir<SqlConnection>(cm);
+
+				using (SqlCommand cmd = new SqlCommand(sp, conn))
+				{
+					cmd.CommandType = CommandType.StoredProcedure;
+					cmd.CommandTimeout = 60;
+					cmd.Parameters.Add(new SqlParameter("@Proceso", NombreProceso));
+					cmd.Parameters.Add(new SqlParameter("@EstadoProceso", estado));
+					cmd.Parameters.Add(new SqlParameter("@Mensaje", mensaje));
+					cmd.ExecuteNonQuery();
+				}
+			}
+			catch (Exception ex)
+			{
+				Dts.Events.FireWarning(0, NombreProceso, "No se pudo registrar en la BD: " + ex.Message, "", 0);
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+		#endregion
+
+		#region ScriptResults declaration
+		/// <summary>
+		/// This enum provides a convenient shorthand within the scope of this class for setting the
+		/// result of the script.
+		///
+		/// This code was generated automatically.
+		/// </summary>
+		enum ScriptResults
+		{
+			Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
+			Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
+		};
+		#endregion
+	}
+}
 
 
 
-TABLE_CAT	TABLE_SCHEM	TABLE_NAME	COLUMN_NAME	DATA_TYPE	TYPE_NAME	COLUMN_SIZE	BUFFER_LENGTH	DECIMAL_DIGITS	NUM_PREC_RADIX	NULLABLE	REMARKS	COLUMN_DEF	SQL_DATA_TYPE	SQL_DATETIME_SUB	CHAR_OCTET_LENGTH	ORDINAL_POSITION	IS_NULLABLE	SCOPE_CATALOG	SCOPE_SCHEMA	SCOPE_TABLE	SOURCE_DATA_TYPE	IS_AUTOINCREMENT	IS_GENERATEDCOLUMN
-C70DD220	TCATV3DAT	MAESCTAS	NOUSUARIO	1	CHAR	13	13	(null)	(null)	0	(null)	' '	1	(null)	13	1	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	ADMIN	3	DECIMAL	3	5	0	10	0	(null)	0	3	(null)	(null)	2	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SUBADMIN	3	DECIMAL	3	5	0	10	0	(null)	0	3	(null)	(null)	3	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOCLIENTEUNICO	1	CHAR	18	18	(null)	(null)	0	(null)	' '	1	(null)	18	4	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOBANCO	3	DECIMAL	3	5	0	10	0	(null)	0	3	(null)	(null)	5	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOCASA	3	DECIMAL	2	4	0	10	0	(null)	0	3	(null)	(null)	6	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOPAIS	3	DECIMAL	3	5	0	10	0	(null)	0	3	(null)	(null)	7	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	DENOMINACIONCUENTA	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	8	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOPRODUCTO	1	CHAR	6	6	(null)	(null)	0	(null)	' '	1	(null)	6	9	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	IMPORTELIMITECOMPRA	3	DECIMAL	19	21	2	10	0	(null)	0	3	(null)	(null)	10	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MONEDALIMITECOMPRA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	11	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FACTORLIMITECOMPRACUOTAS	3	DECIMAL	7	9	4	10	0	(null)	0	3	(null)	(null)	12	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CARTERA	3	DECIMAL	2	4	0	10	0	(null)	0	3	(null)	(null)	13	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MODELOLIQUIDACION	3	DECIMAL	3	5	0	10	0	(null)	0	3	(null)	(null)	14	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	GRUPOAFINIDAD	3	DECIMAL	5	7	0	10	0	(null)	0	3	(null)	(null)	15	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	ESTADOCUENTA	3	DECIMAL	2	4	0	10	0	(null)	0	3	(null)	(null)	16	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SUBESTADO	3	DECIMAL	1	3	0	10	0	(null)	0	3	(null)	(null)	17	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FECHAALTACUENTA	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	18	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CONDICIONFRENTEIVA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	19	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	RTN	1	CHAR	20	20	(null)	(null)	0	(null)	' '	1	(null)	20	20	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FORMAPAGO	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	21	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CAMBIOCASA	1	CHAR	14	14	(null)	(null)	0	(null)	' '	1	(null)	14	22	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CASAANTERIOR	3	DECIMAL	5	7	0	10	0	(null)	0	3	(null)	(null)	23	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FECHACAMBIOCASA	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	24	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CASAFUTURA	3	DECIMAL	5	7	0	10	0	(null)	0	3	(null)	(null)	25	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CARTERAANTERIOR	3	DECIMAL	2	4	0	10	0	(null)	0	3	(null)	(null)	26	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FECHACARTERAFUTURA	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	27	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOCARTERAFUTURA	3	DECIMAL	2	4	0	10	0	(null)	0	3	(null)	(null)	28	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOCAMBIOAFFINITY	3	DECIMAL	5	7	0	10	0	(null)	0	3	(null)	(null)	29	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FECHACAMBIOAFFINITY	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	30	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FECHABAJACUENTA	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	31	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOPROCESOABM	3	DECIMAL	12	14	0	10	0	(null)	0	3	(null)	(null)	32	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FECHAPROCESOABM	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	33	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MARCAORIGENNOVEDADABM	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	34	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MARCAFUNCIONARIONOVEDADABM	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	35	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SUPERVISOR	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	36	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FUNCIONARIO	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	37	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOSOLICITUDABM	1	CHAR	20	20	(null)	(null)	0	(null)	' '	1	(null)	20	38	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	DOMICILIOPARTICULAR1	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	39	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOPUERTAPARTICULAR	1	CHAR	5	5	(null)	(null)	0	(null)	' '	1	(null)	5	40	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	DOMICILIOPARTICULAR2	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	41	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	DOMICILIOPARTICULAR3	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	42	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOPOSTALPARTICULAR	1	CHAR	8	8	(null)	(null)	0	(null)	' '	1	(null)	8	43	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	BARRIOPARTICULAR	1	CHAR	20	20	(null)	(null)	0	(null)	' '	1	(null)	20	44	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CIUDADPARTICULAR	1	CHAR	25	25	(null)	(null)	0	(null)	' '	1	(null)	25	45	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGODEPTOPARTICULAR	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	46	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOPAISPARTICULAR	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	47	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	TELEFONO	1	CHAR	30	30	(null)	(null)	0	(null)	' '	1	(null)	30	48	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	DOMICILIOCORRESPONDENCIA1	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	49	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOPUERTACORRESPONDENCIA	1	CHAR	5	5	(null)	(null)	0	(null)	' '	1	(null)	5	50	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	DOMICILIOCORRESPONDENCIA2	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	51	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	DOMICILIOCORRESPONDENCIA3	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	52	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOPOSTALCORRESPONDENCIA	1	CHAR	8	8	(null)	(null)	0	(null)	' '	1	(null)	8	53	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	BARRIOCORRESPONDENCIA	1	CHAR	20	20	(null)	(null)	0	(null)	' '	1	(null)	20	54	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CIUDADCORRESPONDENCIA	1	CHAR	25	25	(null)	(null)	0	(null)	' '	1	(null)	25	55	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGODEPTOCORRESPONDENCIA	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	56	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOPAISCORRESPONDENCIA	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	57	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CASILLACORREOCORRESPONDENCIA	1	CHAR	6	6	(null)	(null)	0	(null)	' '	1	(null)	6	58	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	USUEMAILUSUARIO	1	CHAR	30	30	(null)	(null)	0	(null)	' '	1	(null)	30	59	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	USUEMAILDOMINIO	1	CHAR	30	30	(null)	(null)	0	(null)	' '	1	(null)	30	60	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	TIPOCUENTA1	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	61	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MONEDACUENTA1	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	62	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CASACUENTA1	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	63	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NUMEROCUENTA1	1	CHAR	30	30	(null)	(null)	0	(null)	' '	1	(null)	30	64	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	TIPOCUENTA2	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	65	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MONEDACUENTA2	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	66	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CASACUENTA2	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	67	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NUMEROCUENTA2	1	CHAR	30	30	(null)	(null)	0	(null)	' '	1	(null)	30	68	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	TIPOCUENTA3	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	69	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MONEDACUENTA3	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	70	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CASACUENTA3	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	71	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NUMEROCUENTA3	1	CHAR	30	30	(null)	(null)	0	(null)	' '	1	(null)	30	72	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	PORCENTAJELIMITEFINANCIACION	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	73	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	PORCENTAJEEXIGENCIAPAGOMINIMO	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	74	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CENTROCOSTO	1	CHAR	5	5	(null)	(null)	0	(null)	' '	1	(null)	5	75	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOEMPRESA	1	CHAR	8	8	(null)	(null)	0	(null)	' '	1	(null)	8	76	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	PLANTA	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	77	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	AGRUPAMIENTO	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	78	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FILLER1	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	79	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	LIMITEACUMULADOTARJETA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	80	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SEGURO01	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	81	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SEGURO02	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	82	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CALIFICACIONCUENTA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	83	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FECHAVENCIMIENTOCUENTA	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	84	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FILLER2	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	85	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FILLER3	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	86	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SEGURO03	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	87	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SEGURO04	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	88	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	SEGURO05	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	89	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FILLER4	1	CHAR	58	58	(null)	(null)	0	(null)	' '	1	(null)	58	90	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FORMAENVIOESTADOCUENTA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	91	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	REGLAS	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	92	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CODIGOVENDEDOR	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	93	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOMBREUSUARIO	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	94	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FILLER5	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	95	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	ALTAPUNTOVENTA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	96	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FILLER6	1	CHAR	5	5	(null)	(null)	0	(null)	' '	1	(null)	5	97	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	TIPOLIMITETARJETA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	98	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	MORACUENTA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	99	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CUENTASOBREGIRADA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	100	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CUENTAGESTIONJUDICIAL	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	101	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CUENTAARREGLOPAGO	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	102	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	CUENTAPENALIZADA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	103	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	FILLER7	1	CHAR	2083	2083	(null)	(null)	0	(null)	' '	1	(null)	2083	104	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	NOCUENTACLARO	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	105	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	MAESCTAS	LINEAENARCHIVO	3	DECIMAL	5	7	0	10	0	(null)	0	3	(null)	(null)	106	NO	(null)	(null)	(null)	(null)	NO	NO
+
+
+
+
+
+
+
+
+
+
+
+
+USE [DescargaInformacionProcesador]
+GO
+-- Consulta de origen Eusuarios con TRIM del lado de AS400
+UPDATE ParametrosDescargaTablas
+SET ValorParametro = N'SELECT
+    TRIM(NOUSUARIO) AS NOUSUARIO,
+    ADMIN,
+    SUBADMIN,
+    TRIM(NOCLIENTEUNICO) AS NOCLIENTEUNICO,
+    CODIGOBANCO,
+    CODIGOCASA,
+    CODIGOPAIS,
+    TRIM(DENOMINACIONCUENTA) AS DENOMINACIONCUENTA,
+    TRIM(CODIGOPRODUCTO) AS CODIGOPRODUCTO,
+    IMPORTELIMITECOMPRA,
+    TRIM(MONEDALIMITECOMPRA) AS MONEDALIMITECOMPRA,
+    FACTORLIMITECOMPRACUOTAS,
+    CARTERA,
+    MODELOLIQUIDACION,
+    GRUPOAFINIDAD,
+    ESTADOCUENTA,
+    SUBESTADO,
+    TRIM(CASE WHEN FECHAALTACUENTA = ''0000-00-00'' OR TRIM(FECHAALTACUENTA) = '''' OR FECHAALTACUENTA IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHAALTACUENTA) END) AS FECHAALTACUENTA,
+    TRIM(CONDICIONFRENTEIVA) AS CONDICIONFRENTEIVA,
+    TRIM(RTN) AS RTN,
+    TRIM(FORMAPAGO) AS FORMAPAGO,
+    TRIM(CAMBIOCASA) AS CAMBIOCASA,
+    CASAANTERIOR,
+    TRIM(CASE WHEN FECHACAMBIOCASA = ''0000-00-00'' OR TRIM(FECHACAMBIOCASA) = '''' OR FECHACAMBIOCASA IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHACAMBIOCASA) END) AS FECHACAMBIOCASA,
+    CASAFUTURA,
+    CARTERAANTERIOR,
+    TRIM(CASE WHEN FECHACARTERAFUTURA = ''0000-00-00'' OR TRIM(FECHACARTERAFUTURA) = '''' OR FECHACARTERAFUTURA IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHACARTERAFUTURA) END) AS FECHACARTERAFUTURA,
+    CODIGOCARTERAFUTURA,
+    NOCAMBIOAFFINITY,
+    TRIM(CASE WHEN FECHACAMBIOAFFINITY = ''0000-00-00'' OR TRIM(FECHACAMBIOAFFINITY) = '''' OR FECHACAMBIOAFFINITY IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHACAMBIOAFFINITY) END) AS FECHACAMBIOAFFINITY,
+    TRIM(CASE WHEN FECHABAJACUENTA = ''0000-00-00'' OR TRIM(FECHABAJACUENTA) = '''' OR FECHABAJACUENTA IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHABAJACUENTA) END) AS FECHABAJACUENTA,
+    NOPROCESOABM,
+    TRIM(CASE WHEN FECHAPROCESOABM = ''0000-00-00'' OR TRIM(FECHAPROCESOABM) = '''' OR FECHAPROCESOABM IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHAPROCESOABM) END) AS FECHAPROCESOABM,
+    TRIM(MARCAORIGENNOVEDADABM) AS MARCAORIGENNOVEDADABM,
+    TRIM(MARCAFUNCIONARIONOVEDADABM) AS MARCAFUNCIONARIONOVEDADABM,
+    TRIM(LEFT(SUPERVISOR, 8)) AS SUPERVISOR,
+    TRIM(LEFT(FUNCIONARIO, 8)) AS FUNCIONARIO,
+    TRIM(NOSOLICITUDABM) AS NOSOLICITUDABM,
+    TRIM(DOMICILIOPARTICULAR1) AS DOMICILIOPARTICULAR1,
+    TRIM(NOPUERTAPARTICULAR) AS NOPUERTAPARTICULAR,
+    TRIM(DOMICILIOPARTICULAR2) AS DOMICILIOPARTICULAR2,
+    TRIM(DOMICILIOPARTICULAR3) AS DOMICILIOPARTICULAR3,
+    TRIM(CODIGOPOSTALPARTICULAR) AS CODIGOPOSTALPARTICULAR,
+    TRIM(BARRIOPARTICULAR) AS BARRIOPARTICULAR,
+    TRIM(CIUDADPARTICULAR) AS CIUDADPARTICULAR,
+    TRIM(CODIGODEPTOPARTICULAR) AS CODIGODEPTOPARTICULAR,
+    TRIM(CODIGOPAISPARTICULAR) AS CODIGOPAISPARTICULAR,
+    TRIM(TELEFONO) AS TELEFONO,
+    TRIM(DOMICILIOCORRESPONDENCIA1) AS DOMICILIOCORRESPONDENCIA1,
+    TRIM(NOPUERTACORRESPONDENCIA) AS NOPUERTACORRESPONDENCIA,
+    TRIM(DOMICILIOCORRESPONDENCIA2) AS DOMICILIOCORRESPONDENCIA2,
+    TRIM(DOMICILIOCORRESPONDENCIA3) AS DOMICILIOCORRESPONDENCIA3,
+    TRIM(CODIGOPOSTALCORRESPONDENCIA) AS CODIGOPOSTALCORRESPONDENCIA,
+    TRIM(BARRIOCORRESPONDENCIA) AS BARRIOCORRESPONDENCIA,
+    TRIM(CIUDADCORRESPONDENCIA) AS CIUDADCORRESPONDENCIA,
+    TRIM(CODIGODEPTOCORRESPONDENCIA) AS CODIGODEPTOCORRESPONDENCIA,
+    TRIM(CODIGOPAISCORRESPONDENCIA) AS CODIGOPAISCORRESPONDENCIA,
+    TRIM(CASILLACORREOCORRESPONDENCIA) AS CASILLACORREOCORRESPONDENCIA,
+    TRIM(USUEMAILUSUARIO) AS USUEMAILUSUARIO,
+    TRIM(USUEMAILDOMINIO) AS USUEMAILDOMINIO,
+    TRIM(TIPOCUENTA1) AS TIPOCUENTA1,
+    TRIM(MONEDACUENTA1) AS MONEDACUENTA1,
+    TRIM(CASACUENTA1) AS CASACUENTA1,
+    TRIM(NUMEROCUENTA1) AS NUMEROCUENTA1,
+    TRIM(TIPOCUENTA2) AS TIPOCUENTA2,
+    TRIM(MONEDACUENTA2) AS MONEDACUENTA2,
+    TRIM(CASACUENTA2) AS CASACUENTA2,
+    TRIM(NUMEROCUENTA2) AS NUMEROCUENTA2,
+    TRIM(TIPOCUENTA3) AS TIPOCUENTA3,
+    TRIM(MONEDACUENTA3) AS MONEDACUENTA3,
+    TRIM(CASACUENTA3) AS CASACUENTA3,
+    TRIM(NUMEROCUENTA3) AS NUMEROCUENTA3,
+    TRIM(PORCENTAJELIMITEFINANCIACION) AS PORCENTAJELIMITEFINANCIACION,
+    TRIM(PORCENTAJEEXIGENCIAPAGOMINIMO) AS PORCENTAJEEXIGENCIAPAGOMINIMO,
+    TRIM(CENTROCOSTO) AS CENTROCOSTO,
+    TRIM(CODIGOEMPRESA) AS CODIGOEMPRESA,
+    TRIM(PLANTA) AS PLANTA,
+    TRIM(AGRUPAMIENTO) AS AGRUPAMIENTO,
+    TRIM(FILLER1) AS FILLER1,
+    TRIM(LIMITEACUMULADOTARJETA) AS LIMITEACUMULADOTARJETA,
+    TRIM(SEGURO01) AS SEGURO01,
+    TRIM(SEGURO02) AS SEGURO02,
+    TRIM(CALIFICACIONCUENTA) AS CALIFICACIONCUENTA,
+    TRIM(CASE WHEN FECHAVENCIMIENTOCUENTA = ''0000-00-00'' OR TRIM(FECHAVENCIMIENTOCUENTA) = '''' OR FECHAVENCIMIENTOCUENTA IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHAVENCIMIENTOCUENTA) END) AS FECHAVENCIMIENTOCUENTA,
+    TRIM(FILLER2) AS FILLER2,
+    TRIM(FILLER3) AS FILLER3,
+    TRIM(SEGURO03) AS SEGURO03,
+    TRIM(SEGURO04) AS SEGURO04,
+    TRIM(SEGURO05) AS SEGURO05,
+    TRIM(FILLER4) AS FILLER4,
+    TRIM(FORMAENVIOESTADOCUENTA) AS FORMAENVIOESTADOCUENTA,
+    TRIM(REGLAS) AS REGLAS,
+    TRIM(CODIGOVENDEDOR) AS CODIGOVENDEDOR,
+    TRIM(NOMBREUSUARIO) AS NOMBREUSUARIO,
+    TRIM(FILLER5) AS FILLER5,
+    TRIM(ALTAPUNTOVENTA) AS ALTAPUNTOVENTA,
+    TRIM(FILLER6) AS FILLER6,
+    TRIM(TIPOLIMITETARJETA) AS TIPOLIMITETARJETA,
+    TRIM(MORACUENTA) AS MORACUENTA,
+    TRIM(CUENTASOBREGIRADA) AS CUENTASOBREGIRADA,
+    TRIM(CUENTAGESTIONJUDICIAL) AS CUENTAGESTIONJUDICIAL,
+    TRIM(CUENTAARREGLOPAGO) AS CUENTAARREGLOPAGO,
+    TRIM(CUENTAPENALIZADA) AS CUENTAPENALIZADA,
+    TRIM(FILLER7) AS FILLER7,
+    TRIM(NOCUENTACLARO) AS NOCUENTACLARO,
+    LINEAENARCHIVO
+FROM {ARCHIVO_ORIGEN}'
+WHERE Proceso = 'Eusuarios' AND IdParametro = 'ConsultaOrigen';
+GO
