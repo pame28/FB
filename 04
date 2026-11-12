@@ -1,3 +1,154 @@
+USE [DescargaInformacionProcesador]
+GO
+/* =====================================================================
+   1) Consulta de origen ECuotasPendientes con TRIM del lado de AS400
+   ===================================================================== */
+UPDATE ParametrosDescargaTablas
+SET ValorParametro = N'SELECT
+    TRIM(BANCOEMISOR) AS BANCOEMISOR,
+    TRIM(NUMEROCUENTA) AS NUMEROCUENTA,
+    TRIM(NUMEROTARJETA) AS NUMEROTARJETA,
+    TRIM(CODIGOPRODUCTO) AS CODIGOPRODUCTO,
+    CARTERA,
+    TRIM(CODIGOOPERACION) AS CODIGOOPERACION,
+    TRIM(GRUPOMOVIMIENTOS) AS GRUPOMOVIMIENTOS,
+    TRIM(CUOTAS) AS CUOTAS,
+    TRIM(PLANCUOTAS) AS PLANCUOTAS,
+    TASACOSTOFINANCIERO,
+    TRIM(TIPOFINANCIACIONUSUARIO) AS TIPOFINANCIACIONUSUARIO,
+    TRIM(MONEDAORIGINALMOVIMIENTO) AS MONEDAORIGINALMOVIMIENTO,
+    IMPORTEORIGINALMOVIMIENTO,
+    TRIM(MONEDALIQUIDAR) AS MONEDALIQUIDAR,
+    IMPORTELIQUIDAR,
+    IMPORTETOTALPLAN,
+    IMPORTELIQUIDADOPLAN,
+    TRIM(CUOTANUMERO) AS CUOTANUMERO,
+    TRIM(CANTIDADCUOTASPLAN) AS CANTIDADCUOTASPLAN,
+    COSTOFINANCIERO,
+    COSTOFINANCIEROPLAN,
+    TRIM(CASE WHEN FECHAORIGINALCUPON = ''0000-00-00'' OR TRIM(FECHAORIGINALCUPON) = '''' OR FECHAORIGINALCUPON IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHAORIGINALCUPON) END) AS FECHAORIGINALCUPON,
+    TRIM(CASE WHEN FECHAPRESENTADOADQUIRENTE = ''0000-00-00'' OR TRIM(FECHAPRESENTADOADQUIRENTE) = '''' OR FECHAPRESENTADOADQUIRENTE IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHAPRESENTADOADQUIRENTE) END) AS FECHAPRESENTADOADQUIRENTE,
+    TRIM(CASE WHEN FECHAPRESENTADOVASA = ''0000-00-00'' OR TRIM(FECHAPRESENTADOVASA) = '''' OR FECHAPRESENTADOVASA IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHAPRESENTADOVASA) END) AS FECHAPRESENTADOVASA,
+    TRIM(CASE WHEN FECHAPROCESO = ''0000-00-00'' OR TRIM(FECHAPROCESO) = '''' OR FECHAPROCESO IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHAPROCESO) END) AS FECHAPROCESO,
+    TRIM(NUMEROCOMPROBANTE) AS NUMEROCOMPROBANTE,
+    PLANCUOTACAPITALPEND,
+    MONTOCUOTA,
+    TRIM(CODIGOTRANSACCION) AS CODIGOTRANSACCION,
+    TRIM(CODIGOTRANSACCIONRELACION) AS CODIGOTRANSACCIONRELACION,
+    TRIM(FILLER1) AS FILLER1,
+    TRIM(NOCUENTACLARO) AS NOCUENTACLARO,
+    LINEAENARCHIVO
+FROM {ARCHIVO_ORIGEN}'
+WHERE Proceso = 'ECuotasPendientes' AND IdParametro = 'ConsultaOrigen';
+GO
+
+/* =====================================================================
+   2) Parametros generales de reproceso
+   ===================================================================== */
+IF NOT EXISTS (SELECT 1 FROM ParametrosDescargaTablas WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso')
+    INSERT INTO ParametrosDescargaTablas (Proceso, IdParametro, ValorParametro) VALUES ('General', 'ModoReproceso', 'false');
+
+IF NOT EXISTS (SELECT 1 FROM ParametrosDescargaTablas WHERE Proceso = 'General' AND IdParametro = 'FechaReproceso')
+    INSERT INTO ParametrosDescargaTablas (Proceso, IdParametro, ValorParametro) VALUES ('General', 'FechaReproceso', '');
+GO
+
+/* =====================================================================
+   3) sp_RegistraProceso: se modifica UNA sola vez.
+      Despues, para reprocesar solo se cambian parametros.
+   ===================================================================== */
+ALTER PROCEDURE [dbo].[sp_RegistraProceso]
+  @Proceso NVARCHAR(100),
+  @EstadoProceso NVARCHAR(5),
+  @Mensaje NVARCHAR(500)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @ModoReproceso BIT = 0;
+    DECLARE @Fecha VARCHAR(10);
+
+    IF EXISTS (SELECT 1 FROM ParametrosDescargaTablas
+               WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso'
+                 AND LTRIM(RTRIM(ValorParametro)) = 'true')
+        SET @ModoReproceso = 1;
+
+    IF @ModoReproceso = 1
+    BEGIN
+        -- La fecha sale del parametro FechaReproceso (yyyy-MM-dd), ya no del -1 fijo
+        SELECT @Fecha = CONVERT(VARCHAR(10), TRY_CONVERT(DATE, LTRIM(RTRIM(ValorParametro)), 23), 23)
+        FROM ParametrosDescargaTablas
+        WHERE Proceso = 'General' AND IdParametro = 'FechaReproceso';
+
+        -- Sin fecha valida: igual que antes, en reproceso no se registra nada
+        IF @Fecha IS NULL
+            RETURN;
+
+        SET @Mensaje = LEFT(N'[REPROCESO] ' + @Mensaje, 500);
+    END
+    ELSE
+        SET @Fecha = CONVERT(VARCHAR(10), GETDATE() - 1, 23); -- YYYY-MM-DD (igual que antes)
+
+    -- Registrar proceso en ParametrosEjecucionDescarga
+    IF NOT EXISTS (SELECT 1 FROM ParametrosEjecucionDescarga
+                   WHERE Proceso = @Proceso AND FechaProceso = @Fecha)
+    BEGIN
+        INSERT INTO ParametrosEjecucionDescarga (Proceso, FechaProceso, EstadoProceso, Mensaje)
+        VALUES (@Proceso, @Fecha, @EstadoProceso, @Mensaje);
+    END
+    ELSE IF @EstadoProceso IN ('E', 'F')
+    BEGIN
+        -- Los mensajes informativos (I) no pisan el registro; el estado final (E/F) si
+        UPDATE ParametrosEjecucionDescarga
+        SET EstadoProceso = @EstadoProceso,
+            Mensaje       = @Mensaje
+        WHERE Proceso = @Proceso AND FechaProceso = @Fecha;
+    END
+
+    -- La FechaProceso general solo se mueve en ejecucion normal, nunca en reproceso
+    IF @ModoReproceso = 0
+       AND NOT EXISTS (SELECT 1 FROM ParametrosDescargaTablas
+                       WHERE Proceso = 'General' AND IdParametro = 'FechaProceso' AND ValorParametro = @Fecha)
+    BEGIN
+        UPDATE ParametrosDescargaTablas
+        SET ValorParametro = @Fecha
+        WHERE Proceso = 'General' AND IdParametro = 'FechaProceso';
+    END
+END
+GO
+
+/* =====================================================================
+   4) Operacion: como reprocesar una fecha (solo datos, sin tocar SPs)
+   ===================================================================== */
+/*
+-- Opcion A (recomendada): con FechaReproceso
+UPDATE ParametrosDescargaTablas SET ValorParametro = '2026-11-05' WHERE Proceso = 'General' AND IdParametro = 'FechaReproceso';
+UPDATE ParametrosDescargaTablas SET ValorParametro = 'true'       WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso';
+
+-- ... ejecutar manualmente el/los paquete(s) a reprocesar ...
+
+-- Opcion B (la forma manual de hoy): ModoReproceso = 'true', FechaReproceso vacio
+--   y se cambia a mano General.FechaProceso. El script usa FechaProceso.
+
+-- DESACTIVAR (obligatorio antes de la corrida nocturna)
+UPDATE ParametrosDescargaTablas SET ValorParametro = 'false' WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso';
+UPDATE ParametrosDescargaTablas SET ValorParametro = ''      WHERE Proceso = 'General' AND IdParametro = 'FechaReproceso';
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 using Microsoft.SqlServer.Dts.Runtime;
 using System;
 using System.Collections.Generic;
@@ -5,16 +156,17 @@ using System.Data;
 using System.Data.OleDb;
 using System.Data.SqlClient;
 using System.Diagnostics;
+using System.Globalization;
 using System.Threading;
 
 
-namespace ST_a5d188e31b5a44e599b008f105924707
+namespace ST_65343a80c6e645ac88d3be899bd95077
 {
 	[Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPointAttribute]
 	public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
 	{
 		#region Constantes
-		private const string NombreProceso = "ETarjetas";
+		private const string NombreProceso = "ECuotasPendientes";
 		private const string EstadoGenerado = "G";      // estado que AS400 debe tener antes de descargar
 
 		// Estados que se envian al SP de registro.
@@ -22,12 +174,13 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 		private const string LogError = "F";
 		private const string LogExito = "E";
 
-		private const int MaxLongitudMensaje = 500;     
+		private const int MaxLongitudMensaje = 500;
+		private const string FormatoFecha = "yyyy-MM-dd";
 
-		private const int ColumnasOrigen = 104;         // columnas que devuelve la consulta de AS400 (0..103)
-		private const int PosicionLarId = 96;           // larId se inserta entre Filler2 (95) y LineaEnArchivo
+		private const int ColumnasOrigen = 33;          // columnas que devuelve la consulta de AS400 (0..32)
+		private const int PosicionLarId = 32;           // larId se inserta entre NoCuentaClaro (31) y LineaEnArchivo
 		private const int ColumnasDestino = ColumnasOrigen + 2; // + larId + ProcesadorOrigen
-		private const int LarIdPorDefecto = 23261;
+		private const int LarIdPorDefecto = 30458;
 		private const string ProcesadorOrigen = "LOCAL";
 		#endregion
 
@@ -48,13 +201,19 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 		private bool _logDetallado = true;
 		private bool _bulkTableLock = false;
 		private int _larId = LarIdPorDefecto;
+		private bool _sinRegistrosEsExito = false;
+
+		// Reproceso
+		private bool _modoReproceso = false;
+		private bool _omitirUpdateAs400 = false;  // reproceso de un archivo que AS400 ya tiene en estado final
+		private bool _sinRegistros = false;
 
 		// Para trazabilidad en caso de error
 		private string _fase = string.Empty;
 		private long _filasLeidas = 0;
 		private long _filasInsertadas = 0;
 		private long _ticksLectura = 0;      // tiempo acumulado leyendo de AS400
-		private long _ticksConversion = 0;   // tiempo acumulado convirtiendo/limpiando filas
+		private long _ticksConversion = 0;   // tiempo acumulado convirtiendo filas
 		private long _ticksBulk = 0;         // tiempo acumulado en SqlBulkCopy.WriteToServer
 		private string _ultimoError = null;
 		#endregion
@@ -89,22 +248,82 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 				return false;
 
 			CargarConfiguracion();
-			_fechaGeneracion = parametros["FechaProceso"];
+
+			if (!DeterminarFechaProceso())
+				return false;
+
 			ParseaConsultas();
 
-			Info("Inicio proceso. FechaProceso=" + _fechaGeneracion + ", Archivo=" + parametros["NombreArchivo"] +
-				 ", TamanoLote=" + _tamanoLote + ", TimeoutSql=" + _timeoutSql + "s, TimeoutAs400=" + _timeoutAs400 + "s");
+			Info("Inicio proceso" + (_modoReproceso ? " (MODO REPROCESO)" : "") + ". FechaProceso=" + _fechaGeneracion +
+				 ", Archivo=" + parametros["NombreArchivo"] + ", TamanoLote=" + _tamanoLote +
+				 ", TimeoutSql=" + _timeoutSql + "s, TimeoutAs400=" + _timeoutAs400 + "s");
 
 			string estadoProceso = ObtenerEstadoProceso();
 			if (estadoProceso == null)
-				return false; 
+				return false;
 
 			Info("Estado en AS400: '" + estadoProceso + "' (inicial esperado: '" + parametros["EstadoInicial"] + "')");
+
+			// En reproceso el archivo de control puede estar ya en estado final (la fecha ya se habia procesado).
+			// Se recarga la informacion pero no se vuelve a actualizar el estado en AS400.
+			if (_modoReproceso && estadoProceso == parametros["EstadoFinal"])
+			{
+				Info("REPROCESO: el archivo de control ya esta en estado final '" + estadoProceso +
+					 "'. Se recargara el contenido actual de " + parametros["ArchiviOrigen"] + " sin actualizar AS400.");
+				_omitirUpdateAs400 = true;
+				return RealizarMovimiento();
+			}
 
 			if (estadoProceso != parametros["EstadoInicial"])
 				return RealizarReintento(estadoProceso);
 
 			return RealizarMovimiento();
+		}
+
+		/// <summary>
+		/// Define la fecha a procesar. Normal: parametro FechaProceso.
+		/// Reproceso: ModoReproceso = true y FechaReproceso = yyyy-MM-dd (parametros en BD, sin tocar SPs).
+		/// </summary>
+		private bool DeterminarFechaProceso()
+		{
+			_modoReproceso = ParamBool("ModoReproceso", false);
+
+			if (!_modoReproceso)
+			{
+				_fechaGeneracion = parametros["FechaProceso"].Trim();
+				return true;
+			}
+
+			string texto;
+			DateTime fecha;
+			parametros.TryGetValue("FechaReproceso", out texto);
+			texto = (texto ?? string.Empty).Trim();
+
+			// Sin FechaReproceso: mecanismo manual existente (se modifico General.FechaProceso a mano).
+			if (texto.Length == 0)
+			{
+				_fechaGeneracion = parametros["FechaProceso"].Trim();
+				Dts.Events.FireWarning(0, NombreProceso, "ModoReproceso activo sin FechaReproceso: se usa FechaProceso=" +
+					_fechaGeneracion + " (el SP de registro no guardara bitacora en este modo).", "", 0);
+				return true;
+			}
+
+			if (!DateTime.TryParseExact(texto, FormatoFecha, CultureInfo.InvariantCulture, DateTimeStyles.None, out fecha))
+			{
+				Log(LogError, "ModoReproceso activo pero FechaReproceso no es valida (valor: '" + texto + "', formato esperado " + FormatoFecha + ").");
+				return false;
+			}
+
+			if (fecha.Date > DateTime.Today)
+			{
+				Log(LogError, "FechaReproceso " + fecha.ToString(FormatoFecha) + " no puede ser mayor a la fecha actual.");
+				return false;
+			}
+
+			_fechaGeneracion = fecha.ToString(FormatoFecha);
+			Info("MODO REPROCESO activo. Se reprocesara la fecha " + _fechaGeneracion +
+				 " (FechaProceso normal: " + parametros["FechaProceso"] + ")");
+			return true;
 		}
 
 		#region Flujo principal
@@ -113,13 +332,26 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 			if (!ExtraerYCargar())
 				return false;
 
+			if (_sinRegistros)
+			{
+				// Comportamiento anterior de ECuotasPendientes: sin datos se marca el archivo en AS400 y termina OK.
+				if (!_omitirUpdateAs400 && !UpdateArchivoAS400())
+					return false;
+
+				Log(LogExito, "Proceso finalizado sin registros en AS400 para el dia " + _fechaGeneracion);
+				return true;
+			}
+
 			if (!EjecutarSpConArchivo("PostParseo"))
 				return false;
 
-			if (!UpdateArchivoAS400())
+			if (_omitirUpdateAs400)
+				Info("REPROCESO: se omite la actualizacion de estado en AS400.");
+			else if (!UpdateArchivoAS400())
 				return false;
 
-			Log(LogExito, "Proceso ejecutado exitosamente. Filas cargadas: " + _filasInsertadas.ToString("N0"));
+			Log(LogExito, (_modoReproceso ? "Reproceso " + _fechaGeneracion + " ejecutado exitosamente" : "Proceso ejecutado exitosamente") +
+						  ". Filas cargadas: " + _filasInsertadas.ToString("N0"));
 			return true;
 		}
 
@@ -132,6 +364,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 			_fase = "conectando a AS400";
 			_filasLeidas = 0;
 			_filasInsertadas = 0;
+			_sinRegistros = false;
 
 			ConnectionManager cmAs400 = Dts.Connections["AS400"];
 			OleDbConnection connAs400 = null;
@@ -154,10 +387,17 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 							throw new InvalidOperationException("La consulta de origen devolvio " + reader.FieldCount +
 								" columnas y se esperaban " + ColumnasOrigen + ".");
 
-						// Se lee la primera fila ANTES del PreParseo: si AS400 no trae datos no se limpia la tabla destino. 
+						// Se lee la primera fila ANTES del PreParseo: si AS400 no trae datos no se limpia la tabla destino.
 						_fase = "leyendo primer registro de AS400";
 						if (!reader.Read())
 						{
+							if (_sinRegistrosEsExito)
+							{
+								Info("No se encontraron registros en AS400 para el dia " + _fechaGeneracion + " (SinRegistrosEsExito=true)");
+								_sinRegistros = true;
+								return true;
+							}
+
 							Log(LogError, "No se encontraron registros en AS400 para el dia " + _fechaGeneracion);
 							return false;
 						}
@@ -187,7 +427,6 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 			}
 		}
 
-
 		private void CargarLotes(IDataReader reader)
 		{
 			Stopwatch swCarga = Stopwatch.StartNew();
@@ -195,7 +434,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 			SqlConnection connSql = null;
 
 			DataTable lote = CrearTablaLote();
-			object[] buffer = new object[ColumnasOrigen];
+			object[] buffer = new object[reader.FieldCount];
 			object[] fila = new object[ColumnasDestino];
 			Type[] tipos = new Type[ColumnasDestino];
 			string[] nombres = new string[ColumnasDestino];
@@ -216,7 +455,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 				using (SqlBulkCopy bulk = new SqlBulkCopy(connSql, opciones, null))
 				{
 					bulk.DestinationTableName = parametros["ArchivoDestino"];
-					bulk.BulkCopyTimeout = _timeoutSql;   
+					bulk.BulkCopyTimeout = _timeoutSql;
 
 					Info("Iniciando bulk insert hacia " + parametros["ArchivoDestino"]);
 
@@ -229,7 +468,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 
 						_fase = "convirtiendo fila " + (_filasLeidas + 1).ToString("N0");
 						LlenarFila(buffer, fila, tipos, nombres);
-						lote.Rows.Add(fila);  
+						lote.Rows.Add(fila);
 
 						_ticksLectura += t1 - t0;
 						_ticksConversion += Stopwatch.GetTimestamp() - t1;
@@ -300,7 +539,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 		}
 
 		/// <summary>
-		/// Espera mientras el AS400 coloca la información del archivo si este no ha sido generado a la hora de ejecucion del proceso
+		/// Espera mientras el AS400 coloca la informacion del archivo si este no ha sido generado a la hora de ejecucion del proceso
 		/// </summary>
 		private bool RealizarReintento(string estadoProceso)
 		{
@@ -316,6 +555,8 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 
 				Thread.Sleep(TimeSpan.FromMinutes(minutos));
 				estadoProceso = ObtenerEstadoProceso();
+				if (estadoProceso == null)
+					return false;
 			}
 
 			if (estadoProceso == EstadoGenerado)
@@ -378,9 +619,9 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 			string[] requeridos =
 			{
 				"FechaProceso", "EstadoInicial", "EstadoFinal", "ArchivoControl", "ArchivoGenerado",
-				"ArchiviOrigen", 
-                "ConsultaEstado", "ConsultaOrigen", "ConsultaActualizar", "Usuario",
-				"PreParseo", "PostParseo", "NombreArchivo", "ArchivoDestino","SegundosTimeoutSql"
+				"ArchiviOrigen",
+				"ConsultaEstado", "ConsultaOrigen", "ConsultaActualizar", "Usuario",
+				"PreParseo", "PostParseo", "NombreArchivo", "ArchivoDestino", "SegundosTimeoutSql"
 				,"SegundosTimeoutAs400"
 				,"TamanoLote"
 				,"LogCadaFilas"
@@ -418,6 +659,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 			_logDetallado = ParamBool("LogDetallado", true);
 			_bulkTableLock = ParamBool("BulkTableLock", false);
 			_larId = ParamInt("LarId", LarIdPorDefecto);
+			_sinRegistrosEsExito = ParamBool("SinRegistrosEsExito", false);
 		}
 
 		private int ParamInt(string clave, int porDefecto)
@@ -442,7 +684,7 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 		private void ParseaConsultas()
 		{
 			string hora = DateTime.Now.ToString("HHmmss");
-			string fecha = DateTime.Now.ToString("yyyy-MM-dd");
+			string fecha = DateTime.Now.ToString(FormatoFecha);
 
 			_sqlConsultaEstado = parametros["ConsultaEstado"]
 				.Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
@@ -589,8 +831,9 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 
 		#region Transformacion de filas
 		/// <summary>
-		/// Mapea una fila de AS400 (104 columnas) a la fila destino (106 columnas):
-		/// inserta larId en la posicion 96 y ProcesadorOrigen al final. 
+		/// Mapea una fila de AS400 (33 columnas) a la fila destino (35 columnas):
+		/// inserta larId en la posicion 32 y ProcesadorOrigen al final.
+		/// El TRIM ya viene resuelto desde la consulta de AS400 (los campos sin valor llegan como cadena vacia).
 		/// </summary>
 		private void LlenarFila(object[] origen, object[] destino, Type[] tipos, string[] nombres)
 		{
@@ -607,45 +850,45 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 
 		/// <summary>
 		/// Conversion tipada. Los numericos de AS400 llegan como decimal (ej. 0.00) y NO se pasan por texto,
-		/// porque "0.00" no se puede convertir a Int32/Int16/Byte. 
+		/// porque "0.00" no se puede convertir a Int32/Int16/Byte.
+		/// Las fechas llegan como texto yyyy-MM-dd (la consulta ya reemplaza 0000-00-00 / vacio por 1900-01-01).
 		/// </summary>
 		private static object Convertir(object valor, Type destino, string columna)
 		{
 			if (valor == null || valor == DBNull.Value)
 				return DBNull.Value;
 
-			if (!(valor is string))
+			string texto = valor as string;
+			if (texto != null)
 			{
-				if (destino == typeof(decimal))
-					return Convert.ToDecimal(valor);
-
-				if (destino == typeof(int) || destino == typeof(short) || destino == typeof(byte))
+				if (destino == typeof(DateTime))
 				{
-					decimal d = Convert.ToDecimal(valor);
-					//if (d != decimal.Truncate(d))
-					//	throw new InvalidCastException("El valor " + d + " tiene decimales pero la columna '" + columna +
-					//								   "' es " + destino.Name + ". Revise el tipo de la columna destino.");
-					return Convert.ChangeType(d, destino);
+					DateTime fecha;
+					if (DateTime.TryParseExact(texto, FormatoFecha, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out fecha))
+						return fecha;
+
+					throw new FormatException("El valor '" + texto + "' no es una fecha valida (" + FormatoFecha +
+											  ") para la columna '" + columna + "'.");
 				}
+
+				return texto;
+			}
+
+			if (destino == typeof(decimal))
+				return Convert.ToDecimal(valor);
+
+			if (destino == typeof(int) || destino == typeof(short) || destino == typeof(byte))
+			{
+				decimal d = Convert.ToDecimal(valor);
+				return Convert.ChangeType(d, destino);
 			}
 
 			return valor;
 		}
 
-		// Trim; vacio -> NULL. Los no-string se pasan como texto y el DataTable los convierte.
-		private static object Limpiar(object valor)
-		{
-			if (valor == null || valor == DBNull.Value)
-				return DBNull.Value;
-
-			string texto = (valor as string ?? valor.ToString()).Trim();
-			return texto.Length == 0 ? (object)DBNull.Value : texto;
-		}
-
 		private static readonly Type S = typeof(string);
 		private static readonly Type I16 = typeof(short);
 		private static readonly Type I32 = typeof(int);
-		private static readonly Type U8 = typeof(byte);
 		private static readonly Type DEC = typeof(decimal);
 		private static readonly Type FEC = typeof(DateTime);
 
@@ -658,112 +901,41 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 		private static DataTable CrearTablaLote()
 		{
 			DataTable dt = new DataTable();
-			Col(dt, "NumeroTarjeta", S);
-			Col(dt, "NumeroTarjetaRes", S);
-			Col(dt, "LongitudNoTarjeta", S);
-			Col(dt, "NoPlasticoGenerado", I32);
-			Col(dt, "CodigoBanco", I16);
-			Col(dt, "CodigoCasa", I16);
-			Col(dt, "NoUsuario", S);
-			Col(dt, "NombreCliente", S);
-			Col(dt, "NombreTarjetaImprimir", S);
-			Col(dt, "CodigoProducto", S);
-			Col(dt, "Cartera", I16);
-			Col(dt, "ModeloLiquidacion", I16);
-			Col(dt, "GrupoAfinidad", I32);
-			Col(dt, "CodigoPais", I16);
-			Col(dt, "TipoDocumento", S);
-			Col(dt, "NoDocumento", S);
-			Col(dt, "EstadoTarjeta", I16);
-			Col(dt, "FechaAltaTarjeta", FEC);
-			Col(dt, "CategoriaTarjeta", S);
-			Col(dt, "EstadoHabilitar", S);
-			Col(dt, "Admin", I16);
-			Col(dt, "SubAdmin", I16);
-			Col(dt, "FechaRenovacion", FEC);
-			Col(dt, "FechaInicioVigencia", FEC);
-			Col(dt, "FechaFinVigencia", FEC);
-			Col(dt, "FechaProceso", FEC);
-			Col(dt, "SubEstado", U8);
-			Col(dt, "NoProceso", I32);
-			Col(dt, "BonificacionCargo", S);
-			Col(dt, "CantidadCuotasCargo", S);
-			Col(dt, "MarcaCobroCargo", S);
-			Col(dt, "ImporteCargo", I32);
-			Col(dt, "FechaGeneraCargo", FEC);
-			Col(dt, "Nacionalidad", S);
-			Col(dt, "Sexo", S);
-			Col(dt, "EstadoCivil", S);
-			Col(dt, "FechaNacimiento", FEC);
-			Col(dt, "CodigoOcupacion", I32);
-			Col(dt, "Denominacion4LineaEmbozado", S);
-			Col(dt, "FechaCargoRenovacion", FEC);
-			Col(dt, "VigenciaAnteriorTarjeta", U8);
-			Col(dt, "VigenciaActualTarjeta", U8);
-			Col(dt, "IndicadorLimiteCompra", S);
-			Col(dt, "IndicadorLimiteCompraCuotas", S);
-			Col(dt, "IndicadorLimiteCompraAdelanto", S);
-			Col(dt, "IndicadorLimiteCompraTransaccion", S);
-			Col(dt, "PorcentajeLimiteCompra", I32);
-			Col(dt, "PorcentajeLimiteCompraCuotas", I32);
-			Col(dt, "PorcentajeLimiteCompraAdelantos", I32);
-			Col(dt, "PorcentajeLimiteCompraTransaccion", I32);
-			Col(dt, "UltimoProcesoABM", S);
-			Col(dt, "CentroCosto", S);
-			Col(dt, "Empresa", S);
-			Col(dt, "Planta", S);
-			Col(dt, "CentroCostoTarjeta", S);
-			Col(dt, "FechaReposicion", FEC);
-			Col(dt, "NoTarjetaAnterior", S);
-			Col(dt, "NoTarjetaAnteriorRes", S);
-			Col(dt, "NoTarjetaNuevo", S);
-			Col(dt, "NoTarjetaNuevoRes", S);
-			Col(dt, "MarcaFuncionarioNovedadABM", S);
-			Col(dt, "MarcaOrigenNovedadABM", S);
-			Col(dt, "Supervisor", S);
-			Col(dt, "Funcionario", S);
-			Col(dt, "NoClienteUnico", S);
-			Col(dt, "IndicativoEmbozado", S);
-			Col(dt, "Seguro01", S);
-			Col(dt, "Seguro02", S);
-			Col(dt, "NoSolicitudABM", S);
-			Col(dt, "ProductoTipo", S);
-			Col(dt, "NoTarjetaOriginal", S);
-			Col(dt, "NoTarjetaOriginalRes", S);
-			Col(dt, "MarcaTarjetaRelacionada", S);
-			Col(dt, "Seguro03", S);
-			Col(dt, "Seguro04", S);
-			Col(dt, "Seguro05", S);
-			Col(dt, "PerfilConsumo", S);
-			Col(dt, "ApellidoTarjeta", S);
-			Col(dt, "NombreTarjeta", S);
-			Col(dt, "NombreAmpliado", S);
-			Col(dt, "Reembozado", S);
-			Col(dt, "Filler1", S);
-			Col(dt, "AltaPuntoVenta", S);
-			Col(dt, "ImporteTarjetaLimiteCompra", DEC);
-			Col(dt, "ImporteTarjetaLimiteCompraCuotas", DEC);
-			Col(dt, "ImporteTarjetaLimiteCompraAdelantos", DEC);
-			Col(dt, "ImporteTarjetaLimite", DEC);
-			Col(dt, "CodigoProblemaTarjeta", S);
-			Col(dt, "Telefono1", S);
-			Col(dt, "Telefono2", S);
-			Col(dt, "MarcaOrigenTarjeta", S);
-			Col(dt, "MarcaPlastico", S);
-			Col(dt, "MarcaTarjetaSospechosa", S);
-			Col(dt, "MarcaTarjetaVencida", S);
-			Col(dt, "NoEmpleadoCtaEmpresa", S);
-			Col(dt, "Filler2", S);
-			Col(dt, "larId", I32);                 // posicion 96 (no viene de AS400)
-			Col(dt, "LineaEnArchivo", I32);
-			Col(dt, "BinTarjeta", S);
-			Col(dt, "TarjetaImprimir", S);
-			Col(dt, "BinTarjetaNueva", S);
-			Col(dt, "TarjetaNuevaImprimir", S);
-			Col(dt, "BinTarjetaAnterior", S);
-			Col(dt, "TarjetaAnteriorImprimir", S);
-			Col(dt, "NoCuentaClaro", S);
-			Col(dt, "ProcesadorOrigen", S);        // ultima posicion (no viene de AS400)
+			Col(dt, "BancoEmisor", S);                  // 0
+			Col(dt, "NumeroCuenta", S);                 // 1
+			Col(dt, "NumeroTarjeta", S);                // 2
+			Col(dt, "CodigoProducto", S);               // 3
+			Col(dt, "Cartera", I16);                    // 4  smallint
+			Col(dt, "CodigoOperacion", S);              // 5
+			Col(dt, "GrupoMovimientos", S);             // 6
+			Col(dt, "Cuotas", S);                       // 7
+			Col(dt, "PlanCuotas", S);                   // 8
+			Col(dt, "TasaCostoFinanciero", DEC);        // 9
+			Col(dt, "TipoFinanciacionUsuario", S);      // 10
+			Col(dt, "MonedaOriginalMovimiento", S);     // 11
+			Col(dt, "ImporteOriginalMovimiento", DEC);  // 12
+			Col(dt, "MonedaLiquidar", S);               // 13
+			Col(dt, "ImporteLiquidar", DEC);            // 14
+			Col(dt, "ImporteTotalPlan", DEC);           // 15
+			Col(dt, "ImporteLiquidadoPlan", DEC);       // 16
+			Col(dt, "CuotaNumero", S);                  // 17
+			Col(dt, "CantidadCuotasPlan", S);           // 18
+			Col(dt, "CostoFinanciero", DEC);            // 19
+			Col(dt, "CostoFinancieroPlan", DEC);        // 20
+			Col(dt, "FechaOriginalCupon", FEC);         // 21
+			Col(dt, "FechaPresentadoAdquirente", FEC);  // 22
+			Col(dt, "FechaPresentadoVasa", FEC);        // 23
+			Col(dt, "FechaProceso", FEC);               // 24
+			Col(dt, "NumeroComprobante", S);            // 25
+			Col(dt, "PlanCuotaCapitalPend", DEC);       // 26
+			Col(dt, "MontoCuota", DEC);                 // 27
+			Col(dt, "CodigoTransaccion", S);            // 28
+			Col(dt, "CodigoTransaccionRelacion", S);    // 29
+			Col(dt, "Filler1", S);                      // 30
+			Col(dt, "NoCuentaClaro", S);                // 31
+			Col(dt, "larId", I32);                      // 32 (no viene de AS400)
+			Col(dt, "LineaEnArchivo", I32);             // 33
+			Col(dt, "ProcesadorOrigen", S);             // 34 ultima posicion (no viene de AS400)
 			return dt;
 		}
 		#endregion
@@ -867,1019 +1039,11 @@ namespace ST_a5d188e31b5a44e599b008f105924707
 
 
 
-Mira que mi jefatura realizó una refactorización de este codigo .. y me pidió que modificara los demas dtsx.. que basicamente tienen esta misma plantilla
-Pero me pidió que hiciera dos modificaciones:
 
-01. Dejar el trim de lado del as400, o sea en la consulta, de manera que ese trabajo quede de lado de ellos .. y ya de nuestro lado ya venga sin espacios
-02. Agregar un proceso de "Reproceso" ya que, si queremos reprocesar una fecha .. nos toca modificar un SP 
 
-USE [DescargaInformacionProcesador]
-GO
-/****** Object:  StoredProcedure [dbo].[sp_RegistraProceso]    Script Date: 11/11/2026 17:42:20 ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-ALTER PROCEDURE [dbo].[sp_RegistraProceso] 
-  @Proceso NVARCHAR(100),
-  @EstadoProceso NVARCHAR(5),
-  @Mensaje NVARCHAR(500)
-AS
-BEGIN
-    SET NOCOUNT ON;
 
-	IF EXISTS(SELECT 1  FROM ParametrosDescargaTablas WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso' 
-          AND ValorParametro = 'true')
-	BEGIN
-		RETURN;
-	END
 
-    -- Registrar proceso en ParametrosEjecucionDescarga
-    DECLARE @Hoy VARCHAR(10) = CONVERT(VARCHAR(10), GETDATE() -1, 23); -- YYYY-MM-DD
 
-	IF EXISTS(SELECT 1 FROM ParametrosEjecucionDescarga 
-	WHERE Proceso = @Proceso AND FechaProceso = @Hoy)
-	BEGIN
-	PRINT 'YA EXISTE REGISTRO'
-	END
-	ELSE
-	BEGIN
-		INSERT INTO ParametrosEjecucionDescarga (Proceso, FechaProceso, EstadoProceso, Mensaje)
-		VALUES (@Proceso, @Hoy, @EstadoProceso, @Mensaje);
-	END
 
 
 
-    IF EXISTS (
-        SELECT 1 
-        FROM ParametrosDescargaTablas 
-        WHERE Proceso = 'General'
-          AND IdParametro = 'FechaProceso' 
-          AND ValorParametro = @Hoy
-    )
-    BEGIN
-        PRINT 'La fecha ya está registrada, no se actualiza.';
-    END
-    ELSE
-    BEGIN
-        UPDATE ParametrosDescargaTablas
-        SET ValorParametro = @Hoy
-        WHERE Proceso = 'General'
-          AND IdParametro = 'FechaProceso';
-    END
-END
-
-
-Estar cambiando la linea 23 .. el -1 .. contando hacia atras segun la fecha que necesitemos reprocesar.. comprendes.. no se como podemos hacer para reprocesar una fecha .. porque si en priduccion se llega a dar una incidencia no nos dejaran estar modificando ese SP
-
-
-Este es el que tenemos que modificar y basicamente dejarlo "igual" al otro  ahora .. lo del trim no estoy segura donde va ... creo que va parametrizado en sql 
-
-#region Help:  Introduction to the script task
-/* The Script Task allows you to perform virtually any operation that can be accomplished in
- * a .Net application within the context of an Integration Services control flow. 
- * 
- * Expand the other regions which have "Help" prefixes for examples of specific ways to use
- * Integration Services features within this script task. */
-#endregion
-
-
-#region Namespaces
-using Microsoft.SqlServer.Dts.Runtime;
-using ST_65343a80c6e645ac88d3be899bd95077.Models;
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Data.OleDb;
-using System.Data.SqlClient;
-using System.Windows.Forms;
-#endregion
-
-namespace ST_65343a80c6e645ac88d3be899bd95077
-{
-    /// <summary>
-    /// ScriptMain is the entry point class of the script.  Do not change the name, attributes,
-    /// or parent of this class.
-    /// </summary>
-	[Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPointAttribute]
-    public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
-    {
-        #region Help:  Using Integration Services variables and parameters in a script
-        /* To use a variable in this script, first ensure that the variable has been added to 
-         * either the list contained in the ReadOnlyVariables property or the list contained in 
-         * the ReadWriteVariables property of this script task, according to whether or not your
-         * code needs to write to the variable.  To add the variable, save this script, close this instance of
-         * Visual Studio, and update the ReadOnlyVariables and 
-         * ReadWriteVariables properties in the Script Transformation Editor window.
-         * To use a parameter in this script, follow the same steps. Parameters are always read-only.
-         * 
-         * Example of reading from a variable:
-         *  DateTime startTime = (DateTime) Dts.Variables["System::StartTime"].Value;
-         * 
-         * Example of writing to a variable:
-         *  Dts.Variables["User::myStringVariable"].Value = "new value";
-         * 
-         * Example of reading from a package parameter:
-         *  int batchId = (int) Dts.Variables["$Package::batchId"].Value;
-         *  
-         * Example of reading from a project parameter:
-         *  int batchId = (int) Dts.Variables["$Project::batchId"].Value;
-         * 
-         * Example of reading from a sensitive project parameter:
-         *  int batchId = (int) Dts.Variables["$Project::batchId"].GetSensitiveValue();
-         * */
-
-        #endregion
-
-        #region Help:  Firing Integration Services events from a script
-        /* This script task can fire events for logging purposes.
-         * 
-         * Example of firing an error event:
-         *  Dts.Events.FireError(18, "Process Values", "Bad value", "", 0);
-         * 
-         * Example of firing an information event:
-         *  Dts.Events.FireInformation(3, "Process Values", "Processing has started", "", 0, ref fireAgain)
-         * 
-         * Example of firing a warning event:
-         *  Dts.Events.FireWarning(14, "Process Values", "No values received for input", "", 0);
-         * */
-        #endregion
-
-        #region Help:  Using Integration Services connection managers in a script
-        /* Some types of connection managers can be used in this script task.  See the topic 
-         * "Working with Connection Managers Programatically" for details.
-         * 
-         * Example of using an ADO.Net connection manager:
-         *  object rawConnection = Dts.Connections["Sales DB"].AcquireConnection(Dts.Transaction);
-         *  SqlConnection myADONETConnection = (SqlConnection)rawConnection;
-         *  //Use the connection in some code here, then release the connection
-         *  Dts.Connections["Sales DB"].ReleaseConnection(rawConnection);
-         *
-         * Example of using a File connection manager
-         *  object rawConnection = Dts.Connections["Prices.zip"].AcquireConnection(Dts.Transaction);
-         *  string filePath = (string)rawConnection;
-         *  //Use the connection in some code here, then release the connection
-         *  Dts.Connections["Prices.zip"].ReleaseConnection(rawConnection);
-         * */
-        #endregion
-
-
-        /// <summary>
-        /// This method is called when this script task executes in the control flow.
-        /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
-        /// To open Help, press F1.
-        /// </summary>
-
-
-        public static DateTime date = DateTime.Now;
-        public static string fecha_generacion = string.Empty; //date.ToString("yyyy-MM-dd");
-        public Dictionary<string, string> parametros = new Dictionary<string, string>();
-        public string sql_ConsultaEstado = string.Empty;
-        public string sql_ConsultaOrigen = string.Empty;
-        public string sql_ConsultaActualizar = string.Empty;
-
-        public void Main()
-        {
-            if (ObtieneParametros())
-            {
-                fecha_generacion = parametros["FechaProceso"];
-                ParseaConsultas();
-                var estado_proceso = ObtenerEstadoProceso();
-
-                if (estado_proceso == null)
-                {
-                    Dts.TaskResult = (int)ScriptResults.Failure;
-                    return;
-                }
-
-
-                if (estado_proceso != parametros["EstadoInicial"])
-                {
-                    if (RealizarReintento(estado_proceso))
-                    {
-                        Dts.TaskResult = (int)ScriptResults.Success;
-                        return;
-                    }
-                    else
-                    {
-                        Dts.TaskResult = (int)ScriptResults.Failure;
-                        return;
-                    }
-                }
-                else
-                {
-                    if (RealizarMovimiento())
-                    {
-                        Dts.TaskResult = (int)ScriptResults.Success;
-                        return;
-                    }
-                    else
-                    {
-                        Dts.TaskResult = (int)ScriptResults.Failure;
-                        return;
-                    }
-                }
-            }
-
-            Dts.TaskResult = (int)ScriptResults.Failure;
-        }
-
-        public bool RealizarMovimiento()
-        {
-            List<CuotasPendientes> resultado = ObtenerInfoAs400();
-            if (resultado.Count == 0)
-            {
-                RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
-                UpdateArchivoAS400();
-                return true;
-            }
-
-            if (!PreParseo())
-                return false;
-
-            DataTable data = ConvertirADataTable(resultado);
-            if (data.Rows.Count == 0)
-                return false;
-
-            if (!EjecutarBulkInsertBandejaVasa(data))
-                return false;
-
-            if (!PostParseo())
-                return false;
-
-            if (!UpdateArchivoAS400())
-                return false;
-
-            RegistraProceso("E", $"Proceso ejecutado exitosamente");
-            return true;
-        }
-
-        public bool ObtieneParametros()
-        {
-            ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
-            SqlConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as SqlConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
-                }
-
-                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
-                {
-                    cmd.CommandType = CommandType.StoredProcedure;
-                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "ECuotasPendientes";
-
-                    using (SqlDataReader reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            string idParametro = reader["IdParametro"].ToString();
-                            string valorParametro = reader["ValorParametro"].ToString();
-
-                            if (!parametros.ContainsKey(idParametro))
-                                parametros.Add(idParametro, valorParametro);
-                        }
-                    }
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message.ToString()}");
-
-                return false;
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-        }
-
-        public void ParseaConsultas()
-        {
-            string hora = DateTime.Now.ToString("HHmmss");
-            string fecha = DateTime.Now.ToString("yyyy-MM-dd");
-            sql_ConsultaEstado = parametros["ConsultaEstado"]
-                 .Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
-                 .Replace("{FECHA_GENERACION}", $"'{fecha_generacion}'")
-                 .Replace("{ESTADO_INICIAL}", $"'{parametros["EstadoInicial"]}'")
-                 .Replace("{ARCHIVO_GENERADO}", $"'{parametros["ArchivoGenerado"]}'");
-
-            sql_ConsultaOrigen = parametros["ConsultaOrigen"]
-                .Replace("{ARCHIVO_ORIGEN}", parametros["ArchiviOrigen"]);
-
-            sql_ConsultaActualizar = parametros["ConsultaActualizar"]
-                .Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
-                .Replace("{ESTADO_FINAL}", $"'{parametros["EstadoFinal"]}'")
-                .Replace("{FECHA_PROCESADO}", $"'{fecha}'")
-                .Replace("{HORA_PROCESADO}", $"'{hora}'")
-                .Replace("{USER}", $"'{parametros["Usuario"]}'")
-                .Replace("{FECHA_GENERACION}", $"'{fecha_generacion}'")
-                .Replace("{ESTADO_INICIAL}", $"'{parametros["EstadoInicial"]}'")
-                .Replace("{ARCHIVO_GENERADO}", $"'{parametros["ArchivoGenerado"]}'");
-        
-        }
-
-        public string ObtenerEstadoProceso()
-        {
-            string estado_proceso = string.Empty;
-            ConnectionManager cm = Dts.Connections["AS400"];
-            OleDbConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as OleDbConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
-                }
-
-
-                using (IDbCommand cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = sql_ConsultaEstado;
-                    using (IDataReader reader = cmd.ExecuteReader())
-                    {
-
-                        if (reader.Read())
-                        {
-                            estado_proceso = reader.GetString(0);
-
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló obtener estado proceso:  {sql_ConsultaEstado}  | ERROR :  {ex.Message.ToString()} ");
-                Dts.TaskResult = (int)ScriptResults.Failure;
-                return null;
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-
-            return estado_proceso;
-        }
-
-        public bool RealizarReintento(string estadoProceso)
-        {
-            int intentoActual = 0;
-            var reintentos = ObtenerInfoReintentos();
-
-            while (estadoProceso != "G" && intentoActual < reintentos.CantidadReintentos)
-            {
-                intentoActual++;
-                System.Threading.Thread.Sleep(reintentos.MinutosReintentos * 60 * 1000);
-                estadoProceso = ObtenerEstadoProceso();
-            }
-
-            if (estadoProceso == "G")
-            {
-                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
-
-                return RealizarMovimiento();
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        public Reintentos ObtenerInfoReintentos()
-        {
-            return new Reintentos
-            {
-                CantidadReintentos = int.Parse(parametros["CantidadReintentos"]),
-                MinutosReintentos = int.Parse(parametros["MinutosReintentos"]),
-            };
-        }
-
-        public List<CuotasPendientes> ObtenerInfoAs400()
-        {
-            List<CuotasPendientes> cuotas = new List<CuotasPendientes>();
-            ConnectionManager cm = Dts.Connections["AS400"];
-            OleDbConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as OleDbConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
-                }
-
-                {
-                    using (IDbCommand cmd = conn.CreateCommand())
-                    {
-                        cmd.CommandText = sql_ConsultaOrigen;
-                        using (IDataReader reader = cmd.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                CuotasPendientes cuota = new CuotasPendientes();
-
-                                cuota.BancoEmisor = reader.GetString(0);
-                                cuota.NumeroCuenta = reader.GetString(1);
-                                cuota.NumeroTarjeta = reader.GetString(2);
-                                cuota.CodigoProducto = reader.GetString(3);
-                                cuota.Cartera = reader.GetDecimal(4);
-                                cuota.CodigoOperacion = reader.GetString(5);
-                                cuota.GrupoMovimientos = reader.GetString(6);
-                                cuota.Cuotas = reader.GetString(7);
-                                cuota.PlanCuotas = reader.GetString(8);
-                                cuota.TasaCostoFinanciero = reader.GetDecimal(9);
-                                cuota.TipoFinanciacionUsuario = reader.GetString(10);
-                                cuota.MonedaOriginalMovimiento = reader.GetString(11);
-                                cuota.ImporteOriginalMovimiento = reader.GetDecimal(12);
-                                cuota.MonedaLiquidar = reader.GetString(13);
-                                cuota.ImporteLiquidar = reader.GetDecimal(14);
-                                cuota.ImporteTotalPlan = reader.GetDecimal(15);
-                                cuota.ImporteLiquidadoPlan = reader.GetDecimal(16);
-                                cuota.CuotaNumero = reader.GetString(17);
-                                cuota.CantidadCuotasPlan = reader.GetString(18);
-                                cuota.CostoFinanciero = reader.GetDecimal(19);
-                                cuota.CostoFinancieroPlan = reader.GetDecimal(20);
-                                cuota.FechaOriginalCupon = reader.GetString(21);
-                                cuota.FechaPresentadoAdquirente = reader.GetString(22);
-                                cuota.FechaPresentadoVasa = reader.GetString(23);
-                                cuota.FechaProceso = reader.GetString(24);
-                                cuota.NumeroComprobante = reader.GetString(25);
-                                cuota.PlanCuotaCapitalPend = reader.GetDecimal(26);
-                                cuota.MontoCuota = reader.GetDecimal(27);
-                                cuota.CodigoTransaccion = reader.GetString(28);
-                                cuota.CodigoTransaccionRelacion = reader.GetString(29);
-                                cuota.Filler1 = reader.GetString(30);
-                                cuota.NoCuentaClaro = reader.GetString(31);
-                                cuota.LineaEnArchivo = reader.GetDecimal(32);
-                                cuota.ProcesadorOrigen = "LOCAL";
-                                cuotas.Add(cuota);
-                            }
-                        }
-                    }
-                }
-
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message.ToString()}");
-
-                Dts.TaskResult = (int)ScriptResults.Failure;
-
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-
-            return cuotas;
-        }
-
-        public bool PreParseo()
-        {
-            ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
-            SqlConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as SqlConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
-                }
-
-                using (SqlCommand cmd = new SqlCommand(parametros["PreParseo"], conn))
-                {
-                    cmd.CommandType = CommandType.StoredProcedure;
-
-                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
-                    cmd.ExecuteNonQuery();
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
-
-                return false;
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-        }
-
-        public bool PostParseo()
-        {
-            ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
-            SqlConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as SqlConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
-                }
-
-                using (SqlCommand cmd = new SqlCommand(parametros["PostParseo"], conn))
-                {
-                    cmd.CommandType = CommandType.StoredProcedure;
-
-                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
-                    cmd.ExecuteNonQuery();
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
-
-                return false;
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-        }
-
-        public DataTable ConvertirADataTable(List<CuotasPendientes> cuotas)
-        {
-
-            try
-            {
-                DataTable dt = new DataTable();
-
-                dt.Columns.Add("BancoEmisor", typeof(string));
-                dt.Columns.Add("NumeroCuenta", typeof(string));
-                dt.Columns.Add("NumeroTarjeta", typeof(string));
-                dt.Columns.Add("CodigoProducto", typeof(string));
-                dt.Columns.Add("Cartera", typeof(short)); // smallint → Int16
-                dt.Columns.Add("CodigoOperacion", typeof(string));
-                dt.Columns.Add("GrupoMovimientos", typeof(string));
-                dt.Columns.Add("Cuotas", typeof(string));
-                dt.Columns.Add("PlanCuotas", typeof(string));
-                dt.Columns.Add("TasaCostoFinanciero", typeof(decimal));
-                dt.Columns.Add("TipoFinanciacionUsuario", typeof(string));
-                dt.Columns.Add("MonedaOriginalMovimiento", typeof(string));
-                dt.Columns.Add("ImporteOriginalMovimiento", typeof(decimal));
-                dt.Columns.Add("MonedaLiquidar", typeof(string));
-                dt.Columns.Add("ImporteLiquidar", typeof(decimal));
-                dt.Columns.Add("ImporteTotalPlan", typeof(decimal));
-                dt.Columns.Add("ImporteLiquidadoPlan", typeof(decimal));
-                dt.Columns.Add("CuotaNumero", typeof(string));
-                dt.Columns.Add("CantidadCuotasPlan", typeof(string));
-                dt.Columns.Add("CostoFinanciero", typeof(decimal));
-                dt.Columns.Add("CostoFinancieroPlan", typeof(decimal));
-                dt.Columns.Add("FechaOriginalCupon", typeof(DateTime));
-                dt.Columns.Add("FechaPresentadoAdquirente", typeof(DateTime));
-                dt.Columns.Add("FechaPresentadoVasa", typeof(DateTime));
-                dt.Columns.Add("FechaProceso", typeof(DateTime));
-                dt.Columns.Add("NumeroComprobante", typeof(string));
-                dt.Columns.Add("PlanCuotaCapitalPend", typeof(decimal));
-                dt.Columns.Add("MontoCuota", typeof(decimal));
-                dt.Columns.Add("CodigoTransaccion", typeof(string));
-                dt.Columns.Add("CodigoTransaccionRelacion", typeof(string));
-                dt.Columns.Add("Filler1", typeof(string));
-                dt.Columns.Add("NoCuentaClaro", typeof(string));
-                dt.Columns.Add("larId", typeof(int));
-                dt.Columns.Add("LineaEnArchivo", typeof(int));
-                dt.Columns.Add("ProcesadorOrigen", typeof(string));
-
-                foreach (var c in cuotas)
-                {
-                    dt.Rows.Add(
-                           LimpiarEspacios(c.BancoEmisor),
-                            LimpiarEspacios(c.NumeroCuenta),
-                            LimpiarEspacios(c.NumeroTarjeta),
-                            LimpiarEspacios(c.CodigoProducto),
-                            c.Cartera,
-                            LimpiarEspacios(c.CodigoOperacion),
-                            LimpiarEspacios(c.GrupoMovimientos),
-                            LimpiarEspacios(c.Cuotas),
-                            LimpiarEspacios(c.PlanCuotas),
-                            c.TasaCostoFinanciero,
-                            LimpiarEspacios(c.TipoFinanciacionUsuario),
-                            LimpiarEspacios(c.MonedaOriginalMovimiento),
-                            c.ImporteOriginalMovimiento,
-                            LimpiarEspacios(c.MonedaLiquidar),
-                            c.ImporteLiquidar,
-                            c.ImporteTotalPlan,
-                            c.ImporteLiquidadoPlan,
-                            LimpiarEspacios(c.CuotaNumero),
-                            LimpiarEspacios(c.CantidadCuotasPlan),
-                            c.CostoFinanciero,
-                            c.CostoFinancieroPlan,
-                            c.FechaOriginalCupon,
-                            c.FechaPresentadoAdquirente,
-                            c.FechaPresentadoVasa,
-                            c.FechaProceso,
-                            LimpiarEspacios(c.NumeroComprobante),
-                            c.PlanCuotaCapitalPend,
-                            c.MontoCuota,
-                            LimpiarEspacios(c.CodigoTransaccion),
-                            LimpiarEspacios(c.CodigoTransaccionRelacion),
-                            LimpiarEspacios(c.Filler1),
-                            LimpiarEspacios(c.NoCuentaClaro),
-                            30458,
-                            c.LineaEnArchivo,
-                            LimpiarEspacios(c.ProcesadorOrigen)
-                    );
-                }
-
-                return dt;
-            }
-
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
-
-                return new DataTable();
-            }
-        }
-
-        public bool EjecutarBulkInsertBandejaVasa(DataTable tableCuentas)
-        {
-            ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
-            SqlConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as SqlConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
-                }
-
-                using (SqlBulkCopy bulkCopy = new SqlBulkCopy(conn))
-                {
-                    bulkCopy.DestinationTableName = parametros["ArchivoDestino"];
-                    bulkCopy.WriteToServer(tableCuentas);
-                }
-
-                return true;
-
-            }
-
-
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
-
-                return false;
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-        }
-
-        public bool UpdateArchivoAS400()
-        {
-
-            ConnectionManager cm = Dts.Connections["AS400"];
-            OleDbConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as OleDbConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
-                }
-
-                using (IDbCommand cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = sql_ConsultaActualizar;
-                    int rowsAffected = cmd.ExecuteNonQuery();
-
-                    if (rowsAffected == 0)
-                    {
-                        return false;
-                    }
-                }
-
-            }
-            catch (Exception ex)
-            {
-                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message.ToString()}");
-
-                Dts.TaskResult = (int)ScriptResults.Failure;
-
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-
-            return true;
-        }
-
-        private object LimpiarEspacios(object valor)
-        {
-            if (valor == null || valor == DBNull.Value)
-                return DBNull.Value;
-
-            // Convertimos a string y eliminamos espacios
-            var texto = valor.ToString().Trim();
-
-            // Si después del Trim queda vacío, lo tratamos como NULL
-            if (texto.Length == 0)
-                return DBNull.Value;
-
-            return texto;
-        }
-
-        public void RegistraProceso(string estadoProceso, string mensaje)
-        {
-            ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
-            SqlConnection conn = null;
-
-            try
-            {
-                conn = cm.AcquireConnection(null) as SqlConnection;
-                if (conn == null)
-                {
-                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
-                }
-
-                using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
-                {
-                    cmd.CommandType = CommandType.StoredProcedure;
-
-                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "ECuotasPendientes";
-                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
-                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
-
-                    cmd.ExecuteNonQuery();
-                }
-
-            }
-            catch (Exception ex)
-            {
-            }
-            finally
-            {
-                if (conn != null)
-                    cm.ReleaseConnection(conn);
-            }
-        }
-
-        #region ScriptResults declaration
-        /// <summary>
-        /// This enum provides a convenient shorthand within the scope of this class for setting the
-        /// result of the script.
-        /// 
-        /// This code was generated automatically.
-        /// </summary>
-        enum ScriptResults
-        {
-            Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
-            Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
-        };
-        #endregion
-
-    }
-}
-
-
-
-
-
-
-
-Mira que si esta parametrizado... asi está el de ejemplo:
-
-Id	Proceso	IdParametro	ValorParametro
-23	ETarjetas	ConsultaOrigen	SELECT 
-    TRIM(NUMEROTARJETA) AS NUMEROTARJETA,
-    TRIM(NUMEROTARJETARES) AS NUMEROTARJETARES,
-    TRIM(LONGITUDNOTARJETA) AS LONGITUDNOTARJETA,
-    NOPLASTICOGENERADO, 
-    CODIGOBANCO, 
-    CODIGOCASA, 
-    TRIM(NOUSUARIO) AS NOUSUARIO,
-    TRIM(NOMBRECLIENTE) AS NOMBRECLIENTE,
-    TRIM(NOMBRETARJETAIMPRIMIR) AS NOMBRETARJETAIMPRIMIR,
-    TRIM(CODIGOPRODUCTO) AS CODIGOPRODUCTO,
-    CARTERA, 
-    MODELOLIQUIDACION, 
-    GRUPOAFINIDAD, 
-    CODIGOPAIS, 
-    TRIM(TIPODOCUMENTO) AS TIPODOCUMENTO,
-    TRIM(NODOCUMENTO) AS NODOCUMENTO,
-    ESTADOTARJETA, 
-    TRIM(CASE WHEN FECHAALTATARJETA = '0000-00-00' OR TRIM(FECHAALTATARJETA) = '' OR FECHAALTATARJETA IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHAALTATARJETA) END) AS FECHAALTATARJETA,
-    TRIM(CATEGORIATARJETA) AS CATEGORIATARJETA,
-    TRIM(CASE WHEN ESTADOHABILITAR = ' ' THEN CHAR(' ') ELSE CHAR(ESTADOHABILITAR) END) AS ESTADOHABILITAR,
-    ADMIN, 
-    SUBADMIN, 
-    TRIM(CASE WHEN FECHARENOVACION = '0000-00-00' OR TRIM(FECHARENOVACION) = '' OR FECHARENOVACION IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHARENOVACION) END) AS FECHARENOVACION,
-    TRIM(CASE WHEN FECHAINICIOVIGENCIA = '0000-00-00' OR TRIM(FECHAINICIOVIGENCIA) = '' OR FECHAINICIOVIGENCIA IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHAINICIOVIGENCIA) END) AS FECHAINICIOVIGENCIA,
-    TRIM(CASE WHEN FECHAFINVIGENCIA = '0000-00-00' OR TRIM(FECHAFINVIGENCIA) = '' OR FECHAFINVIGENCIA IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHAFINVIGENCIA) END) AS FECHAFINVIGENCIA,
-    TRIM(CASE WHEN FECHAPROCESO = '0000-00-00' OR TRIM(FECHAPROCESO) = '' OR FECHAPROCESO IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHAPROCESO) END) AS FECHAPROCESO,
-    SUBESTADO, 
-    NOPROCESO, 
-    TRIM(BONIFICACIONCARGO) AS BONIFICACIONCARGO,
-    TRIM(CANTIDADCUOTASCARGO) AS CANTIDADCUOTASCARGO,
-    TRIM(MARCACOBROCARGO) AS MARCACOBROCARGO,
-    IMPORTECARGO, 
-    TRIM(CASE WHEN FECHAGENERACARGO = '0000-00-00' OR TRIM(FECHAGENERACARGO) = '' OR FECHAGENERACARGO IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHAGENERACARGO) END) AS FECHAGENERACARGO,
-    TRIM(NACIONALIDAD) AS NACIONALIDAD,
-    TRIM(SEXO) AS SEXO,
-    TRIM(ESTADOCIVIL) AS ESTADOCIVIL,
-    TRIM(CASE WHEN FECHANACIMIENTO = '0000-00-00' OR TRIM(FECHANACIMIENTO) = '' OR FECHANACIMIENTO IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHANACIMIENTO) END) AS FECHANACIMIENTO,
-    CODIGOOCUPACION, 
-    TRIM(DENOMINACION4LINEAEMBOZADO) AS DENOMINACION4LINEAEMBOZADO,
-    TRIM(CASE WHEN FECHACARGORENOVACION = '0000-00-00' OR TRIM(FECHACARGORENOVACION) = '' OR FECHACARGORENOVACION IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHACARGORENOVACION) END) AS FECHACARGORENOVACION,
-    VIGENCIAANTERIORTARJETA, 
-    VIGENCIAACTUALTARJETA, 
-    TRIM(INDICADORLIMITECOMPRA) AS INDICADORLIMITECOMPRA,
-    TRIM(INDICADORLIMITECOMPRACUOTAS) AS INDICADORLIMITECOMPRACUOTAS,
-    TRIM(INDICADORLIMITECOMPRAADELANTO) AS INDICADORLIMITECOMPRAADELANTO,
-    TRIM(INDICADORLIMITECOMPRATRANSACC) AS INDICADORLIMITECOMPRATRANSACC,
-    PORCENTAJELIMITECOMPRA, 
-    PORCENTAJELIMITECOMPRACUOTAS, 
-    PORCENTAJELIMITECOMPRAADELANT, 
-    PORCENTAJELIMITECOMPRATRANSAC, 
-    TRIM(ULTIMOPROCESOABM) AS ULTIMOPROCESOABM,
-    TRIM(CENTROCOSTO) AS CENTROCOSTO,
-    TRIM(EMPRESA) AS EMPRESA,
-    TRIM(PLANTA) AS PLANTA,
-    TRIM(CENTROCOSTOTARJETA) AS CENTROCOSTOTARJETA,
-    TRIM(CASE WHEN FECHAREPOSICION = '0000-00-00' OR TRIM(FECHAREPOSICION) = '' OR FECHAREPOSICION IS NULL THEN CHAR('1900-01-01') ELSE CHAR(FECHAREPOSICION) END) AS FECHAREPOSICION,
-    TRIM(NOTARJETAANTERIOR) AS NOTARJETAANTERIOR,
-    TRIM(NOTARJETAANTERIORRES) AS NOTARJETAANTERIORRES,
-    TRIM(NOTARJETANUEVO) AS NOTARJETANUEVO,
-    TRIM(NOTARJETANUEVORES) AS NOTARJETANUEVORES,
-    TRIM(MARCAFUNCIONARIONOVEDADABM) AS MARCAFUNCIONARIONOVEDADABM,
-    TRIM(MARCAORIGENNOVEDADABM) AS MARCAORIGENNOVEDADABM,
-    TRIM(SUPERVISOR) AS SUPERVISOR,
-    TRIM(FUNCIONARIO) AS FUNCIONARIO,
-    TRIM(NOCLIENTEUNICO) AS NOCLIENTEUNICO,
-    TRIM(INDICATIVOEMBOZADO) AS INDICATIVOEMBOZADO,
-    TRIM(SEGURO01) AS SEGURO01,
-    TRIM(SEGURO02) AS SEGURO02,
-    TRIM(NOSOLICITUDABM) AS NOSOLICITUDABM,
-    TRIM(PRODUCTOTIPO) AS PRODUCTOTIPO,
-    TRIM(NOTARJETAORIGINAL) AS NOTARJETAORIGINAL,
-    TRIM(NOTARJETAORIGINALRES) AS NOTARJETAORIGINALRES,
-    TRIM(MARCATARJETARELACIONADA) AS MARCATARJETARELACIONADA,
-    TRIM(SEGURO03) AS SEGURO03,
-    TRIM(SEGURO04) AS SEGURO04,
-    TRIM(SEGURO05) AS SEGURO05,
-    TRIM(PERFILCONSUMO) AS PERFILCONSUMO,
-    TRIM(APELLIDOTARJETA) AS APELLIDOTARJETA,
-    TRIM(NOMBRETARJETA) AS NOMBRETARJETA,
-    TRIM(NOMBREAMPLIADO) AS NOMBREAMPLIADO,
-    TRIM(REEMBOZADO) AS REEMBOZADO,
-    TRIM(FILLER1) AS FILLER1,
-    TRIM(ALTAPUNTOVENTA) AS ALTAPUNTOVENTA,
-    IMPORTETARJETALIMITECOMPRA, 
-    IMPORTETARJETALIMITECOMPRACUO, 
-    IMPORTETARJETALIMITECOMPRAADE, 
-    IMPORTETARJETALIMITE, 
-    TRIM(CODIGOPROBLEMATARJETA) AS CODIGOPROBLEMATARJETA,
-    TRIM(TELEFONO1) AS TELEFONO1,
-    TRIM(TELEFONO2) AS TELEFONO2,
-    TRIM(MARCAORIGENTARJETA) AS MARCAORIGENTARJETA,
-    TRIM(MARCAPLASTICO) AS MARCAPLASTICO,
-    TRIM(MARCATARJETASOSPECHOSA) AS MARCATARJETASOSPECHOSA,
-    TRIM(MARCATARJETAVENCIDA) AS MARCATARJETAVENCIDA,
-    TRIM(NOEMPLEADOCTAEMPRESA) AS NOEMPLEADOCTAEMPRESA,
-    TRIM(FILLER2) AS FILLER2,
-    LINEAENARCHIVO, 
-    TRIM(BINTARJETA) AS BINTARJETA,
-    TRIM(TARJETAIMPRIMIR) AS TARJETAIMPRIMIR,
-    TRIM(BINTARJETANUEVA) AS BINTARJETANUEVA,
-    TRIM(TARJETANUEVAIMPRIMIR) AS TARJETANUEVAIMPRIMIR,
-    TRIM(BINTARJETAANTERIOR) AS BINTARJETAANTERIOR,
-    TRIM(TARJETAANTERIORIMPRIMIR) AS TARJETAANTERIORIMPRIMIR,
-    TRIM(NOCUENTACLARO) AS NOCUENTACLARO
-FROM {ARCHIVO_ORIGEN} 
-
-
-
-
-
-y asi está el que debemos modificar:
-
-Id	Proceso	IdParametro	ValorParametro
-29	ECuotasPendientes	ConsultaOrigen	
-  SELECT
-    BANCOEMISOR,
-    NUMEROCUENTA,
-    NUMEROTARJETA,
-    CODIGOPRODUCTO,
-    CARTERA,
-    CODIGOOPERACION,
-    GRUPOMOVIMIENTOS,
-    CUOTAS,
-    PLANCUOTAS,
-    TASACOSTOFINANCIERO,
-    TIPOFINANCIACIONUSUARIO,
-    MONEDAORIGINALMOVIMIENTO,
-    IMPORTEORIGINALMOVIMIENTO,
-    MONEDALIQUIDAR,
-    IMPORTELIQUIDAR,
-    IMPORTETOTALPLAN,
-    IMPORTELIQUIDADOPLAN,
-    CUOTANUMERO,
-    CANTIDADCUOTASPLAN,
-    COSTOFINANCIERO,
-    COSTOFINANCIEROPLAN,
-    CASE 
-    WHEN FECHAORIGINALCUPON IS NULL 
-         OR FECHAORIGINALCUPON = '' 
-         OR FECHAORIGINALCUPON = '0000-00-00' 
-    THEN CHAR('1900-01-01')
-    ELSE CHAR(FECHAORIGINALCUPON) 
-	END AS FECHAORIGINALCUPON,
-	CASE 
-    WHEN FECHAPRESENTADOADQUIRENTE IS NULL 
-         OR FECHAPRESENTADOADQUIRENTE = '' 
-         OR FECHAPRESENTADOADQUIRENTE = '0000-00-00'
-    THEN CHAR('1900-01-01')
-    ELSE CHAR(FECHAPRESENTADOADQUIRENTE) 
-	END AS FECHAPRESENTADOADQUIRENTE,
-	CASE 
-    WHEN FECHAPRESENTADOVASA IS NULL 
-         OR FECHAPRESENTADOVASA = '' 
-         OR FECHAPRESENTADOVASA = '0000-00-00' 
-    THEN CHAR('1900-01-01')
-    ELSE CHAR(FECHAPRESENTADOVASA) 
-	END AS FECHAPRESENTADOVASA,
-	CASE 
-    WHEN FECHAPROCESO IS NULL 
-         OR FECHAPROCESO = '' 
-         OR FECHAPROCESO = '0000-00-00' 
-    THEN CHAR('1900-01-01')
-    ELSE CHAR(FECHAPROCESO) 
-	END AS FECHAPROCESO,
-    NUMEROCOMPROBANTE,
-    PLANCUOTACAPITALPEND,
-    MONTOCUOTA,
-    CODIGOTRANSACCION,
-    CODIGOTRANSACCIONRELACION,
-    FILLER1,
-    NOCUENTACLARO,
-    LINEAENARCHIVO
-    FROM {ARCHIVO_ORIGEN}
-
-
-
-Asi está en AS400 esa tabla:
-
-TABLE_CAT	TABLE_SCHEM	TABLE_NAME	COLUMN_NAME	DATA_TYPE	TYPE_NAME	COLUMN_SIZE	BUFFER_LENGTH	DECIMAL_DIGITS	NUM_PREC_RADIX	NULLABLE	REMARKS	COLUMN_DEF	SQL_DATA_TYPE	SQL_DATETIME_SUB	CHAR_OCTET_LENGTH	ORDINAL_POSITION	IS_NULLABLE	SCOPE_CATALOG	SCOPE_SCHEMA	SCOPE_TABLE	SOURCE_DATA_TYPE	IS_AUTOINCREMENT	IS_GENERATEDCOLUMN
-C70DD220	TCATV3DAT	CUOTPEND	BANCOEMISOR	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	1	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	NUMEROCUENTA	1	CHAR	13	13	(null)	(null)	0	(null)	' '	1	(null)	13	2	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	NUMEROTARJETA	1	CHAR	16	16	(null)	(null)	0	(null)	' '	1	(null)	16	3	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CODIGOPRODUCTO	1	CHAR	6	6	(null)	(null)	0	(null)	' '	1	(null)	6	4	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CARTERA	3	DECIMAL	2	4	0	10	0	(null)	0	3	(null)	(null)	5	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CODIGOOPERACION	1	CHAR	6	6	(null)	(null)	0	(null)	' '	1	(null)	6	6	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	GRUPOMOVIMIENTOS	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	7	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CUOTAS	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	8	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	PLANCUOTAS	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	9	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	TASACOSTOFINANCIERO	3	DECIMAL	6	8	4	10	0	(null)	0	3	(null)	(null)	10	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	TIPOFINANCIACIONUSUARIO	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	11	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	MONEDAORIGINALMOVIMIENTO	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	12	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	IMPORTEORIGINALMOVIMIENTO	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	13	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	MONEDALIQUIDAR	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	14	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	IMPORTELIQUIDAR	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	15	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	IMPORTETOTALPLAN	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	16	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	IMPORTELIQUIDADOPLAN	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	17	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CUOTANUMERO	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	18	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CANTIDADCUOTASPLAN	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	19	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	COSTOFINANCIERO	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	20	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	COSTOFINANCIEROPLAN	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	21	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	FECHAORIGINALCUPON	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	22	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	FECHAPRESENTADOADQUIRENTE	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	23	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	FECHAPRESENTADOVASA	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	24	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	FECHAPROCESO	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	25	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	NUMEROCOMPROBANTE	1	CHAR	8	8	(null)	(null)	0	(null)	' '	1	(null)	8	26	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	PLANCUOTACAPITALPEND	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	27	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	MONTOCUOTA	3	DECIMAL	13	15	2	10	0	(null)	0	3	(null)	(null)	28	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CODIGOTRANSACCION	1	CHAR	12	12	(null)	(null)	0	(null)	' '	1	(null)	12	29	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	CODIGOTRANSACCIONRELACION	1	CHAR	12	12	(null)	(null)	0	(null)	' '	1	(null)	12	30	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	FILLER1	1	CHAR	937	937	(null)	(null)	0	(null)	' '	1	(null)	937	31	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	NOCUENTACLARO	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	32	NO	(null)	(null)	(null)	(null)	NO	NO
-C70DD220	TCATV3DAT	CUOTPEND	LINEAENARCHIVO	3	DECIMAL	5	7	0	10	0	(null)	0	3	(null)	(null)	33	NO	(null)	(null)	(null)	(null)	NO	NO
-
-
-Dime que cosas se van a modificar
-Brindame el archivo script completo
-y dame la consulta completa
