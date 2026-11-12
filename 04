@@ -1,98 +1,81 @@
 USE [DescargaInformacionProcesador]
 GO
-/****** Object:  StoredProcedure [dbo].[sp_RegistraProceso]    Script Date: 12/11/2026 14:28:54 ******/
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
 GO
- ALTER PROCEDURE [dbo].[sp_RegistraProceso] 
-
+ALTER PROCEDURE [dbo].[sp_RegistraProceso]
   @Proceso NVARCHAR(100),
-
   @EstadoProceso NVARCHAR(5),
-
   @Mensaje NVARCHAR(500)
-
 AS
-
 BEGIN
-
     SET NOCOUNT ON;
- 
-	IF EXISTS(SELECT 1  FROM ParametrosDescargaTablas WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso' 
 
-          AND ValorParametro = 'true')
+    DECLARE @Hoy VARCHAR(10);
+    DECLARE @ModoReproceso BIT = 0;
 
-	BEGIN
+    IF EXISTS (SELECT 1 FROM ParametrosDescargaTablas
+               WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso'
+                 AND ValorParametro = 'true')
+        SET @ModoReproceso = 1;
 
-		RETURN;
-
-	END
- 
-    -- Registrar proceso en ParametrosEjecucionDescarga
-
-    DECLARE @Hoy VARCHAR(10) = CONVERT(VARCHAR(10), GETDATE() -1, 23); -- YYYY-MM-DD
- 
-	IF EXISTS(SELECT 1 FROM ParametrosEjecucionDescarga 
-
-	WHERE Proceso = @Proceso AND FechaProceso = @Hoy)
-
-	BEGIN
-
-	PRINT 'YA EXISTE REGISTRO'
-
-	END
-
-	ELSE
-
-	BEGIN
-
-		INSERT INTO ParametrosEjecucionDescarga (Proceso, FechaProceso, EstadoProceso, Mensaje)
-
-		VALUES (@Proceso, @Hoy, @EstadoProceso, @Mensaje);
-
-	END
- 
- 
-    IF EXISTS (
-
-        SELECT 1 
-
-        FROM ParametrosDescargaTablas 
-
-        WHERE Proceso = 'General'
-
-          AND IdParametro = 'FechaProceso' 
-
-          AND ValorParametro = @Hoy
-
-    )
-
+    IF @ModoReproceso = 1
     BEGIN
+        -- En reproceso se registra con la fecha que se esta reprocesando
+        -- (la que se coloco manualmente en General.FechaProceso)
+        SELECT @Hoy = CONVERT(VARCHAR(10), TRY_CONVERT(DATE, LTRIM(RTRIM(ValorParametro)), 23), 23)
+        FROM ParametrosDescargaTablas
+        WHERE Proceso = 'General' AND IdParametro = 'FechaProceso';
 
-        PRINT 'La fecha ya está registrada, no se actualiza.';
+        IF @Hoy IS NULL
+            SET @Hoy = CONVERT(VARCHAR(10), GETDATE() - 1, 23);
 
+        SET @Mensaje = LEFT(N'[REPROCESO] ' + @Mensaje, 500);
+
+        IF NOT EXISTS (SELECT 1 FROM ParametrosEjecucionDescarga
+                       WHERE Proceso = @Proceso AND FechaProceso = @Hoy)
+        BEGIN
+            INSERT INTO ParametrosEjecucionDescarga (Proceso, FechaProceso, EstadoProceso, Mensaje)
+            VALUES (@Proceso, @Hoy, @EstadoProceso, @Mensaje);
+        END
+        ELSE IF @EstadoProceso IN ('E', 'F')
+        BEGIN
+            -- La fecha ya tenia registro (de la corrida original): se actualiza con el resultado del reproceso
+            UPDATE ParametrosEjecucionDescarga
+            SET EstadoProceso = @EstadoProceso,
+                Mensaje       = @Mensaje
+            WHERE Proceso = @Proceso AND FechaProceso = @Hoy;
+        END
+
+        -- En reproceso NO se toca General.FechaProceso
+        RETURN;
     END
 
+    -- ===== Ejecucion normal: igual que antes =====
+    SET @Hoy = CONVERT(VARCHAR(10), GETDATE() - 1, 23); -- YYYY-MM-DD
+
+    IF EXISTS (SELECT 1 FROM ParametrosEjecucionDescarga
+               WHERE Proceso = @Proceso AND FechaProceso = @Hoy)
+    BEGIN
+        PRINT 'YA EXISTE REGISTRO'
+    END
     ELSE
-
     BEGIN
-
-        UPDATE ParametrosDescargaTablas
-
-        SET ValorParametro = @Hoy
-
-        WHERE Proceso = 'General'
-
-          AND IdParametro = 'FechaProceso';
-
+        INSERT INTO ParametrosEjecucionDescarga (Proceso, FechaProceso, EstadoProceso, Mensaje)
+        VALUES (@Proceso, @Hoy, @EstadoProceso, @Mensaje);
     END
 
+    IF EXISTS (SELECT 1 FROM ParametrosDescargaTablas
+               WHERE Proceso = 'General' AND IdParametro = 'FechaProceso' AND ValorParametro = @Hoy)
+    BEGIN
+        PRINT 'La fecha ya está registrada, no se actualiza.';
+    END
+    ELSE
+    BEGIN
+        UPDATE ParametrosDescargaTablas
+        SET ValorParametro = @Hoy
+        WHERE Proceso = 'General' AND IdParametro = 'FechaProceso';
+    END
 END
-
-
-
-
-
-
-
+GO
