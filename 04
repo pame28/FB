@@ -1,3 +1,56 @@
-SELECT Proceso, IdParametro, ValorParametro
-FROM ParametrosDescargaTablas
-WHERE IdParametro = 'RegistroProceso';
+Id	Proceso	IdParametro	ValorParametro
+1	General	ArchivoControl	TCATV3DAT.TCCTRARC
+4	General	EstadoInicial	G
+6	General	ConsultaEstado	SELECT ESTADO_REGISTRO FROM {ARCHIVO_CONTROL} WHERE FECHA_GENERACION = {FECHA_GENERACION} AND ESTADO_REGISTRO = {ESTADO_INICIAL} AND ARCHIVO_GENERADO = {ARCHIVO_GENERADO}
+9	General	PreParseo	usp_PreParseoNP
+10	General	PostParseo	usp_PostParseoNP
+11	General	EstadoFinal	F
+12	General	ConsultaActualizar	UPDATE {ARCHIVO_CONTROL} SET ESTADO_REGISTRO = {ESTADO_FINAL}, FECHA_PROCESADO = {FECHA_PROCESADO}, HORA_PROCESADO = {HORA_PROCESADO}, USUARIO_PROCESO = {USER} WHERE FECHA_GENERACION = {FECHA_GENERACION} AND ESTADO_REGISTRO = {ESTADO_INICIAL} AND ARCHIVO_GENERADO = {ARCHIVO_GENERADO}
+13	General	CantidadReintentos	3
+14	General	MinutosReintentos	1
+43	General	FechaProceso	2026-11-12
+44	General	RegistroProceso	sp_ActualizaProceso
+77	General	MailFrom	notificacionmodelosliqpu@banpais.hn
+78	General	MailTo	pamelas@banpais.hn;carlosen@banpais.hn;mirianm@banpais.hn
+79	General	MailSubject	Alerta de diferencias en ModelosLiquidacion Pruebas Procesador
+80	General	MailServer	PU-MAILSERVBP
+45	General	Usuario	BANPAIS
+83	General	TimeoutSegundos	3600
+91	General	SegundosTimeoutSql	1900
+92	General	SegundosTimeoutAs400	1900
+93	General	TamanoLote	15000
+94	General	LogCadaFilas	30000
+95	General	LogDetallado	true
+96	General	BulkTableLock	false
+97	General	ModoReproceso	true
+
+
+
+
+
+Id	Proceso	IdParametro	ValorParametro
+1	General	ArchivoControl	TCATV3DAT.TCCTRARC
+4	General	EstadoInicial	G
+6	General	ConsultaEstado	SELECT ESTADO_REGISTRO FROM {ARCHIVO_CONTROL} WHERE FECHA_GENERACION = {FECHA_GENERACION} AND ESTADO_REGISTRO = {ESTADO_INICIAL} AND ARCHIVO_GENERADO = {ARCHIVO_GENERADO}
+9	General	PreParseo	usp_PreParseoNP
+10	General	PostParseo	usp_PostParseoNP
+11	General	EstadoFinal	F
+12	General	ConsultaActualizar	UPDATE {ARCHIVO_CONTROL} SET ESTADO_REGISTRO = {ESTADO_FINAL}, FECHA_PROCESADO = {FECHA_PROCESADO}, HORA_PROCESADO = {HORA_PROCESADO}, USUARIO_PROCESO = {USER} WHERE FECHA_GENERACION = {FECHA_GENERACION} AND ESTADO_REGISTRO = {ESTADO_INICIAL} AND ARCHIVO_GENERADO = {ARCHIVO_GENERADO}
+13	General	CantidadReintentos	3
+14	General	MinutosReintentos	1
+43	General	FechaProceso	2026-11-06
+44	General	RegistroProceso	sp_ActualizaProceso
+77	General	MailFrom	pamelas@banpais.hn;carlosen@banpais.hn;mirianm@banpais.hn
+78	General	MailTo	carlosad@banpais.hn;carlosen@banpais.hn
+79	General	MailSubject	Alerta de diferencias en ModelosLiquidacion Pruebas Procesador
+80	General	MailServer	PU-MAILSERVBP
+1081	General	SegundosTimeoutSql	1900
+1082	General	SegundosTimeoutAs400	1900
+1083	General	TamanoLote	15000
+1084	General	LogCadaFilas	30000
+1085	General	LogDetallado	true
+1086	General	BulkTableLock	false
+1087	General	ModoReproceso	true
+45	General	Usuario	BANPAIS
+
+
