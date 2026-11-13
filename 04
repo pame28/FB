@@ -1,21 +1,10 @@
 USE HistoricoVASATC;
 
-SELECT fg.name AS FileGroup,
-       df.name AS Archivo,
-       df.physical_name,
-       df.size * 8 / 1024 AS TamanoMB,
-       FILEPROPERTY(df.name, 'SpaceUsed') * 8 / 1024 AS UsadoMB,
-       CASE df.max_size WHEN -1 THEN 'Ilimitado'
-                        WHEN 0  THEN 'Sin crecimiento'
-                        ELSE CAST(df.max_size * 8 / 1024 AS VARCHAR(20)) END AS MaximoMB,
-       CASE df.is_percent_growth WHEN 1 THEN CAST(df.growth AS VARCHAR(10)) + '%'
-                                 ELSE CAST(df.growth * 8 / 1024 AS VARCHAR(10)) + ' MB' END AS Crecimiento
-FROM sys.database_files df
-JOIN sys.filegroups fg ON fg.data_space_id = df.data_space_id
-WHERE fg.name = 'FGUsuarios2023';
-
--- Espacio libre en el disco donde estan los archivos
-SELECT DISTINCT vs.volume_mount_point,
-       vs.available_bytes / 1024 / 1024 AS LibreMB
-FROM sys.database_files df
-CROSS APPLY sys.dm_os_volume_stats(DB_ID(), df.file_id) vs;
+DECLARE @filas INT = 1;
+WHILE @filas > 0
+BEGIN
+    DELETE TOP (50000) FROM dbo.EUsuarios
+    WHERE FechaProceso < '2026-01-01';
+    SET @filas = @@ROWCOUNT;
+    CHECKPOINT;   -- en recuperacion SIMPLE libera el log entre bloques
+END
