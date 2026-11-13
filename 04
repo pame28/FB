@@ -1,4 +1,49 @@
-EXEC sp_RegistraProceso  'PruebaSP', 'I', 'Proceso Iniciado';
-EXEC sp_ActualizaProceso 'PruebaSP', 'E', 'Fin OK';
-SELECT * FROM ParametrosEjecucionDescarga WHERE Proceso = 'PruebaSP';
-DELETE FROM ParametrosEjecucionDescarga WHERE Proceso = 'PruebaSP';
+ALTER PROCEDURE [dbo].[sp_RegistraProceso]
+  @Proceso NVARCHAR(100),
+  @EstadoProceso NVARCHAR(5),
+  @Mensaje NVARCHAR(500)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @Hoy VARCHAR(10);
+    DECLARE @ModoReproceso BIT = 0;
+
+    IF EXISTS (SELECT 1 FROM ParametrosDescargaTablas
+               WHERE Proceso = 'General' AND IdParametro = 'ModoReproceso'
+                 AND ValorParametro = 'true')
+        SET @ModoReproceso = 1;
+
+    IF @ModoReproceso = 1
+    BEGIN
+        -- Reproceso: misma fecha que usa sp_ActualizaProceso (General.FechaProceso)
+        SELECT @Hoy = LTRIM(RTRIM(ValorParametro))
+        FROM ParametrosDescargaTablas
+        WHERE Proceso = 'General' AND IdParametro = 'FechaProceso';
+    END
+    ELSE
+        SET @Hoy = CONVERT(VARCHAR(10), GETDATE() - 1, 23); -- YYYY-MM-DD
+
+    -- Solo inserta; las actualizaciones las hace sp_ActualizaProceso
+    IF NOT EXISTS (SELECT 1 FROM ParametrosEjecucionDescarga
+                   WHERE Proceso = @Proceso AND FechaProceso = @Hoy)
+    BEGIN
+        INSERT INTO ParametrosEjecucionDescarga (Proceso, FechaProceso, EstadoProceso, Mensaje)
+        VALUES (@Proceso, @Hoy, @EstadoProceso, @Mensaje);
+    END
+    ELSE
+        PRINT 'YA EXISTE REGISTRO';
+
+    -- En reproceso no se toca General.FechaProceso
+    IF @ModoReproceso = 1
+        RETURN;
+
+    IF NOT EXISTS (SELECT 1 FROM ParametrosDescargaTablas
+                   WHERE Proceso = 'General' AND IdParametro = 'FechaProceso'
+                     AND ValorParametro = @Hoy)
+    BEGIN
+        UPDATE ParametrosDescargaTablas
+        SET ValorParametro = @Hoy
+        WHERE Proceso = 'General' AND IdParametro = 'FechaProceso';
+    END
+END
