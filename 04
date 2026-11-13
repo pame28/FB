@@ -1,10 +1,886 @@
-USE HistoricoVASATC;
+using Microsoft.SqlServer.Dts.Runtime;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.OleDb;
+using System.Data.SqlClient;
+using System.Diagnostics;
+using System.Globalization;
+using System.Threading;
 
-DECLARE @filas INT = 1;
-WHILE @filas > 0
-BEGIN
-    DELETE TOP (50000) FROM dbo.EUsuarios
-    WHERE FechaProceso < '2026-01-01';
-    SET @filas = @@ROWCOUNT;
-    CHECKPOINT;   -- en recuperacion SIMPLE libera el log entre bloques
-END
+
+namespace ST_889e93843e6a41799ada64a68533427e
+{
+	[Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPointAttribute]
+	public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
+	{
+		#region Constantes
+		private const string NombreProceso = "EMaestroFiadores";
+		private const string EstadoGenerado = "G";      // estado que AS400 debe tener antes de descargar
+
+		// Estados que se envian al SP de registro.
+		private const string LogInfo = "I";
+		private const string LogError = "F";
+		private const string LogExito = "E";
+
+		private const int MaxLongitudMensaje = 500;
+		private const string FormatoFecha = "yyyy-MM-dd";
+
+		// Cada registro de AS400 trae hasta 3 fiadores; cada fiador con nombre genera una fila destino.
+		private const int ColumnasOrigen = 24;          // columnas que devuelve la consulta de AS400 (0..23)
+		private const int ColumnasDestino = 41;         // columnas de la tabla destino
+		private const int CantidadFiadores = 3;
+
+		// Replica del comportamiento del proceso anterior (validar con negocio antes de cambiarlo):
+		// - El proceso anterior validaba el nombre SIN trim; un CHAR(40) vacio llega con espacios y no es "vacio",
+		//   por lo que se insertaban los 3 fiadores aunque no tuvieran nombre.
+		private static readonly bool IncluirFiadoresSinNombre = true;
+
+		// Posiciones en la consulta de AS400
+		private const int OrgNoUsuario = 1;
+		private const int OrgPrimerFiador = 2;          // NOMBREFIADOR1
+		private const int OrgCamposPorFiador = 7;       // nombre, cedula, dir, dir_2, dir_3, tel_1, tel_2
+		private const int OrgNoCuentaClaro = 23;
+
+		// Posiciones en la tabla destino
+		private const int DesNoUsuario = 0;
+		private const int DesOrdenFiador = 1;
+		private const int DesNombreApellido = 4;
+		private const int DesNoDocumento = 7;
+		private const int DesFechaProceso = 10;
+		private const int DesDomicilioParticular1 = 13;
+		private const int DesDomicilioParticular2 = 15;
+		private const int DesDomicilioParticular3 = 16;
+		private const int DesTelefono = 22;
+		private const int DesTelefonoLaboral = 35;
+		private const int DesNoCuentaClaro = 37;
+		private const int DesLarId = 38;
+		private const string ProcesadorOrigen = "LOCAL";
+		#endregion
+
+		#region Estado del proceso
+		private readonly Dictionary<string, string> parametros = new Dictionary<string, string>();
+		private readonly Stopwatch _swTotal = Stopwatch.StartNew();
+
+		private string _fechaGeneracion = string.Empty;
+		private string _sqlConsultaEstado = string.Empty;
+		private string _sqlConsultaOrigen = string.Empty;
+		private string _sqlConsultaActualizar = string.Empty;
+
+		// Configuracion
+		private int _timeoutSql = 1800;
+		private int _timeoutAs400 = 1800;
+		private int _tamanoLote = 10000;
+		private int _logCadaFilas = 50000;
+		private bool _logDetallado = true;
+		private bool _bulkTableLock = false;
+		private object _larId = DBNull.Value;     // el proceso anterior lo enviaba NULL; parametro LarId opcional
+		private DateTime _fechaCarga;              // FechaProceso de las filas (antes DateTime.Now)
+		private long _ordenFiador = 1;             // contador de OrdenFiador (ver AgregarFiadores)
+		private bool _sinRegistrosEsExito = false;
+
+		private bool _sinRegistros = false;
+
+		// Para trazabilidad en caso de error
+		private string _fase = string.Empty;
+		private long _filasLeidas = 0;
+		private long _filasInsertadas = 0;
+		private long _ticksLectura = 0;      // tiempo acumulado leyendo de AS400
+		private long _ticksConversion = 0;   // tiempo acumulado convirtiendo filas
+		private long _ticksBulk = 0;         // tiempo acumulado en SqlBulkCopy.WriteToServer
+		private string _ultimoError = null;
+		#endregion
+
+		public void Main()
+		{
+			bool ok = false;
+
+			try
+			{
+				ok = Ejecutar();
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Error no controlado en el script", ex);
+			}
+
+			if (!ok)
+			{
+				Dts.Events.FireError(0, NombreProceso, _ultimoError ?? "El proceso termino con error.", "", 0);
+			}
+
+			Dts.TaskResult = (int)(ok ? ScriptResults.Success : ScriptResults.Failure);
+		}
+
+		private bool Ejecutar()
+		{
+			if (!ObtieneParametros())
+				return false;
+
+			if (!ValidarParametros())
+				return false;
+
+			CargarConfiguracion();
+			_fechaGeneracion = parametros["FechaProceso"];
+			ParseaConsultas();
+
+			Info("Inicio proceso. FechaProceso=" + _fechaGeneracion + ", Archivo=" + parametros["NombreArchivo"] +
+				 ", TamanoLote=" + _tamanoLote + ", TimeoutSql=" + _timeoutSql + "s, TimeoutAs400=" + _timeoutAs400 + "s");
+
+			string estadoProceso = ObtenerEstadoProceso();
+			if (estadoProceso == null)
+				return false;
+
+			Info("Estado en AS400: '" + estadoProceso + "' (inicial esperado: '" + parametros["EstadoInicial"] + "')");
+
+			if (estadoProceso != parametros["EstadoInicial"])
+				return RealizarReintento(estadoProceso);
+
+			return RealizarMovimiento();
+		}
+
+		#region Flujo principal
+		private bool RealizarMovimiento()
+		{
+			if (!ExtraerYCargar())
+				return false;
+
+			if (_sinRegistros)
+			{
+				// Comportamiento anterior de ECuotasPendientes: sin datos se marca el archivo en AS400 y termina OK.
+				if (!UpdateArchivoAS400())
+					return false;
+
+				Log(LogExito, "Proceso finalizado sin registros en AS400 para el dia " + _fechaGeneracion);
+				return true;
+			}
+
+			if (!EjecutarSpConArchivo("PostParseo"))
+				return false;
+
+			if (!UpdateArchivoAS400())
+				return false;
+
+			Log(LogExito, "Proceso ejecutado exitosamente. Filas cargadas: " + _filasInsertadas.ToString("N0"));
+			return true;
+		}
+
+		/// <summary>
+		/// Lee de AS400 e inserta en SQL Server por lotes con SqlBulkCopy.
+		/// </summary>
+		private bool ExtraerYCargar()
+		{
+			Stopwatch sw = Stopwatch.StartNew();
+			_fase = "conectando a AS400";
+			_filasLeidas = 0;
+			_filasInsertadas = 0;
+			_sinRegistros = false;
+
+			ConnectionManager cmAs400 = Dts.Connections["AS400"];
+			OleDbConnection connAs400 = null;
+
+			try
+			{
+				connAs400 = Adquirir<OleDbConnection>(cmAs400);
+
+				using (IDbCommand cmd = connAs400.CreateCommand())
+				{
+					cmd.CommandText = _sqlConsultaOrigen;
+					cmd.CommandTimeout = _timeoutAs400;
+
+					_fase = "ejecutando consulta de origen en AS400";
+					Info("Ejecutando consulta de origen en AS400: " + parametros["ArchiviOrigen"]);
+
+					using (IDataReader reader = cmd.ExecuteReader())
+					{
+						if (reader.FieldCount < ColumnasOrigen)
+							throw new InvalidOperationException("La consulta de origen devolvio " + reader.FieldCount +
+								" columnas y se esperaban " + ColumnasOrigen + ".");
+
+						// Se lee la primera fila ANTES del PreParseo: si AS400 no trae datos no se limpia la tabla destino.
+						_fase = "leyendo primer registro de AS400";
+						if (!reader.Read())
+						{
+							if (_sinRegistrosEsExito)
+							{
+								Info("No se encontraron registros en AS400 para el dia " + _fechaGeneracion + " (SinRegistrosEsExito=true)");
+								_sinRegistros = true;
+								return true;
+							}
+
+							Log(LogError, "No se encontraron registros en AS400 para el dia " + _fechaGeneracion);
+							return false;
+						}
+
+						Info("AS400 respondio el primer registro en " + Fmt(sw));
+
+						if (!EjecutarSpConArchivo("PreParseo"))
+							return false;
+
+						CargarLotes(reader);
+					}
+				}
+
+				Info("Extraccion y carga finalizadas: " + _filasInsertadas.ToString("N0") + " filas en " + Fmt(sw));
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo " + _fase + " (filas leidas=" + _filasLeidas.ToString("N0") +
+						 ", insertadas=" + _filasInsertadas.ToString("N0") + ", transcurrido " + Fmt(sw) + ")", ex);
+				return false;
+			}
+			finally
+			{
+				if (connAs400 != null)
+					cmAs400.ReleaseConnection(connAs400);
+			}
+		}
+
+		private void CargarLotes(IDataReader reader)
+		{
+			Stopwatch swCarga = Stopwatch.StartNew();
+			ConnectionManager cmSql = Dts.Connections["BANDEJAVASA"];
+			SqlConnection connSql = null;
+
+			DataTable lote = CrearTablaLote();
+			object[] buffer = new object[reader.FieldCount];
+			object[] fila = new object[ColumnasDestino];
+			long proximoLog = _logCadaFilas;
+			_fechaCarga = DateTime.Now;
+			_ordenFiador = 1;
+
+			try
+			{
+				_fase = "conectando a SQL Server (BANDEJAVASA)";
+				connSql = Adquirir<SqlConnection>(cmSql);
+
+				SqlBulkCopyOptions opciones = _bulkTableLock ? SqlBulkCopyOptions.TableLock : SqlBulkCopyOptions.Default;
+
+				using (SqlBulkCopy bulk = new SqlBulkCopy(connSql, opciones, null))
+				{
+					bulk.DestinationTableName = parametros["ArchivoDestino"];
+					bulk.BulkCopyTimeout = _timeoutSql;
+
+					Info("Iniciando bulk insert hacia " + parametros["ArchivoDestino"]);
+
+					do
+					{
+						_fase = "leyendo AS400";
+						long t0 = Stopwatch.GetTimestamp();
+						reader.GetValues(buffer);
+						long t1 = Stopwatch.GetTimestamp();
+
+						_fase = "convirtiendo registro " + (_filasLeidas + 1).ToString("N0");
+						AgregarFiadores(buffer, fila, lote);
+
+						_ticksLectura += t1 - t0;
+						_ticksConversion += Stopwatch.GetTimestamp() - t1;
+						_filasLeidas++;
+
+						if (lote.Rows.Count >= _tamanoLote)
+						{
+							EscribirLote(bulk, lote);
+
+							if (_filasInsertadas >= proximoLog)
+							{
+								Info("Avance: " + _filasInsertadas.ToString("N0") + " filas insertadas en " + Fmt(swCarga) +
+									 " | " + ResumenTiempos());
+								proximoLog += _logCadaFilas;
+							}
+						}
+
+						_fase = "leyendo AS400";
+					}
+					while (LeerFila(reader));
+
+					if (lote.Rows.Count > 0)
+						EscribirLote(bulk, lote);
+				}
+
+				double segundos = Math.Max(1.0, swCarga.Elapsed.TotalSeconds);
+				Info("Bulk insert terminado: " + _filasInsertadas.ToString("N0") + " fiadores de " + _filasLeidas.ToString("N0") +
+					 " registros AS400 en " + Fmt(swCarga) +
+					 " (~" + ((long)(_filasInsertadas / segundos)).ToString("N0") + " filas/seg) | " + ResumenTiempos());
+			}
+			finally
+			{
+				if (connSql != null)
+					cmSql.ReleaseConnection(connSql);
+			}
+		}
+
+		private void EscribirLote(SqlBulkCopy bulk, DataTable lote)
+		{
+			_fase = "bulk insert";
+			int filas = lote.Rows.Count;
+
+			long t0 = Stopwatch.GetTimestamp();
+			bulk.WriteToServer(lote);
+			_ticksBulk += Stopwatch.GetTimestamp() - t0;
+
+			_filasInsertadas += filas;
+			lote.Clear();
+		}
+
+		// Read() con medicion de tiempo (cuanto espera el script a que AS400 entregue la siguiente fila).
+		private bool LeerFila(IDataReader reader)
+		{
+			long t0 = Stopwatch.GetTimestamp();
+			bool hayFila = reader.Read();
+			_ticksLectura += Stopwatch.GetTimestamp() - t0;
+			return hayFila;
+		}
+
+		private string ResumenTiempos()
+		{
+			return "lectura AS400=" + FmtTicks(_ticksLectura) + ", conversion=" + FmtTicks(_ticksConversion) +
+				   ", bulk SQL=" + FmtTicks(_ticksBulk);
+		}
+
+		private static string FmtTicks(long ticks)
+		{
+			return TimeSpan.FromSeconds(ticks / (double)Stopwatch.Frequency).ToString(@"hh\:mm\:ss");
+		}
+
+		/// <summary>
+		/// Espera mientras el AS400 coloca la informacion del archivo si este no ha sido generado a la hora de ejecucion del proceso
+		/// </summary>
+		private bool RealizarReintento(string estadoProceso)
+		{
+			int cantidad = ParamInt("CantidadReintentos", 0);
+			int minutos = ParamInt("MinutosReintentos", 1);
+			int intento = 0;
+
+			while (estadoProceso != EstadoGenerado && intento < cantidad)
+			{
+				intento++;
+				Info("Estado '" + estadoProceso + "' distinto de '" + EstadoGenerado + "'. Reintento " + intento + "/" + cantidad +
+					 ", esperando " + minutos + " min.");
+
+				Thread.Sleep(TimeSpan.FromMinutes(minutos));
+				estadoProceso = ObtenerEstadoProceso();
+				if (estadoProceso == null)
+					return false;
+			}
+
+			if (estadoProceso == EstadoGenerado)
+			{
+				Info("Estado '" + EstadoGenerado + "' detectado tras " + intento + " reintento(s). Iniciando movimiento.");
+				return RealizarMovimiento();
+			}
+
+			Log(LogError, "Fallo reintentos: " + cantidad + " intentos de " + minutos + " min c/u, no se actualizo estado " +
+						  EstadoGenerado + " en AS400 (ultimo estado: '" + estadoProceso + "')");
+			return false;
+		}
+		#endregion
+
+		#region Parametros y consultas
+		private bool ObtieneParametros()
+		{
+			ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+			SqlConnection conn = null;
+
+			try
+			{
+				conn = Adquirir<SqlConnection>(cm);
+
+				using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+				{
+					cmd.CommandType = CommandType.StoredProcedure;
+					cmd.CommandTimeout = 120;
+					cmd.Parameters.Add(new SqlParameter("@Proceso", NombreProceso));
+
+					using (SqlDataReader reader = cmd.ExecuteReader())
+					{
+						while (reader.Read())
+						{
+							string idParametro = reader["IdParametro"].ToString();
+							string valorParametro = reader["ValorParametro"].ToString();
+
+							if (!parametros.ContainsKey(idParametro))
+								parametros.Add(idParametro, valorParametro);
+						}
+					}
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo obtener informacion desde usp_GetParametersByProcess", ex);
+				return false;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		private bool ValidarParametros()
+		{
+			string[] requeridos =
+			{
+				"FechaProceso", "EstadoInicial", "EstadoFinal", "ArchivoControl", "ArchivoGenerado",
+				"ArchiviOrigen",
+				"ConsultaEstado", "ConsultaOrigen", "ConsultaActualizar", "Usuario",
+				"PreParseo", "PostParseo", "NombreArchivo", "ArchivoDestino", "SegundosTimeoutSql"
+				,"SegundosTimeoutAs400"
+				,"TamanoLote"
+				,"LogCadaFilas"
+				,"LogDetallado"
+				,"BulkTableLock"
+			};
+
+			List<string> faltantes = new List<string>();
+			foreach (string clave in requeridos)
+			{
+				string valor;
+				if (!parametros.TryGetValue(clave, out valor) || string.IsNullOrWhiteSpace(valor))
+					faltantes.Add(clave);
+			}
+
+			if (faltantes.Count > 0)
+			{
+				Log(LogError, "Faltan parametros requeridos: " + string.Join(", ", faltantes));
+				return false;
+			}
+
+			string sp;
+			if (!parametros.TryGetValue("RegistroProceso", out sp) || string.IsNullOrWhiteSpace(sp))
+				Dts.Events.FireWarning(0, NombreProceso, "Parametro RegistroProceso no definido: no se registrara en la BD.", "", 0);
+
+			return true;
+		}
+
+		private void CargarConfiguracion()
+		{
+			_timeoutSql = ParamInt("SegundosTimeoutSql", 1800);
+			_timeoutAs400 = ParamInt("SegundosTimeoutAs400", 1800);
+			_tamanoLote = Math.Max(1, ParamInt("TamanoLote", 10000));
+			_logCadaFilas = Math.Max(1, ParamInt("LogCadaFilas", 50000));
+			_logDetallado = ParamBool("LogDetallado", true);
+			_bulkTableLock = ParamBool("BulkTableLock", false);
+			int larId;
+			string textoLarId;
+			_larId = parametros.TryGetValue("LarId", out textoLarId) && int.TryParse(textoLarId, out larId)
+				? (object)larId : DBNull.Value;
+			_sinRegistrosEsExito = ParamBool("SinRegistrosEsExito", false);
+		}
+
+		private int ParamInt(string clave, int porDefecto)
+		{
+			string texto;
+			int valor;
+			if (parametros.TryGetValue(clave, out texto) && int.TryParse(texto, out valor) && valor >= 0)
+				return valor;
+			return porDefecto;
+		}
+
+		private bool ParamBool(string clave, bool porDefecto)
+		{
+			string texto;
+			if (!parametros.TryGetValue(clave, out texto) || string.IsNullOrWhiteSpace(texto))
+				return porDefecto;
+
+			texto = texto.Trim();
+			return texto == "1" || texto.Equals("true", StringComparison.OrdinalIgnoreCase) || texto.Equals("S", StringComparison.OrdinalIgnoreCase);
+		}
+
+		private void ParseaConsultas()
+		{
+			string hora = DateTime.Now.ToString("HHmmss");
+			string fecha = DateTime.Now.ToString(FormatoFecha);
+
+			_sqlConsultaEstado = parametros["ConsultaEstado"]
+				.Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+				.Replace("{FECHA_GENERACION}", "'" + _fechaGeneracion + "'")
+				.Replace("{ESTADO_INICIAL}", "'" + parametros["EstadoInicial"] + "'")
+				.Replace("{ARCHIVO_GENERADO}", "'" + parametros["ArchivoGenerado"] + "'");
+
+			_sqlConsultaOrigen = parametros["ConsultaOrigen"]
+				.Replace("{ARCHIVO_ORIGEN}", parametros["ArchiviOrigen"]);
+
+			_sqlConsultaActualizar = parametros["ConsultaActualizar"]
+				.Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+				.Replace("{ESTADO_FINAL}", "'" + parametros["EstadoFinal"] + "'")
+				.Replace("{FECHA_PROCESADO}", "'" + fecha + "'")
+				.Replace("{HORA_PROCESADO}", "'" + hora + "'")
+				.Replace("{USER}", "'" + parametros["Usuario"] + "'")
+				.Replace("{FECHA_GENERACION}", "'" + _fechaGeneracion + "'")
+				.Replace("{ESTADO_INICIAL}", "'" + parametros["EstadoInicial"] + "'")
+				.Replace("{ARCHIVO_GENERADO}", "'" + parametros["ArchivoGenerado"] + "'");
+		}
+		#endregion
+
+		#region Acceso a AS400 / SQL Server
+		private string ObtenerEstadoProceso()
+		{
+			ConnectionManager cm = Dts.Connections["AS400"];
+			OleDbConnection conn = null;
+
+			try
+			{
+				conn = Adquirir<OleDbConnection>(cm);
+
+				using (IDbCommand cmd = conn.CreateCommand())
+				{
+					cmd.CommandText = _sqlConsultaEstado;
+					cmd.CommandTimeout = _timeoutAs400;
+
+					string estado = string.Empty;
+					using (IDataReader reader = cmd.ExecuteReader())
+					{
+						while (reader.Read())
+							estado = Convert.ToString(reader.GetValue(0)).Trim();
+					}
+					return estado;
+				}
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo obtener estado proceso. Consulta: " + _sqlConsultaEstado, ex);
+				return null;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		/// <summary>Ejecuta el SP PreParseo o PostParseo</summary>
+		private bool EjecutarSpConArchivo(string claveParametro)
+		{
+			Stopwatch sw = Stopwatch.StartNew();
+			ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
+			SqlConnection conn = null;
+
+			try
+			{
+				Info("Inicia " + claveParametro + " (" + parametros[claveParametro] + ") @Archivo=" + parametros["NombreArchivo"]);
+
+				conn = Adquirir<SqlConnection>(cm);
+
+				using (SqlCommand cmd = new SqlCommand(parametros[claveParametro], conn))
+				{
+					cmd.CommandType = CommandType.StoredProcedure;
+					cmd.CommandTimeout = _timeoutSql;
+					cmd.Parameters.Add(new SqlParameter("@Archivo", parametros["NombreArchivo"]));
+					cmd.ExecuteNonQuery();
+				}
+
+				Info("Finaliza " + claveParametro + " en " + Fmt(sw));
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo " + claveParametro + " " + parametros["NombreArchivo"] + " (tras " + Fmt(sw) + ")", ex);
+				return false;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		private bool UpdateArchivoAS400()
+		{
+			Stopwatch sw = Stopwatch.StartNew();
+			ConnectionManager cm = Dts.Connections["AS400"];
+			OleDbConnection conn = null;
+
+			try
+			{
+				Info("Actualizando estado del archivo de control en AS400: " + parametros["ArchivoControl"]);
+
+				conn = Adquirir<OleDbConnection>(cm);
+
+				using (IDbCommand cmd = conn.CreateCommand())
+				{
+					cmd.CommandText = _sqlConsultaActualizar;
+					cmd.CommandTimeout = _timeoutAs400;
+					int filas = cmd.ExecuteNonQuery();
+
+					if (filas == 0)
+					{
+						Log(LogError, "La actualizacion de estado en AS400 no afecto registros: " + parametros["ArchivoControl"]);
+						return false;
+					}
+
+					Info("Estado actualizado en AS400 (" + filas + " fila(s)) en " + Fmt(sw));
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				ErrorLog("Fallo actualizar estado archivo: " + parametros["ArchivoControl"], ex);
+				return false;
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+
+		private static T Adquirir<T>(ConnectionManager cm) where T : class
+		{
+			T conexion = cm.AcquireConnection(null) as T;
+			if (conexion == null)
+				throw new InvalidOperationException("No se pudo obtener la conexion '" + cm.Name + "' desde el Connection Manager.");
+			return conexion;
+		}
+		#endregion
+
+		#region Transformacion de filas
+		/// <summary>
+		/// Un registro de FIADORES trae hasta 3 fiadores; cada uno genera una fila destino.
+		/// OrdenFiador replica EXACTAMENTE el proceso anterior: un contador unico para toda la ejecucion
+		/// que sube despues del fiador 1 y del fiador 2, pero no despues del fiador 3.
+		/// Resultado: registro 1 -> 1,2,3 | registro 2 -> 3,4,5 | registro 3 -> 5,6,7 ...
+		/// El TRIM ya viene resuelto desde la consulta de AS400.
+		/// </summary>
+		private void AgregarFiadores(object[] origen, object[] destino, DataTable lote)
+		{
+			for (int f = 0; f < CantidadFiadores; f++)
+			{
+				int b = OrgPrimerFiador + f * OrgCamposPorFiador;
+				string nombre = Texto(origen[b]);
+
+				if (IncluirFiadoresSinNombre || nombre.Length > 0)
+				{
+					// Columnas que no vienen de AS400 quedan NULL, igual que en el proceso anterior.
+					for (int c = 0; c < ColumnasDestino; c++)
+						destino[c] = DBNull.Value;
+
+					destino[DesNoUsuario] = Texto(origen[OrgNoUsuario]);
+					destino[DesOrdenFiador] = _ordenFiador.ToString(CultureInfo.InvariantCulture);
+					destino[DesNombreApellido] = nombre;
+					destino[DesNoDocumento] = Texto(origen[b + 1]);
+					destino[DesFechaProceso] = _fechaCarga;
+					destino[DesDomicilioParticular1] = Texto(origen[b + 2]);
+					destino[DesDomicilioParticular2] = Texto(origen[b + 3]);
+					destino[DesDomicilioParticular3] = Texto(origen[b + 4]);
+					destino[DesTelefono] = Texto(origen[b + 5]);
+					destino[DesTelefonoLaboral] = Texto(origen[b + 6]);
+					destino[DesNoCuentaClaro] = Texto(origen[OrgNoCuentaClaro]);
+					destino[DesLarId] = _larId;
+					destino[ColumnasDestino - 1] = ProcesadorOrigen;
+
+					lote.Rows.Add(destino);
+				}
+
+				// Igual que antes: el contador sube despues del fiador 1 y 2, no despues del 3.
+				if (f < CantidadFiadores - 1)
+					_ordenFiador++;
+			}
+		}
+
+		private static string Texto(object valor)
+		{
+			if (valor == null || valor == DBNull.Value)
+				return string.Empty;
+			return valor as string ?? Convert.ToString(valor, CultureInfo.InvariantCulture);
+		}
+
+		private static readonly Type S = typeof(string);
+		private static readonly Type I16 = typeof(short);
+		private static readonly Type I32 = typeof(int);
+		private static readonly Type FEC = typeof(DateTime);
+
+		private static void Col(DataTable dt, string nombre, Type tipo)
+		{
+			dt.Columns.Add(nombre, tipo);
+		}
+
+		// El orden de las columnas debe coincidir con el de la tabla destino (SqlBulkCopy mapea por posicion).
+		private static DataTable CrearTablaLote()
+		{
+			DataTable dt = new DataTable();
+			Col(dt, "NoUsuario", S);                    // 0  <- NOUSUARIO
+			Col(dt, "OrdenFiador", S);                  // 1  1, 2 o 3
+			Col(dt, "CodigoBanco", I16);                // 2
+			Col(dt, "CodigoPais", I16);                 // 3
+			Col(dt, "NombreApellido", S);               // 4  <- NOMBREFIADORn
+			Col(dt, "Empresa", S);                      // 5
+			Col(dt, "TipoDocumento", S);                // 6
+			Col(dt, "NoDocumento", S);                  // 7  <- NUMCEDULAFIADORn
+			Col(dt, "FechaNacimiento", FEC);            // 8
+			Col(dt, "FechaAltaFiador", FEC);            // 9
+			Col(dt, "FechaProceso", FEC);               // 10 fecha/hora de carga
+			Col(dt, "Supervisor", S);                   // 11
+			Col(dt, "Funcionario", S);                  // 12
+			Col(dt, "DomicilioParticular1", S);         // 13 <- DIRECCIONFIADORn
+			Col(dt, "NoPuertaParticular", S);           // 14
+			Col(dt, "DomicilioParticular2", S);         // 15 <- DIRECCIONFIADORn_2
+			Col(dt, "DomicilioParticular3", S);         // 16 <- DIRECCIONFIADORn_3
+			Col(dt, "CodigoPostalParticular", S);       // 17
+			Col(dt, "BarrioParticular", S);             // 18
+			Col(dt, "CiudadParticular", S);             // 19
+			Col(dt, "CodigoDeptoParticular", S);        // 20
+			Col(dt, "CodigoPaisParticular", S);         // 21
+			Col(dt, "Telefono", S);                     // 22 <- TELEFONOn_1
+			Col(dt, "DomicilioCorrespondencia1", S);    // 23
+			Col(dt, "NoPuertaCorrespondencia", S);      // 24
+			Col(dt, "DomicilioCorrespondencia2", S);    // 25
+			Col(dt, "DomicilioCorrespondencia3", S);    // 26
+			Col(dt, "CodigoPostalCorrespondencia", S);  // 27
+			Col(dt, "BarrioCorrespondencia", S);        // 28
+			Col(dt, "CiudadCorrespondencia", S);        // 29
+			Col(dt, "CodigoDeptoCorrespondencia", S);   // 30
+			Col(dt, "CodigoPaisCorrespondencia", S);    // 31
+			Col(dt, "CasillaCorreoCorrespondencia", S); // 32
+			Col(dt, "UsuEmailUsuario", S);              // 33
+			Col(dt, "UsuEmailDominio", S);              // 34
+			Col(dt, "TelefonoLaboral", S);              // 35 <- TELEFONOn_2
+			Col(dt, "Filler1", S);                      // 36
+			Col(dt, "NoCuentaClaro", S);                // 37 <- NOCUENTACLARO
+			Col(dt, "larId", I32);                      // 38
+			Col(dt, "LineaEnArchivo", I32);             // 39
+			Col(dt, "ProcesadorOrigen", S);             // 40
+			return dt;
+		}
+		#endregion
+
+		#region Logging
+		private static string Fmt(Stopwatch sw)
+		{
+			return sw.Elapsed.ToString(@"hh\:mm\:ss");
+		}
+
+		private void Info(string mensaje)
+		{
+			Log(LogInfo, mensaje);
+		}
+
+		private void ErrorLog(string contexto, Exception ex)
+		{
+			Log(LogError, contexto + ": " + ex.GetType().Name + " - " + ex.Message);
+		}
+
+		/// <summary>
+		/// Escribe siempre en los eventos de SSIS (visibles en SSISDB / consola) y, segun el estado,
+		/// en la tabla de log de la BD mediante el SP RegistroProceso.
+		/// </summary>
+		private void Log(string estado, string mensaje)
+		{
+			string texto = "[" + Fmt(_swTotal) + "] " + mensaje;
+			bool fireAgain = true;
+
+			if (estado == LogError)
+			{
+				_ultimoError = mensaje;
+				Dts.Events.FireWarning(0, NombreProceso, "ERROR: " + texto, "", 0);
+			}
+			else
+			{
+				Dts.Events.FireInformation(0, NombreProceso, texto, "", 0, ref fireAgain);
+			}
+
+			if (estado == LogInfo && !_logDetallado)
+				return;
+
+			EscribirLogBd(estado, texto);
+		}
+
+		private void EscribirLogBd(string estado, string mensaje)
+		{
+			string sp;
+			if (!parametros.TryGetValue("RegistroProceso", out sp) || string.IsNullOrWhiteSpace(sp))
+				return;
+
+			if (mensaje.Length > MaxLongitudMensaje)
+				mensaje = mensaje.Substring(0, MaxLongitudMensaje - 3) + "...";
+
+			ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+			SqlConnection conn = null;
+
+			try
+			{
+				conn = Adquirir<SqlConnection>(cm);
+
+				using (SqlCommand cmd = new SqlCommand(sp, conn))
+				{
+					cmd.CommandType = CommandType.StoredProcedure;
+					cmd.CommandTimeout = 60;
+					cmd.Parameters.Add(new SqlParameter("@Proceso", NombreProceso));
+					cmd.Parameters.Add(new SqlParameter("@EstadoProceso", estado));
+					cmd.Parameters.Add(new SqlParameter("@Mensaje", mensaje));
+					cmd.ExecuteNonQuery();
+				}
+			}
+			catch (Exception ex)
+			{
+				Dts.Events.FireWarning(0, NombreProceso, "No se pudo registrar en la BD: " + ex.Message, "", 0);
+			}
+			finally
+			{
+				if (conn != null)
+					cm.ReleaseConnection(conn);
+			}
+		}
+		#endregion
+
+		#region ScriptResults declaration
+		/// <summary>
+		/// This enum provides a convenient shorthand within the scope of this class for setting the
+		/// result of the script.
+		///
+		/// This code was generated automatically.
+		/// </summary>
+		enum ScriptResults
+		{
+			Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
+			Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
+		};
+		#endregion
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+USE [DescargaInformacionProcesador]
+GO
+-- Consulta de origen EMaestroFiadores con TRIM del lado de AS400
+UPDATE ParametrosDescargaTablas
+SET ValorParametro = N'SELECT
+    TRIM(ORIGEN) AS ORIGEN,
+    TRIM(NOUSUARIO) AS NOUSUARIO,
+    TRIM(NOMBREFIADOR1) AS NOMBREFIADOR1,
+    TRIM(NUMCEDULAFIADOR1) AS NUMCEDULAFIADOR1,
+    TRIM(DIRECCIONFIADOR1) AS DIRECCIONFIADOR1,
+    TRIM(DIRECCIONFIADOR1_2) AS DIRECCIONFIADOR1_2,
+    TRIM(DIRECCIONFIADOR1_3) AS DIRECCIONFIADOR1_3,
+    TRIM(TELEFONO1_1) AS TELEFONO1_1,
+    TRIM(TELEFONO1_2) AS TELEFONO1_2,
+    TRIM(NOMBREFIADOR2) AS NOMBREFIADOR2,
+    TRIM(NUMCEDULAFIADOR2) AS NUMCEDULAFIADOR2,
+    TRIM(DIRECCIONFIADOR2) AS DIRECCIONFIADOR2,
+    TRIM(DIRECCIONFIADOR2_2) AS DIRECCIONFIADOR2_2,
+    TRIM(DIRECCIONFIADOR2_3) AS DIRECCIONFIADOR2_3,
+    TRIM(TELEFONO2_1) AS TELEFONO2_1,
+    TRIM(TELEFONO2_2) AS TELEFONO2_2,
+    TRIM(NOMBREFIADOR3) AS NOMBREFIADOR3,
+    TRIM(NUMCEDULAFIADOR3) AS NUMCEDULAFIADOR3,
+    TRIM(DIRECCIONFIADOR3) AS DIRECCIONFIADOR3,
+    TRIM(DIRECCIONFIADOR3_2) AS DIRECCIONFIADOR3_2,
+    TRIM(DIRECCIONFIADOR3_3) AS DIRECCIONFIADOR3_3,
+    TRIM(TELEFONO3_1) AS TELEFONO3_1,
+    TRIM(TELEFONO3_2) AS TELEFONO3_2,
+    TRIM(NOCUENTACLARO) AS NOCUENTACLARO
+FROM {ARCHIVO_ORIGEN}'
+WHERE Proceso = 'EMaestroFiadores' AND IdParametro = 'ConsultaOrigen';
+GO
