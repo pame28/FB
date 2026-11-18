@@ -1,7 +1,6 @@
-Realizar Backup de las siguientes DLL: dllwsDivideloTodoBXI.dll y wsDivideloTodoBXI.dll  en el server PCI-THFE 										
-Copiar las DLL especificadas en el traslado y Reemplazarlas en la ruta destino  W:\Sitios Web\wsDivideloTodo										
-Reversar a las DLL originales (a los backups del primer paso) una vez realizadas las pruebas										
-
-
-
-Ayudame a redactar mejor estos tres pasos
+1. Respaldo de las DLLs actuales
+En el servidor PCI-THFE, respaldar las DLLs dllwsDivideloTodoBXI.dll y wsDivideloTodoBXI.dll ubicadas en W:\Sitios Web\wsDivideloTodo\bin. Copiarlas a una carpeta de respaldo con la fecha del día, por ejemplo W:\Sitios Web\wsDivideloTodo\Backup_20261118.
+2. Instalación de las DLLs nuevas
+Copiar las DLLs dllwsDivideloTodoBXI.dll y wsDivideloTodoBXI.dll incluidas en el traslado a la ruta W:\Sitios Web\wsDivideloTodo\bin, reemplazando las existentes. Después, reciclar el App Pool del sitio en IIS para que tome los cambios.
+3. Reversión a la versión original
+Al terminar las pruebas, restaurar las DLLs originales: copiar los archivos respaldados en el paso 1 a W:\Sitios Web\wsDivideloTodo\bin, reemplazando las DLLs del traslado. Reciclar nuevamente el App Pool del sitio.
