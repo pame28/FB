@@ -1,22 +1,20 @@
-[WebMethod]
-public AutorizacionesResult Autorizaciones(string strTarjeta)
-{
-    AppLogger.Info($"[WS Autorizaciones] Inicio. Tarjeta='{strTarjeta}'"); // LOG
+Gravedad	Código	Descripción	Proyecto	Archivo	Línea	Estado suprimido
+Error	CS1061	"RestClient" no contiene una definición para "Proxy" ni un método de extensión accesible "Proxy" que acepte un primer argumento del tipo "RestClient" (¿falta alguna directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	357	Activo
+Error	CS1061	"RestClient" no contiene una definición para "Proxy" ni un método de extensión accesible "Proxy" que acepte un primer argumento del tipo "RestClient" (¿falta alguna directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	608	Activo
+Error	CS1061	"RestClient" no contiene una definición para "Timeout" ni un método de extensión accesible "Timeout" que acepte un primer argumento del tipo "RestClient" (¿falta alguna directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	359	Activo
+Error	CS1061	"RestClient" no contiene una definición para "Timeout" ni un método de extensión accesible "Timeout" que acepte un primer argumento del tipo "RestClient" (¿falta alguna directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	610	Activo
+Error	CS1061	"RestClient" no contiene una definición para "Timeout" ni un método de extensión accesible "Timeout" que acepte un primer argumento del tipo "RestClient" (¿falta alguna directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	670	Activo
+Error	CS0117	'Method' no contiene una definición para 'GET'	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	671	Activo
+Error	CS0117	'Method' no contiene una definición para 'POST'	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	360	Activo
+Error	CS0117	'Method' no contiene una definición para 'POST'	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	611	Activo
+Error	CS0246	El nombre del tipo o del espacio de nombres 'IRestResponse' no se encontró (¿falta una directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	364	Activo
+Error	CS0246	El nombre del tipo o del espacio de nombres 'IRestResponse' no se encontró (¿falta una directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	614	Activo
+Error	CS0246	El nombre del tipo o del espacio de nombres 'IRestResponse' no se encontró (¿falta una directiva using o una referencia de ensamblado?)	dllwsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\DivideloTodoBXI.cs	672	Activo
+Advertencia		La arquitectura del procesador del proyecto que se va a compilar "MSIL" y la arquitectura del procesador de la referencia "Interop.cwbx", "x86", no coinciden. Esta falta de coincidencia puede causar errores en tiempo de ejecución. Cambie la arquitectura del procesador de destino del proyecto mediante el Administrador de configuración para alinear las arquitecturas de procesador entre el proyecto y las referencias, o tome una dependencia de las referencias con una arquitectura de procesador que coincida con la arquitectura del procesador de destino del proyecto.	dllwsDivideloTodoBXI			
+Advertencia		La arquitectura del procesador del proyecto que se va a compilar "MSIL" y la arquitectura del procesador de la referencia "Interop.cwbx", "x86", no coinciden. Esta falta de coincidencia puede causar errores en tiempo de ejecución. Cambie la arquitectura del procesador de destino del proyecto mediante el Administrador de configuración para alinear las arquitecturas de procesador entre el proyecto y las referencias, o tome una dependencia de las referencias con una arquitectura de procesador que coincida con la arquitectura del procesador de destino del proyecto.	dllwsDivideloTodoBXI			
+Error	CS0006	No se encontró el archivo de metadatos 'C:\Users\80730.HN\Desktop\wsDivideloTodo\dllwsDivideloTodoBXI\bin\Release\dllwsDivideloTodoBXI.dll'	wsDivideloTodoBXI	C:\Users\80730.HN\Desktop\wsDivideloTodo\wsDivideloTodoBXI\CSC	1	Activo
+Advertencia		No se pudo resolver esta referencia. No se encuentra el ensamblado "RestSharp". Compruebe si el ensamblado existe en el disco. Si el código necesita esta referencia, podrían producirse errores de compilación.	dllwsDivideloTodoBXI			
 
-    string esTarjetaMigrada = dllDividelo.esTarjetaMigrada(strTarjeta);
 
-    AppLogger.Info($"[WS Autorizaciones] esTarjetaMigrada='{esTarjetaMigrada}'"); // LOG
 
-    if (esTarjetaMigrada == "1")
-    {
-        AppLogger.Info("[WS Autorizaciones] Tarjeta migrada, se llama al gateway"); // LOG
-
-        //Llamar servicio
-        TransactionRequest request = new TransactionRequest();
-        request.equivalente = strTarjeta.Trim();
-        return Task.Run(() => _transactionService.ObtenerTransacciones(request, endpointDivideloTodoTransactions)).Result;
-    }
-
-    AppLogger.Info("[WS Autorizaciones] Tarjeta NO migrada, se usa el flujo viejo"); // LOG
-    return dllDividelo.BXIAutorizaciones(strTarjeta);
-}
+Ayudame a solucionarlo dime que puedo hacer o como si quito las referencias y las grego de nuevo.. pero no se como se llaman
