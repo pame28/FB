@@ -1,14 +1,22 @@
-catch(Exception ex)
+[WebMethod]
+public AutorizacionesResult Autorizaciones(string strTarjeta)
 {
-    AppLogger.Error($"[TransactionService] Error en ObtenerTransacciones: {ex}");
-    return new AutorizacionesResult();
+    AppLogger.Info($"[WS Autorizaciones] Inicio. Tarjeta='{strTarjeta}'"); // LOG
+
+    string esTarjetaMigrada = dllDividelo.esTarjetaMigrada(strTarjeta);
+
+    AppLogger.Info($"[WS Autorizaciones] esTarjetaMigrada='{esTarjetaMigrada}'"); // LOG
+
+    if (esTarjetaMigrada == "1")
+    {
+        AppLogger.Info("[WS Autorizaciones] Tarjeta migrada, se llama al gateway"); // LOG
+
+        //Llamar servicio
+        TransactionRequest request = new TransactionRequest();
+        request.equivalente = strTarjeta.Trim();
+        return Task.Run(() => _transactionService.ObtenerTransacciones(request, endpointDivideloTodoTransactions)).Result;
+    }
+
+    AppLogger.Info("[WS Autorizaciones] Tarjeta NO migrada, se usa el flujo viejo"); // LOG
+    return dllDividelo.BXIAutorizaciones(strTarjeta);
 }
-
-
-
-
-
-
-
-string esTarjetaMigrada = dllDividelo.esTarjetaMigrada(strTarjeta);
-AppLogger.Info($"[WS Autorizaciones] Tarjeta='{strTarjeta}' esTarjetaMigrada='{esTarjetaMigrada}'");
