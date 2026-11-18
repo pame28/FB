@@ -1,126 +1,161 @@
-using dllwsDivideloTodoBXI.Models.GatewayLogin;
-using Log4NetLogger;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
+using dllwsDivideloTodoBXI.Models;
+using dllwsDivideloTodoBXI.Models.Transactions;
+using dllwsDivideloTodoBXI.TiposObjetos;
+using dllwsDivideloTodoBXI.Clases;
+using Log4NetLogger;
 
 namespace dllwsDivideloTodoBXI.Services
 {
-    public class BaseApiService
+    public class TransactionService : BaseApiService
     {
-        protected HttpClient client;
+        private readonly string _endpointLogin;
+        private readonly string _userLogin;
+        private readonly string _passwordLogin;
+        private readonly string _baseUrl;
+        private readonly dllwsDivideloTodoBXI.DivideloTodoBXI _dllDividelo;
 
-        protected BaseApiService(string baseUrl, bool ignoreSslErrors)
+        public TransactionService(string baseUrl, string endpointLogin, string userLogin, string passwordLogin, string ignoreSsl, DivideloTodoBXI divideloTodoBXI)
+            : base(baseUrl, bool.Parse(ignoreSsl))
         {
-          
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            if (ignoreSslErrors)
-            {
-                ServicePointManager.ServerCertificateValidationCallback =
-                      delegate (object sender, X509Certificate cert, X509Chain chain, SslPolicyErrors sslPolicyErrors)
-                      {
-                          return true;
-                      };
-            }
-          
-            client = new HttpClient
-            {
-                BaseAddress = new Uri(baseUrl)
-            };
+            _baseUrl = baseUrl;
+            _endpointLogin = endpointLogin;
+            _userLogin = userLogin;
+            _passwordLogin = passwordLogin;
+            _dllDividelo = divideloTodoBXI;
 
-            client.DefaultRequestHeaders.Accept.Clear();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            AppLogger.Info($"[TransactionService] Creado. BaseUrl='{baseUrl}'; EndpointLogin='{endpointLogin}'; Usuario='{userLogin}'; IgnoreSsl='{ignoreSsl}'; TLS actual={ServicePointManager.SecurityProtocol}");
         }
 
-        protected async Task<T> GetAsync<T>(string url)
+        public async Task<AutorizacionesResult> ObtenerTransacciones(TransactionRequest request, string endpointTransactions)
         {
-            HttpResponseMessage response = await client.GetAsync(url);
-            if (!response.IsSuccessStatusCode)
-                throw new Exception($"Error consumiendo API {url} - GET");
+            // Id corto para poder seguir UNA petición en el log
+            string traceId = Guid.NewGuid().ToString("N").Substring(0, 8);
+            Stopwatch sw = Stopwatch.StartNew();
+            string paso = "INICIO";
+            AutorizacionesResult Datos = new AutorizacionesResult();
 
-            string json = await response.Content.ReadAsStringAsync();
-            return JsonConvert.DeserializeObject<T>(json);
+            try
+            {
+                AppLogger.Info($"[{traceId}] ObtenerTransacciones INICIO. Equivalente='{request?.equivalente}'; Endpoint='{endpointTransactions}'; TLS={ServicePointManager.SecurityProtocol}");
+
+                // ---------- 1. Login al gateway ----------
+                paso = "LOGIN_GATEWAY";
+                AppLogger.Info($"[{traceId}] Llamando login gateway: '{_baseUrl}' + '{_endpointLogin}'");
+
+                string token = await LoginAsync(_endpointLogin, _userLogin, _passwordLogin);
+
+                AppLogger.Info($"[{traceId}] Login respondió en {sw.ElapsedMilliseconds} ms. Token: {(string.IsNullOrEmpty(token) ? "VACÍO/NULL" : "OK (len=" + token.Length + ")")}");
+                if (string.IsNullOrEmpty(token))
+                {
+                    AppLogger.Error($"[{traceId}] Login no devolvió token, se corta el flujo.");
+                    return Datos;
+                }
+
+                // ---------- 2. Consumo del microservicio ----------
+                paso = "POST_TRANSACCIONES";
+                AppLogger.Info($"[{traceId}] Llamando microservicio: '{_baseUrl}' + '{endpointTransactions}'");
+
+                ApiTransactionResponse response = await PostAsync<ApiTransactionResponse>(endpointTransactions, request);
+
+                AppLogger.Info($"[{traceId}] Microservicio respondió en {sw.ElapsedMilliseconds} ms. response null={response == null}");
+
+                if (response == null)
+                {
+                    AppLogger.Error($"[{traceId}] La respuesta del microservicio vino NULL (¿error de deserialización?).");
+                    return Datos;
+                }
+
+                AppLogger.Info($"[{traceId}] hasError={response.hasError}; movimientos={(response.movimientos == null ? "NULL" : response.movimientos.Count().ToString())}");
+
+                if (response.hasError)
+                {
+                    AppLogger.Error($"[{traceId}] El microservicio devolvió hasError=true.");
+                    return Datos;
+                }
+
+                if (response.movimientos == null)
+                {
+                    AppLogger.Error($"[{traceId}] movimientos vino NULL.");
+                    return Datos;
+                }
+
+                // ---------- 3. Mapeo ----------
+                int i = 0;
+                foreach (var mov in response.movimientos)
+                {
+                    i++;
+                    paso = $"MAPEO_MOV_{i} (receipt={mov?.receiptNumber}; amount='{mov?.amount}'; originDate='{mov?.originDate}'; currency='{mov?.currency}')";
+
+                    decimal valor = decimal.Parse(mov.amount, new CultureInfo("en-US"));
+                    string strImporte = valor.ToString();
+
+                    Autorizaciones detalle = new Autorizaciones();
+                    detalle.CampaniaCuotificacion = mov.installmentCampaign;
+                    detalle.Cuotas = "0";
+                    detalle.CUT = mov.receiptNumber;
+                    detalle.FechaOrigen = mov.originDate;
+                    detalle.importe = Double.Parse(strImporte);
+                    detalle.Descripcion = mov.merchantName;
+                    detalle.ModeloCuotificacion = mov.installmentModel;
+                    detalle.Moneda = ParsearMoneda(mov.currency);
+                    detalle.Referencia = mov.receiptNumber;
+                    detalle.Periodos = "0";
+                    detalle.Producto = mov.product;
+                    detalle.Tarjeta = mov.card;
+                    detalle.Movimientos_Id = Guid.NewGuid().ToString();
+                    detalle.FechaOrigenSort = Convert.ToDateTime(detalle.FechaOrigen);
+                    Datos.add(detalle);
+                }
+
+                AppLogger.Info($"[{traceId}] ObtenerTransacciones FIN OK. {i} movimientos mapeados en {sw.ElapsedMilliseconds} ms.");
+                return Datos;
+            }
+            catch (Exception ex)
+            {
+                // ANTES: catch vacío -> el error desaparecía sin dejar rastro.
+                // ex.ToString() incluye InnerException y stack trace; ahí está la causa real
+                // (HttpRequestException solo dice "An error occurred while sending the request").
+                AppLogger.Error($"[{traceId}] ERROR en paso '{paso}' a los {sw.ElapsedMilliseconds} ms. {DetalleWebException(ex)}{Environment.NewLine}{ex}");
+                return new AutorizacionesResult();
+            }
         }
 
-        protected async Task<T> PostAsync<T>(string url, object data)
+        public string ParsearMoneda(string monedaOrigen)
         {
-            var jsonData = JsonConvert.SerializeObject(data);
+            List<Monedas> monedas = _dllDividelo.obtenerMonedas();
+            string monedaLocal = monedas.Where(m => m.iso_alfabetico == monedaOrigen)
+                .Select(m => m.simbolo_local)
+                .FirstOrDefault();
 
-            var content = new StringContent(
-                JsonConvert.SerializeObject(data),
-                Encoding.UTF8,
-                "application/json"
-                );
+            if (monedaLocal == null)
+                AppLogger.Error($"[TransactionService] No se encontró simbolo_local para la moneda '{monedaOrigen}'");
 
-            // Log del request
-            AppLogger.Info($"Request a endpoint {url} con body: {jsonData}");
-
-            HttpResponseMessage response = await client.PostAsync(url, content);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                AppLogger.Info($"Llamado a endpoint {url} fallo con statuscode: {response.StatusCode.ToString()}");
-
-                var errorContent = await response.Content.ReadAsStringAsync();
-
-                AppLogger.Info($"Llamado a endpoint {url} fallo con ERROR: {errorContent}");
-
-                return JsonConvert.DeserializeObject<T>(errorContent);
-
-            }
-
-            AppLogger.Info($"Llamado a endpoint {url} exitoso");
-
-            string json = await response.Content.ReadAsStringAsync();
-
-            AppLogger.Info($"Llamado a endpoint {url} exitoso, respuesta: {json}");
-
-            return JsonConvert.DeserializeObject<T>(json);
+            return monedaLocal;
         }
 
-        protected async Task<string> LoginAsync(string url, string user, string password)
+        /// <summary>
+        /// Busca un WebException en la cadena de excepciones y devuelve su Status
+        /// (NameResolutionFailure, ConnectFailure, TrustFailure, SecureChannelFailure, Timeout, ProxyNameResolutionFailure...).
+        /// </summary>
+        public static string DetalleWebException(Exception ex)
         {
-            var loginRequest = new 
+            Exception actual = ex;
+            while (actual != null)
             {
-                username = user,
-                password = password
-            };
-
-            var content = new StringContent(
-                JsonConvert.SerializeObject(loginRequest),
-                Encoding.UTF8,
-                "application/json");
-
-            HttpResponseMessage responseMessage = await client.PostAsync(url, content);
-
-            if(!responseMessage.IsSuccessStatusCode)
-                throw new Exception($"Error consumiendo API {url} - POST");
-
-            string json = await responseMessage.Content.ReadAsStringAsync();
-
-            GatewayLoginResponse response = JsonConvert.DeserializeObject<GatewayLoginResponse>(json);
-            if (!response.hasError)
-            {
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", response.data.accessToken);
-                return response.data.accessToken;
+                WebException wex = actual as WebException;
+                if (wex != null)
+                    return $"WebException.Status={wex.Status}.";
+                actual = actual.InnerException;
             }
-
             return string.Empty;
         }
     }
 }
-
-
-
-
-
-
-Dime paso a paso que tengo que hacer. No quiero modificar logica .. mas que todo quiero capturar el error ..del porque esta fallando 
