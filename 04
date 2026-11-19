@@ -1,34 +1,34 @@
-/// <summary>
-/// Un registro de FIADORES trae hasta 3 fiadores de un mismo cliente; cada uno genera una fila destino.
-/// OrdenFiador = 1, 2 o 3 segun la posicion del fiador dentro del cliente (se reinicia por cliente).
-/// </summary>
 private void AgregarFiadores(object[] origen, object[] destino, DataTable lote)
 {
+    int orden = 0;   // se reinicia por cliente
+
     for (int f = 0; f < CantidadFiadores; f++)
     {
         int b = OrgPrimerFiador + f * OrgCamposPorFiador;
-        string nombre = Texto(origen[b]);
+        string nombre = Texto(origen[b]).Trim();
 
-        if (IncluirFiadoresSinNombre || nombre.Length > 0)
-        {
-            for (int c = 0; c < ColumnasDestino; c++)
-                destino[c] = DBNull.Value;
+        if (!IncluirFiadoresSinNombre && nombre.Length == 0)
+            continue;   // fiador vacio: no se inserta
 
-            destino[DesNoUsuario] = Texto(origen[OrgNoUsuario]);
-            destino[DesOrdenFiador] = (f + 1).ToString(CultureInfo.InvariantCulture);
-            destino[DesNombreApellido] = nombre;
-            destino[DesNoDocumento] = Texto(origen[b + 1]);
-            destino[DesFechaProceso] = _fechaCarga;
-            destino[DesDomicilioParticular1] = Texto(origen[b + 2]);
-            destino[DesDomicilioParticular2] = Texto(origen[b + 3]);
-            destino[DesDomicilioParticular3] = Texto(origen[b + 4]);
-            destino[DesTelefono] = Texto(origen[b + 5]);
-            destino[DesTelefonoLaboral] = Texto(origen[b + 6]);
-            destino[DesNoCuentaClaro] = Texto(origen[OrgNoCuentaClaro]);
-            destino[DesLarId] = _larId;
-            destino[ColumnasDestino - 1] = ProcesadorOrigen;
+        orden++;
 
-            lote.Rows.Add(destino);
-        }
+        for (int c = 0; c < ColumnasDestino; c++)
+            destino[c] = DBNull.Value;
+
+        destino[DesNoUsuario] = Texto(origen[OrgNoUsuario]);
+        destino[DesOrdenFiador] = orden.ToString(CultureInfo.InvariantCulture);
+        destino[DesNombreApellido] = nombre;
+        destino[DesNoDocumento] = Texto(origen[b + 1]);
+        destino[DesFechaProceso] = _fechaCarga;
+        destino[DesDomicilioParticular1] = Texto(origen[b + 2]);
+        destino[DesDomicilioParticular2] = Texto(origen[b + 3]);
+        destino[DesDomicilioParticular3] = Texto(origen[b + 4]);
+        destino[DesTelefono] = Texto(origen[b + 5]);
+        destino[DesTelefonoLaboral] = Texto(origen[b + 6]);
+        destino[DesNoCuentaClaro] = Texto(origen[OrgNoCuentaClaro]);
+        destino[DesLarId] = _larId;
+        destino[ColumnasDestino - 1] = ProcesadorOrigen;
+
+        lote.Rows.Add(destino);
     }
 }
