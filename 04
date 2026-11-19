@@ -1,46 +1,9 @@
--- ¿Cuentas categoría 0 con NoCuentaClaro NULL o vacío en MaestroSaldos?
-SELECT COUNT(*) AS SinNoCuentaClaro
-FROM MaestroSaldos WITH (NOLOCK)
-WHERE CategoriaTarjeta = '0'
-  AND EstadoTarjeta IN (20,22,25,29)
-  AND (NoCuentaClaro IS NULL OR LTRIM(RTRIM(NoCuentaClaro)) = '');
-
--- ¿Registros en ETarjetas sin documento o sin NoCuentaClaro?
-SELECT SUM(CASE WHEN NoDocumento IS NULL OR LTRIM(RTRIM(NoDocumento)) = '' THEN 1 ELSE 0 END) AS SinDocumento,
-       SUM(CASE WHEN NoCuentaClaro IS NULL OR LTRIM(RTRIM(NoCuentaClaro)) = '' THEN 1 ELSE 0 END) AS SinNoCuentaClaro
-FROM ETarjetas WITH (NOLOCK);
-
-
-
-
-
-
-
-
-
-
-
-IF OBJECT_ID('tempdb..#DocPorCuenta') IS NOT NULL DROP TABLE #DocPorCuenta;
-
-SELECT NoCuentaClaro,
-       MAX(NoDocumento) AS AlgunDocumento,      -- no nulo si existe al menos uno
-       COUNT(*)          AS Filas,
-       SUM(CASE WHEN NoDocumento IS NULL THEN 1 ELSE 0 END) AS FilasDocNull
-INTO #DocPorCuenta
-FROM ETarjetas WITH (NOLOCK)
-GROUP BY NoCuentaClaro;
-
-SELECT a.NoCuentaClaro, a.Cif, a.NumeroTarjeta, a.EstadoTarjeta,
-       t.NoCuentaClaro AS NoCuentaClaro_en_ETarjetas,
-       t.NoDocumento   AS Doc_de_la_tarjeta,
-       d.AlgunDocumento, d.Filas, d.FilasDocNull
+SELECT a.NumeroTarjeta, a.NoCuenta, a.Cif, a.EstadoTarjeta,
+       a.NoCuentaClaro  AS NoCuentaClaro_MaestroSaldos,
+       t.NoCuentaClaro  AS NoCuentaClaro_ETarjetas,
+       t.NoDocumento, t.EstadoHabilitar
 FROM MaestroSaldos a WITH (NOLOCK)
 JOIN ETarjetas t WITH (NOLOCK) ON a.NumeroTarjeta = t.NumeroTarjeta
-LEFT JOIN #DocPorCuenta d ON d.NoCuentaClaro = a.NoCuentaClaro
 WHERE a.CategoriaTarjeta = '0'
   AND a.EstadoTarjeta IN (20,22,25,29)
-  AND t.EstadoHabilitar IN ('','I','*','R','U','A','B','E','D','H','G','K','J')
-  AND (d.NoCuentaClaro IS NULL        -- no hay match por NoCuentaClaro
-       OR d.FilasDocNull > 0);        -- hay al menos una fila con documento NULL (el TOP 1 podría tomarla)
-
-
+  AND (a.NoCuentaClaro IS NULL OR LTRIM(RTRIM(a.NoCuentaClaro)) = '');
