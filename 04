@@ -1,9 +1,202 @@
-SELECT a.NumeroTarjeta, a.NoCuenta, a.Cif, a.EstadoTarjeta,
-       a.NoCuentaClaro  AS NoCuentaClaro_MaestroSaldos,
-       t.NoCuentaClaro  AS NoCuentaClaro_ETarjetas,
-       t.NoDocumento, t.EstadoHabilitar
-FROM MaestroSaldos a WITH (NOLOCK)
-JOIN ETarjetas t WITH (NOLOCK) ON a.NumeroTarjeta = t.NumeroTarjeta
-WHERE a.CategoriaTarjeta = '0'
-  AND a.EstadoTarjeta IN (20,22,25,29)
-  AND (a.NoCuentaClaro IS NULL OR LTRIM(RTRIM(a.NoCuentaClaro)) = '');
+Ahora estamos teniendo este error: 
+Date		19/11/2026 02:47:52
+Log		Job History ([PU-APLICABE07] - [PROCESOS] - [COBRANZASBP]-[ASPRB05])
+
+Step ID		2
+Server		PU-APLICABE04
+Job Name		[PU-APLICABE07] - [PROCESOS] - [COBRANZASBP]-[ASPRB05]
+Step Name		Información Tarjetas
+Duration		01:52:53
+Sql Severity	0
+Sql Message ID	0
+Operator Emailed	
+Operator Net sent	
+Operator Paged	
+Retries Attempted	0
+
+Message
+Microsoft (R) SQL Server Execute Package Utility
+Version 11.0.7001.0 for 64-bit
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Started:  02:47:52 a.m.
+Error: 2026-11-19 04:40:45.60
+   Code: 0xC0202009
+   Source: Relaciones Clientes y Productos Bandeja Relaciones Productos TC [2]
+   Description: SSIS Error Code DTS_E_OLEDBERROR.  An OLE DB error has occurred. Error code: 0x80004005.
+An OLE DB record is available.  Source: "Microsoft SQL Server Native Client 11.0"  Hresult: 0x80004005  Description: "Unspecified error".
+End Error
+Error: 2026-11-19 04:40:45.60
+   Code: 0xC020901C
+   Source: Relaciones Clientes y Productos Bandeja Relaciones Productos TC [2]
+   Description: There was an error with Bandeja Relaciones Productos TC.Inputs[OLE DB Destination Input].Columns[RELA_IDEN] on Bandeja Relaciones Productos TC.Inputs[OLE DB Destination Input]. The column status returned was: "The value violated the integrity constraints for the column.".
+End Error
+Error: 2026-11-19 04:40:45.60
+   Code: 0xC0209029
+   Source: Relaciones Clientes y Productos Bandeja Relaciones Productos TC [2]
+   Description: SSIS Error Code DTS_E_INDUCEDTRANSFORMFAILUREONERROR.  The "Bandeja Relaciones Productos TC.Inputs[OLE DB Destination Input]" failed because error code 0xC020907D occurred, and the error row disposition on "Bandeja Relaciones Productos TC.Inputs[OLE DB Destination Input]" specifies failure on error. An error occurred on the specified object of the specified component.  There may be error messages posted before this with more information about the failure.
+End Error
+Error: 2026-11-19 04:40:45.60
+   Code: 0xC0047022
+   Source: Relaciones Clientes y Productos SSIS.Pipeline
+   Description: SSIS Error Code DTS_E_PROCESSINPUTFAILED.  The ProcessInput method on component "Bandeja Relaciones Productos TC" (2) failed with error code 0xC0209029 while processing input "OLE DB Destination Input" (15). The identified component returned an error from the ProcessInput method. The error is specific to the component, but the error is fatal and will cause the Data Flow task to stop running.  There may be error messages posted before this with more information about the failure.
+End Error
+Error: 2026-11-19 04:40:45.60
+   Code: 0xC02020C4
+   Source: Relaciones Clientes y Productos Relaciones Productos TC [29]
+   Description: The attempt to add a row to the Data Flow task buffer failed with error code 0xC0047020.
+End Error
+Error: 2026-11-19 04:40:45.60
+   Code: 0xC0047038
+   Source: Relaciones Clientes y Productos SSIS.Pipeline
+   Description: SSIS Error Code DTS_E_PRIMEOUTPUTFAILED.  The PrimeOutput method on Relaciones Productos TC returned error code 0xC02020C4.  The component returned a failure code when the pipeline engine called PrimeOutput(). The meaning of the failure code is defined by the component, but the error is fatal and the pipeline stopped executing.  There may be error messages posted before this with more information about the failure.
+End Error
+DTExec: The package execution returned DTSER_FAILURE (1).
+Started:  02:47:52 a.m.
+Finished: 04:40:45 a.m.
+Elapsed:  6773.03 seconds
+
+
+
+y tenemos la sospecha de que está aqui: 
+
+
+
+
+USE [BandejaVASA]
+GO
+
+/****** Object:  View [dbo].[uvw_CobranzasRelacionesTC]    Script Date: 19/11/2026 06:26:14 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+-- ==========================================================
+-- Author:		<Elkin Amador>
+-- Create date: <2016-05-10>
+-- Description:	<Obtiene la relación entre Tarjetas y número de identidad entre avales y titulares para cobranzas>
+-- ==========================================================
+CREATE VIEW [dbo].[uvw_CobranzasRelacionesTC]
+AS
+
+WITH Saldos
+AS
+(
+	SELECT NoCuentaClaro, cif,CategoriaTarjeta
+	FROM uvw_SaldosVasa
+	--WHERE  CategoriaTarjeta = '0'
+)
+,
+ TitularesTarjetas
+(
+	RELA_CIF,
+	RELA_IDEN,
+	RELA_TIPO,
+	RELA_NCTA,
+	RELA_TIPR
+)
+AS
+(
+    SELECT s.Cif																				  RELA_CIF,
+           (SELECT top 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=s.NoCuentaClaro) RELA_IDEN,
+           'TDC'																				  RELA_TIPO,
+           s.NoCuentaClaro																		  RELA_NCTA,
+           'SOW'																				  RELA_TIPR--Tipo Referencia
+    FROM    Saldos s 
+    WHERE  s.CategoriaTarjeta = '0'--ND LEN(uc.Cif)>0
+),
+AvalesTarjetas(RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR) AS
+(
+    SELECT f.NumCedulaFiador1									RELA_CIF,
+           f.NumCedulaFiador1									RELA_IDEN,
+           'TDC'												RELA_TIPO,
+           f.NoCuentaClaro										RELA_NCTA,
+           'IND'												RELA_TIPR--Tipo Referencia
+    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro       
+    WHERE  s.CategoriaTarjeta = '0'
+		   AND NumCedulaFiador1 IS NOT NULL
+           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador1))) > 0 
+           AND NumCedulaFiador1 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
+    UNION
+    SELECT f.NumCedulaFiador2									RELA_CIF,
+           f.NumCedulaFiador2									RELA_IDEN,
+           'TDC'												RELA_TIPO,
+           f.NoCuentaClaro										RELA_NCTA,
+           'IND'												RELA_TIPR--Tipo Referencia
+    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro
+    WHERE  s.CategoriaTarjeta = '0'
+		   AND f.NumCedulaFiador2 IS NOT NULL
+           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador2))) > 0 
+           AND NumCedulaFiador2 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
+)
+
+SELECT RELA_CIF,
+       RELA_IDEN,
+       RELA_TIPO,
+       RELA_NCTA,
+       RELA_TIPR
+FROM   TitularesTarjetas
+UNION
+SELECT RELA_CIF,
+       RELA_IDEN,
+       RELA_TIPO,
+       RELA_NCTA,
+       RELA_TIPR
+FROM   AvalesTarjetas
+UNION
+SELECT CONVERT(CHAR(19),RELA_CIF)									RELA_CIF,
+       CONVERT(CHAR(19),RELA_IDEN)									RELA_IDEN,
+       CONVERT(VARCHAR(3),RELA_TIPO)								RELA_TIPO,
+       CONVERT(CHAR(16),RELA_NCTA)									RELA_NCTA,
+       CONVERT(VARCHAR(3),RELA_TIPR)								RELA_TIPR--Tipo Referencia
+FROM   (
+           SELECT cc.No_Cliente										RELA_CIF,
+                  cc.No_Cedula										RELA_IDEN,
+                  'TDC'												RELA_TIPO,
+                  cc.NoCuentaClaro										RELA_NCTA,
+                  'SOW'												RELA_TIPR
+           FROM   uvw_CobranzasCuentas     cc
+           
+           UNION
+           
+           SELECT cc.No_Cliente										RELA_CIF,
+                  cc.Cedula_Fiador_1								RELA_IDEN,
+                  'TDC'												RELA_TIPO,
+                  cc.NoCuentaClaro									RELA_NCTA,
+                  'IND'												RELA_TIPR--Tipo Referencia
+           FROM   uvw_CobranzasCuentas       cc
+           WHERE  cc.Cedula_Fiador_1 IS NOT NULL
+                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_1))) > 0
+                  AND cc.Cedula_Fiador_1 != cc.Cedula_Fiador_1
+           UNION
+           
+           SELECT cc.No_Cliente										RELA_CIF,
+                  cc.Cedula_Fiador_2								RELA_IDEN,
+                  'TDC'												RELA_TIPO,
+                  cc.NoCuentaClaro									RELA_NCTA,
+                  'IND'												RELA_TIPR--Tipo Referencia
+           FROM   uvw_CobranzasCuentas       cc
+           WHERE  cc.Cedula_Fiador_2 IS NOT NULL
+                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_2))) > 0
+                  AND cc.Cedula_Fiador_2 != cc.Cedula_Fiador_2
+       ) AS Empresariales
+WHERE  LEN(RELA_CIF) > 0
+
+
+GO
+
+
+
+
+
+
+
+
+
+
+
