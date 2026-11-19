@@ -1,56 +1,7 @@
-SELECT RELA_TIPR,
-       COUNT(*) AS Total,
-       SUM(CASE WHEN RELA_IDEN IS NULL THEN 1 ELSE 0 END) AS IdenNull,
-       SUM(CASE WHEN LTRIM(RTRIM(RELA_IDEN)) = '' THEN 1 ELSE 0 END) AS IdenVacio
-FROM dbo.uvw_CobranzasRelacionesTC WITH (NOLOCK)
-GROUP BY RELA_TIPR;
-
-
-
-
-
-
-
-SELECT s.NoCuentaClaro, s.cif
+SELECT s.NoCuentaClaro, s.cif, e.NoDocumento
 FROM uvw_SaldosVasa s WITH (NOLOCK)
+OUTER APPLY (SELECT TOP 1 et.NoDocumento
+             FROM ETarjetas et WITH (NOLOCK)
+             WHERE et.NoCuentaClaro = s.NoCuentaClaro) e
 WHERE s.CategoriaTarjeta = '0'
-  AND NOT EXISTS (SELECT 1 FROM ETarjetas et WITH (NOLOCK)
-                  WHERE et.NoCuentaClaro = s.NoCuentaClaro);
-
-
-
-
-
-
-
-
-SELECT et.NoCuentaClaro, et.NoDocumento
-FROM ETarjetas et WITH (NOLOCK)
-WHERE et.NoDocumento IS NULL
-   OR LTRIM(RTRIM(et.NoDocumento)) = '';
-
-
-
-
-
-
-
-
-
-SELECT et.NoCuentaClaro,
-       COUNT(DISTINCT et.NoDocumento) AS DocsDistintos
-FROM ETarjetas et WITH (NOLOCK)
-GROUP BY et.NoCuentaClaro
-HAVING COUNT(DISTINCT et.NoDocumento) > 1;
-
-
-
-
-
-
-
-
-SELECT cc.NoCuentaClaro, cc.No_Cliente, cc.No_Cedula
-FROM uvw_CobranzasCuentas cc WITH (NOLOCK)
-WHERE cc.No_Cedula IS NULL
-   OR LTRIM(RTRIM(cc.No_Cedula)) = '';
+  AND e.NoDocumento IS NULL;
