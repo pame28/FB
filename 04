@@ -1,802 +1,680 @@
+Ahora ayudame con el ultimo de Financiamientos de Estados de Cuenta
+
+#region Help:  Introduction to the script task
+/* The Script Task allows you to perform virtually any operation that can be accomplished in
+ * a .Net application within the context of an Integration Services control flow. 
+ * 
+ * Expand the other regions which have "Help" prefixes for examples of specific ways to use
+ * Integration Services features within this script task. */
+#endregion
+
+
+#region Namespaces
 using Microsoft.SqlServer.Dts.Runtime;
+using ST_dfa6a40cff584fef9f3453f46e682fbe.Models;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.OleDb;
 using System.Data.SqlClient;
-using System.Diagnostics;
-using System.Globalization;
-using System.Threading;
+using System.Windows.Forms;
+#endregion
 
-
-namespace ST_f5b3686da9674ca19cd452f095fbcd61
+namespace ST_dfa6a40cff584fef9f3453f46e682fbe
 {
+    /// <summary>
+    /// ScriptMain is the entry point class of the script.  Do not change the name, attributes,
+    /// or parent of this class.
+    /// </summary>
 	[Microsoft.SqlServer.Dts.Tasks.ScriptTask.SSISScriptTaskEntryPointAttribute]
 	public partial class ScriptMain : Microsoft.SqlServer.Dts.Tasks.ScriptTask.VSTARTScriptObjectModelBase
 	{
-		#region Constantes
-		private const string NombreProceso = "DEstadoCuenta";
-		private const string EstadoGenerado = "G";      // estado que AS400 debe tener antes de descargar
-
-		// Estados que se envian al SP de registro.
-		private const string LogInfo = "I";
-		private const string LogError = "F";
-		private const string LogExito = "E";
-
-		private const int MaxLongitudMensaje = 500;
-		private const string FormatoFecha = "yyyy-MM-dd";
-
-		private const int ColumnasOrigen = 20;          // columnas que devuelve la consulta de AS400 (0..19)
-		private const int ColumnasCargadas = 19;        // 0..18 se cargan; MCC (19) no tiene columna destino (igual que antes)
-		private const int ColumnasDestino = ColumnasCargadas + 2; // idRow al inicio + ProcesadorOrigen al final
-		private const int IdRowPorDefecto = 0;          // el proceso anterior enviaba 0
-		private const string ProcesadorOrigen = "LOCAL";
-		#endregion
-
-		#region Estado del proceso
-		private readonly Dictionary<string, string> parametros = new Dictionary<string, string>();
-		private readonly Stopwatch _swTotal = Stopwatch.StartNew();
-
-		private string _fechaGeneracion = string.Empty;
-		private string _sqlConsultaEstado = string.Empty;
-		private string _sqlConsultaOrigen = string.Empty;
-		private string _sqlConsultaActualizar = string.Empty;
-
-		// Configuracion
-		private int _timeoutSql = 1800;
-		private int _timeoutAs400 = 1800;
-		private int _tamanoLote = 10000;
-		private int _logCadaFilas = 50000;
-		private bool _logDetallado = true;
-		private bool _bulkTableLock = false;
-		private bool _sinRegistrosEsExito = false;
-
-		private bool _sinRegistros = false;
-
-		// Para trazabilidad en caso de error
-		private string _fase = string.Empty;
-		private long _filasLeidas = 0;
-		private long _filasInsertadas = 0;
-		private long _ticksLectura = 0;      // tiempo acumulado leyendo de AS400
-		private long _ticksConversion = 0;   // tiempo acumulado convirtiendo filas
-		private long _ticksBulk = 0;         // tiempo acumulado en SqlBulkCopy.WriteToServer
-		private string _ultimoError = null;
-		#endregion
-
-		public void Main()
-		{
-			bool ok = false;
-
-			try
-			{
-				ok = Ejecutar();
-			}
-			catch (Exception ex)
-			{
-				ErrorLog("Error no controlado en el script", ex);
-			}
-
-			if (!ok)
-			{
-				Dts.Events.FireError(0, NombreProceso, _ultimoError ?? "El proceso termino con error.", "", 0);
-			}
-
-			Dts.TaskResult = (int)(ok ? ScriptResults.Success : ScriptResults.Failure);
-		}
-
-		private bool Ejecutar()
-		{
-			if (!ObtieneParametros())
-				return false;
-
-			if (!ValidarParametros())
-				return false;
-
-			CargarConfiguracion();
-			_fechaGeneracion = parametros["FechaProceso"];
-			ParseaConsultas();
-
-			Info("Inicio proceso. FechaProceso=" + _fechaGeneracion + ", Archivo=" + parametros["NombreArchivo"] +
-				 ", TamanoLote=" + _tamanoLote + ", TimeoutSql=" + _timeoutSql + "s, TimeoutAs400=" + _timeoutAs400 + "s");
-
-			string estadoProceso = ObtenerEstadoProceso();
-			if (estadoProceso == null)
-				return false;
-
-			Info("Estado en AS400: '" + estadoProceso + "' (inicial esperado: '" + parametros["EstadoInicial"] + "')");
-
-			if (estadoProceso != parametros["EstadoInicial"])
-				return RealizarReintento(estadoProceso);
-
-			return RealizarMovimiento();
-		}
-
-		#region Flujo principal
-		private bool RealizarMovimiento()
-		{
-			if (!ExtraerYCargar())
-				return false;
-
-			if (_sinRegistros)
-			{
-				// Sin datos: se marca el archivo en AS400 (estado final) y termina OK, sin tocar las tablas.
-				if (!UpdateArchivoAS400())
-					return false;
-
-				Log(LogExito, "Proceso finalizado sin registros en AS400 para el dia " + _fechaGeneracion);
-				return true;
-			}
-
-			if (!EjecutarSpConArchivo("PostParseo"))
-				return false;
-
-			if (!UpdateArchivoAS400())
-				return false;
-
-			Log(LogExito, "Proceso ejecutado exitosamente. Filas cargadas: " + _filasInsertadas.ToString("N0"));
-			return true;
-		}
-
-		/// <summary>
-		/// Lee de AS400 e inserta en SQL Server por lotes con SqlBulkCopy.
-		/// </summary>
-		private bool ExtraerYCargar()
-		{
-			Stopwatch sw = Stopwatch.StartNew();
-			_fase = "conectando a AS400";
-			_filasLeidas = 0;
-			_filasInsertadas = 0;
-			_sinRegistros = false;
-
-			ConnectionManager cmAs400 = Dts.Connections["AS400"];
-			OleDbConnection connAs400 = null;
-
-			try
-			{
-				connAs400 = Adquirir<OleDbConnection>(cmAs400);
-
-				using (IDbCommand cmd = connAs400.CreateCommand())
-				{
-					cmd.CommandText = _sqlConsultaOrigen;
-					cmd.CommandTimeout = _timeoutAs400;
-
-					_fase = "ejecutando consulta de origen en AS400";
-					Info("Ejecutando consulta de origen en AS400: " + parametros["ArchiviOrigen"]);
-
-					using (IDataReader reader = cmd.ExecuteReader())
-					{
-						if (reader.FieldCount < ColumnasOrigen)
-							throw new InvalidOperationException("La consulta de origen devolvio " + reader.FieldCount +
-								" columnas y se esperaban " + ColumnasOrigen + ".");
-
-						// Se lee la primera fila ANTES del PreParseo: si AS400 no trae datos no se limpia la tabla destino.
-						_fase = "leyendo primer registro de AS400";
-						if (!reader.Read())
-						{
-							if (_sinRegistrosEsExito)
-							{
-								Info("No se encontraron registros en AS400 para el dia " + _fechaGeneracion + " (SinRegistrosEsExito=true)");
-								_sinRegistros = true;
-								return true;
-							}
-
-							Log(LogError, "No se encontraron registros en AS400 para el dia " + _fechaGeneracion);
-							return false;
-						}
-
-						Info("AS400 respondio el primer registro en " + Fmt(sw));
-
-						if (!EjecutarSpConArchivo("PreParseo"))
-							return false;
-
-						CargarLotes(reader);
-					}
-				}
-
-				Info("Extraccion y carga finalizadas: " + _filasInsertadas.ToString("N0") + " filas en " + Fmt(sw));
-				return true;
-			}
-			catch (Exception ex)
-			{
-				ErrorLog("Fallo " + _fase + " (filas leidas=" + _filasLeidas.ToString("N0") +
-						 ", insertadas=" + _filasInsertadas.ToString("N0") + ", transcurrido " + Fmt(sw) + ")", ex);
-				return false;
-			}
-			finally
-			{
-				if (connAs400 != null)
-					cmAs400.ReleaseConnection(connAs400);
-			}
-		}
-
-		private void CargarLotes(IDataReader reader)
-		{
-			Stopwatch swCarga = Stopwatch.StartNew();
-			ConnectionManager cmSql = Dts.Connections["BANDEJAVASA"];
-			SqlConnection connSql = null;
-
-			DataTable lote = CrearTablaLote();
-			object[] buffer = new object[reader.FieldCount];
-			object[] fila = new object[ColumnasDestino];
-			Type[] tipos = new Type[ColumnasDestino];
-			string[] nombres = new string[ColumnasDestino];
-			for (int c = 0; c < ColumnasDestino; c++)
-			{
-				tipos[c] = lote.Columns[c].DataType;
-				nombres[c] = lote.Columns[c].ColumnName;
-			}
-			long proximoLog = _logCadaFilas;
-
-			try
-			{
-				_fase = "conectando a SQL Server (BANDEJAVASA)";
-				connSql = Adquirir<SqlConnection>(cmSql);
-
-				SqlBulkCopyOptions opciones = _bulkTableLock ? SqlBulkCopyOptions.TableLock : SqlBulkCopyOptions.Default;
-
-				using (SqlBulkCopy bulk = new SqlBulkCopy(connSql, opciones, null))
-				{
-					bulk.DestinationTableName = parametros["ArchivoDestino"];
-					bulk.BulkCopyTimeout = _timeoutSql;
-
-					Info("Iniciando bulk insert hacia " + parametros["ArchivoDestino"]);
-
-					do
-					{
-						_fase = "leyendo AS400";
-						long t0 = Stopwatch.GetTimestamp();
-						reader.GetValues(buffer);
-						long t1 = Stopwatch.GetTimestamp();
-
-						_fase = "convirtiendo fila " + (_filasLeidas + 1).ToString("N0");
-						LlenarFila(buffer, fila, tipos, nombres);
-						lote.Rows.Add(fila);
-
-						_ticksLectura += t1 - t0;
-						_ticksConversion += Stopwatch.GetTimestamp() - t1;
-						_filasLeidas++;
-
-						if (lote.Rows.Count >= _tamanoLote)
-						{
-							EscribirLote(bulk, lote);
-
-							if (_filasInsertadas >= proximoLog)
-							{
-								Info("Avance: " + _filasInsertadas.ToString("N0") + " filas insertadas en " + Fmt(swCarga) +
-									 " | " + ResumenTiempos());
-								proximoLog += _logCadaFilas;
-							}
-						}
-
-						_fase = "leyendo AS400";
-					}
-					while (LeerFila(reader));
-
-					if (lote.Rows.Count > 0)
-						EscribirLote(bulk, lote);
-				}
-
-				double segundos = Math.Max(1.0, swCarga.Elapsed.TotalSeconds);
-				Info("Bulk insert terminado: " + _filasInsertadas.ToString("N0") + " filas en " + Fmt(swCarga) +
-					 " (~" + ((long)(_filasInsertadas / segundos)).ToString("N0") + " filas/seg) | " + ResumenTiempos());
-			}
-			finally
-			{
-				if (connSql != null)
-					cmSql.ReleaseConnection(connSql);
-			}
-		}
-
-		private void EscribirLote(SqlBulkCopy bulk, DataTable lote)
-		{
-			_fase = "bulk insert";
-			int filas = lote.Rows.Count;
-
-			long t0 = Stopwatch.GetTimestamp();
-			bulk.WriteToServer(lote);
-			_ticksBulk += Stopwatch.GetTimestamp() - t0;
-
-			_filasInsertadas += filas;
-			lote.Clear();
-		}
-
-		// Read() con medicion de tiempo (cuanto espera el script a que AS400 entregue la siguiente fila).
-		private bool LeerFila(IDataReader reader)
-		{
-			long t0 = Stopwatch.GetTimestamp();
-			bool hayFila = reader.Read();
-			_ticksLectura += Stopwatch.GetTimestamp() - t0;
-			return hayFila;
-		}
-
-		private string ResumenTiempos()
-		{
-			return "lectura AS400=" + FmtTicks(_ticksLectura) + ", conversion=" + FmtTicks(_ticksConversion) +
-				   ", bulk SQL=" + FmtTicks(_ticksBulk);
-		}
-
-		private static string FmtTicks(long ticks)
-		{
-			return TimeSpan.FromSeconds(ticks / (double)Stopwatch.Frequency).ToString(@"hh\:mm\:ss");
-		}
-
-		/// <summary>
-		/// Espera mientras el AS400 coloca la informacion del archivo si este no ha sido generado a la hora de ejecucion del proceso
-		/// </summary>
-		private bool RealizarReintento(string estadoProceso)
-		{
-			int cantidad = ParamInt("CantidadReintentos", 0);
-			int minutos = ParamInt("MinutosReintentos", 1);
-			int intento = 0;
-
-			while (estadoProceso != EstadoGenerado && intento < cantidad)
-			{
-				intento++;
-				Info("Estado '" + estadoProceso + "' distinto de '" + EstadoGenerado + "'. Reintento " + intento + "/" + cantidad +
-					 ", esperando " + minutos + " min.");
-
-				Thread.Sleep(TimeSpan.FromMinutes(minutos));
-				estadoProceso = ObtenerEstadoProceso();
-				if (estadoProceso == null)
-					return false;
-			}
-
-			if (estadoProceso == EstadoGenerado)
-			{
-				Info("Estado '" + EstadoGenerado + "' detectado tras " + intento + " reintento(s). Iniciando movimiento.");
-				return RealizarMovimiento();
-			}
-
-			Log(LogError, "Fallo reintentos: " + cantidad + " intentos de " + minutos + " min c/u, no se actualizo estado " +
-						  EstadoGenerado + " en AS400 (ultimo estado: '" + estadoProceso + "')");
-			return false;
-		}
-		#endregion
-
-		#region Parametros y consultas
-		private bool ObtieneParametros()
-		{
-			ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
-			SqlConnection conn = null;
-
-			try
-			{
-				conn = Adquirir<SqlConnection>(cm);
-
-				using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
-				{
-					cmd.CommandType = CommandType.StoredProcedure;
-					cmd.CommandTimeout = 120;
-					cmd.Parameters.Add(new SqlParameter("@Proceso", NombreProceso));
-
-					using (SqlDataReader reader = cmd.ExecuteReader())
-					{
-						while (reader.Read())
-						{
-							string idParametro = reader["IdParametro"].ToString();
-							string valorParametro = reader["ValorParametro"].ToString();
-
-							if (!parametros.ContainsKey(idParametro))
-								parametros.Add(idParametro, valorParametro);
-						}
-					}
-				}
-
-				return true;
-			}
-			catch (Exception ex)
-			{
-				ErrorLog("Fallo obtener informacion desde usp_GetParametersByProcess", ex);
-				return false;
-			}
-			finally
-			{
-				if (conn != null)
-					cm.ReleaseConnection(conn);
-			}
-		}
-
-		private bool ValidarParametros()
-		{
-			string[] requeridos =
-			{
-				"FechaProceso", "EstadoInicial", "EstadoFinal", "ArchivoControl", "ArchivoGenerado",
-				"ArchiviOrigen",
-				"ConsultaEstado", "ConsultaOrigen", "ConsultaActualizar", "Usuario",
-				"PreParseo", "PostParseo", "NombreArchivo", "ArchivoDestino", "SegundosTimeoutSql"
-				,"SegundosTimeoutAs400"
-				,"TamanoLote"
-				,"LogCadaFilas"
-				,"LogDetallado"
-				,"BulkTableLock"
-			};
-
-			List<string> faltantes = new List<string>();
-			foreach (string clave in requeridos)
-			{
-				string valor;
-				if (!parametros.TryGetValue(clave, out valor) || string.IsNullOrWhiteSpace(valor))
-					faltantes.Add(clave);
-			}
-
-			if (faltantes.Count > 0)
-			{
-				Log(LogError, "Faltan parametros requeridos: " + string.Join(", ", faltantes));
-				return false;
-			}
-
-			string sp;
-			if (!parametros.TryGetValue("RegistroProceso", out sp) || string.IsNullOrWhiteSpace(sp))
-				Dts.Events.FireWarning(0, NombreProceso, "Parametro RegistroProceso no definido: no se registrara en la BD.", "", 0);
-
-			return true;
-		}
-
-		private void CargarConfiguracion()
-		{
-			_timeoutSql = ParamInt("SegundosTimeoutSql", 1800);
-			_timeoutAs400 = ParamInt("SegundosTimeoutAs400", 1800);
-			_tamanoLote = Math.Max(1, ParamInt("TamanoLote", 10000));
-			_logCadaFilas = Math.Max(1, ParamInt("LogCadaFilas", 50000));
-			_logDetallado = ParamBool("LogDetallado", true);
-			_bulkTableLock = ParamBool("BulkTableLock", false);
-			// Estados de cuenta: si AS400 no trae registros se marca el archivo en F y termina sin error.
-			_sinRegistrosEsExito = ParamBool("SinRegistrosEsExito", true);
-		}
-
-		private int ParamInt(string clave, int porDefecto)
-		{
-			string texto;
-			int valor;
-			if (parametros.TryGetValue(clave, out texto) && int.TryParse(texto, out valor) && valor >= 0)
-				return valor;
-			return porDefecto;
-		}
-
-		private bool ParamBool(string clave, bool porDefecto)
-		{
-			string texto;
-			if (!parametros.TryGetValue(clave, out texto) || string.IsNullOrWhiteSpace(texto))
-				return porDefecto;
-
-			texto = texto.Trim();
-			return texto == "1" || texto.Equals("true", StringComparison.OrdinalIgnoreCase) || texto.Equals("S", StringComparison.OrdinalIgnoreCase);
-		}
-
-		private void ParseaConsultas()
-		{
-			string hora = DateTime.Now.ToString("HHmmss");
-			string fecha = DateTime.Now.ToString(FormatoFecha);
-
-			_sqlConsultaEstado = parametros["ConsultaEstado"]
-				.Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
-				.Replace("{FECHA_GENERACION}", "'" + _fechaGeneracion + "'")
-				.Replace("{ESTADO_INICIAL}", "'" + parametros["EstadoInicial"] + "'")
-				.Replace("{ARCHIVO_GENERADO}", "'" + parametros["ArchivoGenerado"] + "'");
-
-			_sqlConsultaOrigen = parametros["ConsultaOrigen"]
-				.Replace("{ARCHIVO_ORIGEN}", parametros["ArchiviOrigen"]);
-
-			_sqlConsultaActualizar = parametros["ConsultaActualizar"]
-				.Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
-				.Replace("{ESTADO_FINAL}", "'" + parametros["EstadoFinal"] + "'")
-				.Replace("{FECHA_PROCESADO}", "'" + fecha + "'")
-				.Replace("{HORA_PROCESADO}", "'" + hora + "'")
-				.Replace("{USER}", "'" + parametros["Usuario"] + "'")
-				.Replace("{FECHA_GENERACION}", "'" + _fechaGeneracion + "'")
-				.Replace("{ESTADO_INICIAL}", "'" + parametros["EstadoInicial"] + "'")
-				.Replace("{ARCHIVO_GENERADO}", "'" + parametros["ArchivoGenerado"] + "'");
-		}
-		#endregion
-
-		#region Acceso a AS400 / SQL Server
-		private string ObtenerEstadoProceso()
-		{
-			ConnectionManager cm = Dts.Connections["AS400"];
-			OleDbConnection conn = null;
-
-			try
-			{
-				conn = Adquirir<OleDbConnection>(cm);
-
-				using (IDbCommand cmd = conn.CreateCommand())
-				{
-					cmd.CommandText = _sqlConsultaEstado;
-					cmd.CommandTimeout = _timeoutAs400;
-
-					string estado = string.Empty;
-					using (IDataReader reader = cmd.ExecuteReader())
-					{
-						while (reader.Read())
-							estado = Convert.ToString(reader.GetValue(0)).Trim();
-					}
-					return estado;
-				}
-			}
-			catch (Exception ex)
-			{
-				ErrorLog("Fallo obtener estado proceso. Consulta: " + _sqlConsultaEstado, ex);
-				return null;
-			}
-			finally
-			{
-				if (conn != null)
-					cm.ReleaseConnection(conn);
-			}
-		}
-
-		/// <summary>Ejecuta el SP PreParseo o PostParseo</summary>
-		private bool EjecutarSpConArchivo(string claveParametro)
-		{
-			Stopwatch sw = Stopwatch.StartNew();
-			ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
-			SqlConnection conn = null;
-
-			try
-			{
-				Info("Inicia " + claveParametro + " (" + parametros[claveParametro] + ") @Archivo=" + parametros["NombreArchivo"]);
-
-				conn = Adquirir<SqlConnection>(cm);
-
-				using (SqlCommand cmd = new SqlCommand(parametros[claveParametro], conn))
-				{
-					cmd.CommandType = CommandType.StoredProcedure;
-					cmd.CommandTimeout = _timeoutSql;
-					cmd.Parameters.Add(new SqlParameter("@Archivo", parametros["NombreArchivo"]));
-					cmd.ExecuteNonQuery();
-				}
-
-				Info("Finaliza " + claveParametro + " en " + Fmt(sw));
-				return true;
-			}
-			catch (Exception ex)
-			{
-				ErrorLog("Fallo " + claveParametro + " " + parametros["NombreArchivo"] + " (tras " + Fmt(sw) + ")", ex);
-				return false;
-			}
-			finally
-			{
-				if (conn != null)
-					cm.ReleaseConnection(conn);
-			}
-		}
-
-		private bool UpdateArchivoAS400()
-		{
-			Stopwatch sw = Stopwatch.StartNew();
-			ConnectionManager cm = Dts.Connections["AS400"];
-			OleDbConnection conn = null;
-
-			try
-			{
-				Info("Actualizando estado del archivo de control en AS400: " + parametros["ArchivoControl"]);
-
-				conn = Adquirir<OleDbConnection>(cm);
-
-				using (IDbCommand cmd = conn.CreateCommand())
-				{
-					cmd.CommandText = _sqlConsultaActualizar;
-					cmd.CommandTimeout = _timeoutAs400;
-					int filas = cmd.ExecuteNonQuery();
-
-					if (filas == 0)
-					{
-						Log(LogError, "La actualizacion de estado en AS400 no afecto registros: " + parametros["ArchivoControl"]);
-						return false;
-					}
-
-					Info("Estado actualizado en AS400 (" + filas + " fila(s)) en " + Fmt(sw));
-				}
-
-				return true;
-			}
-			catch (Exception ex)
-			{
-				ErrorLog("Fallo actualizar estado archivo: " + parametros["ArchivoControl"], ex);
-				return false;
-			}
-			finally
-			{
-				if (conn != null)
-					cm.ReleaseConnection(conn);
-			}
-		}
-
-		private static T Adquirir<T>(ConnectionManager cm) where T : class
-		{
-			T conexion = cm.AcquireConnection(null) as T;
-			if (conexion == null)
-				throw new InvalidOperationException("No se pudo obtener la conexion '" + cm.Name + "' desde el Connection Manager.");
-			return conexion;
-		}
-		#endregion
-
-		#region Transformacion de filas
-		/// <summary>
-		/// Mapea una fila de AS400 a la fila destino (21 columnas):
-		/// idRow (0) al inicio, columnas 0..18 de AS400 y ProcesadorOrigen al final.
-		/// MCC (columna 19) no se carga: el proceso anterior tampoco la enviaba.
-		/// El TRIM ya viene resuelto desde la consulta de AS400.
-		/// </summary>
-		private void LlenarFila(object[] origen, object[] destino, Type[] tipos, string[] nombres)
-		{
-			destino[0] = IdRowPorDefecto;
-
-			for (int i = 0; i < ColumnasCargadas; i++)
-				destino[i + 1] = Convertir(origen[i], tipos[i + 1], nombres[i + 1]);
-
-			destino[ColumnasDestino - 1] = ProcesadorOrigen;
-		}
-
-		/// <summary>
-		/// Conversion tipada. Los numericos de AS400 llegan como decimal (ej. 0.00) y NO se pasan por texto,
-		/// porque "0.00" no se puede convertir a Int32/Int16/Byte.
-		/// Las fechas llegan como texto yyyy-MM-dd (la consulta ya reemplaza 0000-00-00 / vacio por 1900-01-01).
-		/// </summary>
-		private static object Convertir(object valor, Type destino, string columna)
-		{
-			if (valor == null || valor == DBNull.Value)
-				return DBNull.Value;
-
-			string texto = valor as string;
-			if (texto != null)
-			{
-				if (destino == typeof(DateTime))
-				{
-					DateTime fecha;
-					if (DateTime.TryParseExact(texto, FormatoFecha, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out fecha))
-						return fecha;
-
-					throw new FormatException("El valor '" + texto + "' no es una fecha valida (" + FormatoFecha +
-											  ") para la columna '" + columna + "'.");
-				}
-
-				return texto;
-			}
-
-			if (destino == typeof(decimal))
-				return Convert.ToDecimal(valor);
-
-			if (destino == typeof(int) || destino == typeof(short) || destino == typeof(byte))
-			{
-				decimal d = Convert.ToDecimal(valor);
-				return Convert.ChangeType(d, destino);
-			}
-
-			return valor;
-		}
-
-		private static readonly Type S = typeof(string);
-		private static readonly Type I32 = typeof(int);
-		private static readonly Type DEC = typeof(decimal);
-		private static readonly Type FEC = typeof(DateTime);
-
-		private static void Col(DataTable dt, string nombre, Type tipo)
-		{
-			dt.Columns.Add(nombre, tipo);
-		}
-
-		// El orden de las columnas debe coincidir con el de la tabla destino (SqlBulkCopy mapea por posicion).
-		private static DataTable CrearTablaLote()
-		{
-			DataTable dt = new DataTable();
-			Col(dt, "idRow", I32);                                   // 0  // 0 fijo (no viene de AS400)
-			Col(dt, "Origen", S);                                    // 1
-			Col(dt, "FechaCarga", FEC);                              // 2
-			Col(dt, "Codigo_Emisor", S);                             // 3
-			Col(dt, "EC_DetalleNo_Cuenta", S);                       // 4
-			Col(dt, "Fecha_Corte", FEC);                             // 5
-			Col(dt, "EC_DetalleNo_Tarjeta", S);                      // 6
-			Col(dt, "Nombre_TH_P", S);                               // 7
-			Col(dt, "EC_DetalleEmisor_Madre", S);                    // 8
-			Col(dt, "EC_DetalleCuenta_Madre", S);                    // 9
-			Col(dt, "No_Autorizacion", S);                           // 10
-			Col(dt, "Fecha_Consumo", FEC);                           // 11
-			Col(dt, "Codigo_Mov", S);                                // 12
-			Col(dt, "Descripcion_Mov", S);                           // 13
-			Col(dt, "Moneda_Mov", S);                                // 14
-			Col(dt, "Monto_Mov", DEC);                               // 15
-			Col(dt, "Tarjeta_Imprimir", S);                          // 16
-			Col(dt, "Tasa_Efectiva_Anual_EF_MN", DEC);               // 17
-			Col(dt, "Tasa_Efectiva_Anual_EF_ME", DEC);               // 18
-			Col(dt, "NoCuentaClaro", S);                             // 19
-			Col(dt, "ProcesadorOrigen", S);                          // 20  // no viene de AS400
-			return dt;
-		}
-		#endregion
-
-		#region Logging
-		private static string Fmt(Stopwatch sw)
-		{
-			return sw.Elapsed.ToString(@"hh\:mm\:ss");
-		}
-
-		private void Info(string mensaje)
-		{
-			Log(LogInfo, mensaje);
-		}
-
-		private void ErrorLog(string contexto, Exception ex)
-		{
-			Log(LogError, contexto + ": " + ex.GetType().Name + " - " + ex.Message);
-		}
-
-		/// <summary>
-		/// Escribe siempre en los eventos de SSIS (visibles en SSISDB / consola) y, segun el estado,
-		/// en la tabla de log de la BD mediante el SP RegistroProceso.
-		/// </summary>
-		private void Log(string estado, string mensaje)
-		{
-			string texto = "[" + Fmt(_swTotal) + "] " + mensaje;
-			bool fireAgain = true;
-
-			if (estado == LogError)
-			{
-				_ultimoError = mensaje;
-				Dts.Events.FireWarning(0, NombreProceso, "ERROR: " + texto, "", 0);
-			}
-			else
-			{
-				Dts.Events.FireInformation(0, NombreProceso, texto, "", 0, ref fireAgain);
-			}
-
-			if (estado == LogInfo && !_logDetallado)
-				return;
-
-			EscribirLogBd(estado, texto);
-		}
-
-		private void EscribirLogBd(string estado, string mensaje)
-		{
-			string sp;
-			if (!parametros.TryGetValue("RegistroProceso", out sp) || string.IsNullOrWhiteSpace(sp))
-				return;
-
-			if (mensaje.Length > MaxLongitudMensaje)
-				mensaje = mensaje.Substring(0, MaxLongitudMensaje - 3) + "...";
-
-			ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
-			SqlConnection conn = null;
-
-			try
-			{
-				conn = Adquirir<SqlConnection>(cm);
-
-				using (SqlCommand cmd = new SqlCommand(sp, conn))
-				{
-					cmd.CommandType = CommandType.StoredProcedure;
-					cmd.CommandTimeout = 60;
-					cmd.Parameters.Add(new SqlParameter("@Proceso", NombreProceso));
-					cmd.Parameters.Add(new SqlParameter("@EstadoProceso", estado));
-					cmd.Parameters.Add(new SqlParameter("@Mensaje", mensaje));
-					cmd.ExecuteNonQuery();
-				}
-			}
-			catch (Exception ex)
-			{
-				Dts.Events.FireWarning(0, NombreProceso, "No se pudo registrar en la BD: " + ex.Message, "", 0);
-			}
-			finally
-			{
-				if (conn != null)
-					cm.ReleaseConnection(conn);
-			}
-		}
-		#endregion
-
-		#region ScriptResults declaration
-		/// <summary>
-		/// This enum provides a convenient shorthand within the scope of this class for setting the
-		/// result of the script.
-		///
-		/// This code was generated automatically.
-		/// </summary>
-		enum ScriptResults
-		{
-			Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
-			Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
-		};
-		#endregion
+        #region Help:  Using Integration Services variables and parameters in a script
+        /* To use a variable in this script, first ensure that the variable has been added to 
+         * either the list contained in the ReadOnlyVariables property or the list contained in 
+         * the ReadWriteVariables property of this script task, according to whether or not your
+         * code needs to write to the variable.  To add the variable, save this script, close this instance of
+         * Visual Studio, and update the ReadOnlyVariables and 
+         * ReadWriteVariables properties in the Script Transformation Editor window.
+         * To use a parameter in this script, follow the same steps. Parameters are always read-only.
+         * 
+         * Example of reading from a variable:
+         *  DateTime startTime = (DateTime) Dts.Variables["System::StartTime"].Value;
+         * 
+         * Example of writing to a variable:
+         *  Dts.Variables["User::myStringVariable"].Value = "new value";
+         * 
+         * Example of reading from a package parameter:
+         *  int batchId = (int) Dts.Variables["$Package::batchId"].Value;
+         *  
+         * Example of reading from a project parameter:
+         *  int batchId = (int) Dts.Variables["$Project::batchId"].Value;
+         * 
+         * Example of reading from a sensitive project parameter:
+         *  int batchId = (int) Dts.Variables["$Project::batchId"].GetSensitiveValue();
+         * */
+
+        #endregion
+
+        #region Help:  Firing Integration Services events from a script
+        /* This script task can fire events for logging purposes.
+         * 
+         * Example of firing an error event:
+         *  Dts.Events.FireError(18, "Process Values", "Bad value", "", 0);
+         * 
+         * Example of firing an information event:
+         *  Dts.Events.FireInformation(3, "Process Values", "Processing has started", "", 0, ref fireAgain)
+         * 
+         * Example of firing a warning event:
+         *  Dts.Events.FireWarning(14, "Process Values", "No values received for input", "", 0);
+         * */
+        #endregion
+
+        #region Help:  Using Integration Services connection managers in a script
+        /* Some types of connection managers can be used in this script task.  See the topic 
+         * "Working with Connection Managers Programatically" for details.
+         * 
+         * Example of using an ADO.Net connection manager:
+         *  object rawConnection = Dts.Connections["Sales DB"].AcquireConnection(Dts.Transaction);
+         *  SqlConnection myADONETConnection = (SqlConnection)rawConnection;
+         *  //Use the connection in some code here, then release the connection
+         *  Dts.Connections["Sales DB"].ReleaseConnection(rawConnection);
+         *
+         * Example of using a File connection manager
+         *  object rawConnection = Dts.Connections["Prices.zip"].AcquireConnection(Dts.Transaction);
+         *  string filePath = (string)rawConnection;
+         *  //Use the connection in some code here, then release the connection
+         *  Dts.Connections["Prices.zip"].ReleaseConnection(rawConnection);
+         * */
+        #endregion
+
+
+        /// <summary>
+        /// This method is called when this script task executes in the control flow.
+        /// Before returning from this method, set the value of Dts.TaskResult to indicate success or failure.
+        /// To open Help, press F1.
+        /// </summary>
+        public static DateTime date = DateTime.Now;
+        public static string fecha_generacion = string.Empty; //date.ToString("yyyy-MM-dd");
+        public Dictionary<string, string> parametros = new Dictionary<string, string>();
+        public string sql_ConsultaEstado = string.Empty;
+        public string sql_ConsultaOrigen = string.Empty;
+        public string sql_ConsultaActualizar = string.Empty;
+        public void Main()
+        {
+            // TODO: Add your code here
+
+            if (ObtieneParametros())
+            {
+
+                fecha_generacion = parametros["FechaProceso"];
+                ParseaConsultas();
+                var estado_proceso = ObtenerEstadoProceso();
+
+                if (estado_proceso == null)
+                {
+                    Dts.TaskResult = (int)ScriptResults.Failure;
+                    return;
+                }
+
+                if (estado_proceso != parametros["EstadoInicial"])
+                {
+                    if (RealizarReintento(estado_proceso))
+                    {
+                        Dts.TaskResult = (int)ScriptResults.Success;
+                        return;
+                    }
+                    else
+                    {
+                        Dts.TaskResult = (int)ScriptResults.Failure;
+                        return;
+                    }
+                }
+                else
+                {
+                    if (RealizarMovimiento())
+                    {
+                        Dts.TaskResult = (int)ScriptResults.Success;
+                        return;
+                    }
+                    else
+                    {
+                        Dts.TaskResult = (int)ScriptResults.Failure;
+                        return;
+                    }
+                }
+            }
+
+            Dts.TaskResult = (int)ScriptResults.Failure;
+        }
+
+        public bool RealizarMovimiento()
+        {
+            List<Financiamiento> resultado = ObtenerInfoAs400();
+            if (resultado.Count == 0)
+            {
+                RegistraProceso("F", $"No se encontraron registros en AS400 para el día {fecha_generacion}");
+                UpdateArchivoAS400();
+                return true;
+            }
+
+            if (!PreParseo())
+                return false;
+
+            DataTable data = ConvertirADataTable(resultado);
+            if (data.Rows.Count == 0)
+                return false;
+
+            if (!EjecutarBulkInsertBandejaVasa(data))
+                return false;
+
+            if (!PostParseo())
+                return false;
+
+            if (!UpdateArchivoAS400())
+                return false;
+
+            RegistraProceso("E", $"Proceso ejecutado exitosamente");
+            return true;
+        }
+
+        public bool ObtieneParametros()
+        {
+            ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = new SqlCommand("usp_GetParametersByProcess", conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "Financiamientos";
+
+                    using (SqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string idParametro = reader["IdParametro"].ToString();
+                            string valorParametro = reader["ValorParametro"].ToString();
+
+                            if (!parametros.ContainsKey(idParametro))
+                                parametros.Add(idParametro, valorParametro);
+                        }
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener información desde usp_GetParametersByProcess con error {ex.Message.ToString()}");
+
+                return false;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+        public void ParseaConsultas()
+        {
+            string hora = DateTime.Now.ToString("HHmmss");
+            string fecha = DateTime.Now.ToString("yyyy-MM-dd");
+            sql_ConsultaEstado = parametros["ConsultaEstado"]
+                 .Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+                 .Replace("{FECHA_GENERACION}", $"'{fecha_generacion}'")
+                 .Replace("{ESTADO_INICIAL}", $"'{parametros["EstadoInicial"]}'")
+                 .Replace("{ARCHIVO_GENERADO}", $"'{parametros["ArchivoGenerado"]}'");
+
+            sql_ConsultaOrigen = parametros["ConsultaOrigen"]
+                .Replace("{ARCHIVO_ORIGEN}", parametros["ArchiviOrigen"]);
+
+            sql_ConsultaActualizar = parametros["ConsultaActualizar"]
+                .Replace("{ARCHIVO_CONTROL}", parametros["ArchivoControl"])
+                .Replace("{ESTADO_FINAL}", $"'{parametros["EstadoFinal"]}'")
+                .Replace("{FECHA_PROCESADO}", $"'{fecha}'")
+                .Replace("{HORA_PROCESADO}", $"'{hora}'")
+                .Replace("{USER}", $"'{parametros["Usuario"]}'")
+                .Replace("{FECHA_GENERACION}", $"'{fecha_generacion}'")
+                .Replace("{ESTADO_INICIAL}", $"'{parametros["EstadoInicial"]}'")
+                .Replace("{ARCHIVO_GENERADO}", $"'{parametros["ArchivoGenerado"]}'");
+        }
+
+        public string ObtenerEstadoProceso()
+        {
+            string estado_proceso = string.Empty;
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexion desde el Connection Manager.");
+                }
+
+
+                using (IDbCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = sql_ConsultaEstado;
+                    using (IDataReader reader = cmd.ExecuteReader())
+                    {
+
+                        if (reader.Read())
+                        {
+                            estado_proceso = reader.GetString(0);
+
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener estado proceso {sql_ConsultaEstado} con error {ex.Message.ToString()}");
+                
+                Dts.TaskResult = (int)ScriptResults.Failure;
+                return null;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return estado_proceso;
+        }
+
+        public bool RealizarReintento(string estadoProceso)
+        {
+            int intentoActual = 0;
+            var reintentos = ObtenerInfoReintentos();
+
+            while (estadoProceso != "G" && intentoActual < reintentos.CantidadReintentos)
+            {
+                intentoActual++;
+                System.Threading.Thread.Sleep(reintentos.MinutosReintentos * 60 * 1000);
+                estadoProceso = ObtenerEstadoProceso();
+            }
+
+            if (estadoProceso == "G")
+            {
+                RegistraProceso("F", $"Falló reintentos {reintentos.CantidadReintentos} durante: {reintentos.MinutosReintentos} cada uno, no se actualizó estado G en AS400");
+
+                return RealizarMovimiento();
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        public Reintentos ObtenerInfoReintentos()
+        {
+            return new Reintentos
+            {
+                CantidadReintentos = int.Parse(parametros["CantidadReintentos"]),
+                MinutosReintentos = int.Parse(parametros["MinutosReintentos"]),
+            };
+        }
+
+        public List<Financiamiento> ObtenerInfoAs400()
+        {
+            List<Financiamiento> financiamientos = new List<Financiamiento>();
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexi�n desde el Connection Manager.");
+                }
+
+                {
+                    using (IDbCommand cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = sql_ConsultaOrigen;
+                        using (IDataReader reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                Financiamiento financiamiento = new Financiamiento();
+
+                                financiamiento.NumeroCuenta = reader.GetString(0);
+                                financiamiento.GrupoMovimientos = reader.GetString(1);
+                                financiamiento.CodigoOperacion = reader.GetString(2);
+                                financiamiento.NoCutRelacionado = reader.GetString(3);
+                                financiamiento.MonedaMovimiento = reader.GetString(4);
+                                financiamiento.Importe = reader.GetDecimal(5);
+                                financiamiento.ImporteTotalPlan = reader.GetDecimal(6);
+                                financiamiento.InteresCuotaLiquida = reader.GetDecimal(7);
+                                financiamiento.PlanCuotaCapitalPend = reader.GetDecimal(8);
+                                financiamiento.PlanCuotaInteresPend = reader.GetDecimal(9);
+                                financiamiento.PlanExtraTasa = reader.GetDecimal(10);
+                                financiamiento.NoCuotaLiquidada = reader.GetDecimal(11);
+                                financiamiento.CantidadCuotasPlan = reader.GetDecimal(12);
+                                financiamiento.NombreTarjeta = reader.GetString(13);
+                                financiamiento.EsIntra = reader.GetString(14);
+                                financiamiento.EsExtra = reader.GetString(15);
+                                financiamiento.FechaCierre = reader.GetString(16);
+                                financiamiento.FechaOtorgamiento = reader.GetString(17);
+
+                                financiamiento.ProcesadorOrigen = "LOCAL";
+                                financiamientos.Add(financiamiento);
+                            }
+                        }
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló obtener información desde {parametros["ArchiviOrigen"]} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
+
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return financiamientos;
+        }
+
+        public bool PreParseo()
+        {
+            ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = new SqlCommand(parametros["PreParseo"], conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
+                    cmd.ExecuteNonQuery();
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló preparseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
+
+                return false;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+        public bool PostParseo()
+        {
+            ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = new SqlCommand(parametros["PostParseo"], conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+                    cmd.Parameters.Add(new SqlParameter("@Archivo", OleDbType.VarChar)).Value = parametros["NombreArchivo"];
+                    cmd.ExecuteNonQuery();
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló PostParseo {parametros["NombreArchivo"]} con error {ex.Message.ToString()}");
+
+                return false;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+        public DataTable ConvertirADataTable(List<Financiamiento> financiamientos)
+        {
+
+            try
+            {
+                DataTable dt = new DataTable();
+
+                dt.Columns.Add("NumeroCuenta", typeof(string));
+                dt.Columns.Add("GrupoMovimientos", typeof(string));
+                dt.Columns.Add("CodigoOperacion", typeof(string));
+                dt.Columns.Add("NoCutRelacionado", typeof(string));
+                dt.Columns.Add("MonedaMovimiento", typeof(string));
+                dt.Columns.Add("Importe", typeof(decimal));
+                dt.Columns.Add("ImporteTotalPlan", typeof(decimal));
+                dt.Columns.Add("InteresCuotaLiquida", typeof(decimal));
+                dt.Columns.Add("PlanCuotaCapitalPend", typeof(decimal));
+                dt.Columns.Add("PlanCuotaInteresPend", typeof(decimal));
+                dt.Columns.Add("PlanExtraTasa", typeof(decimal));
+                dt.Columns.Add("NoCuotaLiquidada", typeof(byte));       
+                dt.Columns.Add("CantidadCuotasPlan", typeof(byte));     
+                dt.Columns.Add("NombreTarjeta", typeof(string));
+                dt.Columns.Add("EsIntra", typeof(bool));               
+                dt.Columns.Add("EsExtra", typeof(bool));              
+                dt.Columns.Add("FechaCierre", typeof(DateTime));      
+                dt.Columns.Add("FechaOtorgamiento", typeof(DateTime));  
+                dt.Columns.Add("ProcesadorOrigen", typeof(string));
+
+                bool esIntra;
+                bool esExtra;
+                foreach (var h in financiamientos)
+                {
+                    esIntra = h.EsIntra == "1";
+                    esExtra = h.EsExtra == "1";
+                    dt.Rows.Add(
+                        LimpiarEspacios(h.NumeroCuenta),
+                        LimpiarEspacios(h.GrupoMovimientos),
+                        LimpiarEspacios(h.CodigoOperacion),
+                        LimpiarEspacios(h.NoCutRelacionado),
+                        LimpiarEspacios(h.MonedaMovimiento),
+                        h.Importe,
+                        h.ImporteTotalPlan,
+                        h.InteresCuotaLiquida,
+                        h.PlanCuotaCapitalPend,
+                        h.PlanCuotaInteresPend,
+                        h.PlanExtraTasa,
+                        h.NoCuotaLiquidada,
+                        h.CantidadCuotasPlan,
+                        LimpiarEspacios(h.NombreTarjeta),
+                        esIntra,
+                        esExtra,
+                        h.FechaCierre,
+                        h.FechaOtorgamiento,
+                        LimpiarEspacios(h.ProcesadorOrigen)
+                    );
+                }
+                return dt;
+            }
+
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló proceso de conversión DataTable {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
+
+                return new DataTable();
+            }
+        }
+
+        public bool EjecutarBulkInsertBandejaVasa(DataTable tableCuentas)
+        {
+            ConnectionManager cm = Dts.Connections["BANDEJAVASA"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlBulkCopy bulkCopy = new SqlBulkCopy(conn))
+                {
+                    bulkCopy.DestinationTableName = parametros["ArchivoDestino"];
+                    bulkCopy.WriteToServer(tableCuentas);
+                }
+
+                return true;
+
+            }
+
+
+            catch (Exception ex)
+            {
+                RegistraProceso("F", $"Falló bulkInsert {parametros["ArchivoDestino"]} con error {ex.Message.ToString()}");
+
+                return false;
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+        public bool UpdateArchivoAS400()
+        {
+
+            ConnectionManager cm = Dts.Connections["AS400"];
+            OleDbConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as OleDbConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (IDbCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = sql_ConsultaActualizar;
+                    int rowsAffected = cmd.ExecuteNonQuery();
+
+                    if (rowsAffected == 0)
+                    {
+                        return false;
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+
+                RegistraProceso("F", $"Falló actualizar estado archivo: {parametros["ArchivoControl"]} con error {ex.Message.ToString()}");
+
+                Dts.TaskResult = (int)ScriptResults.Failure;
+
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+
+            return true;
+        }
+
+        private object LimpiarEspacios(object valor)
+        {
+            if (valor == null || valor == DBNull.Value)
+                return DBNull.Value;
+
+            // Convertimos a string y eliminamos espacios
+            var texto = valor.ToString().Trim();
+
+            // Si después del Trim queda vacío, lo tratamos como NULL
+            if (texto.Length == 0)
+                return DBNull.Value;
+
+            return texto;
+        }
+
+        public void RegistraProceso(string estadoProceso, string mensaje)
+        {
+            ConnectionManager cm = Dts.Connections["DESCARGAINFO"];
+            SqlConnection conn = null;
+
+            try
+            {
+                conn = cm.AcquireConnection(null) as SqlConnection;
+                if (conn == null)
+                {
+                    throw new InvalidOperationException("No se pudo obtener la conexión desde el Connection Manager.");
+                }
+
+                using (SqlCommand cmd = new SqlCommand(parametros["RegistroProceso"], conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+                    cmd.Parameters.Add(new SqlParameter("@Proceso", OleDbType.VarChar)).Value = "Financiamientos";
+                    cmd.Parameters.Add(new SqlParameter("@EstadoProceso", OleDbType.VarChar)).Value = estadoProceso;
+                    cmd.Parameters.Add(new SqlParameter("@Mensaje", OleDbType.VarChar)).Value = mensaje;
+
+                    cmd.ExecuteNonQuery();
+                }
+
+            }
+            catch (Exception ex)
+            {
+            }
+            finally
+            {
+                if (conn != null)
+                    cm.ReleaseConnection(conn);
+            }
+        }
+
+        #region ScriptResults declaration
+        /// <summary>
+        /// This enum provides a convenient shorthand within the scope of this class for setting the
+        /// result of the script.
+        /// 
+        /// This code was generated automatically.
+        /// </summary>
+        enum ScriptResults
+        {
+            Success = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Success,
+            Failure = Microsoft.SqlServer.Dts.Runtime.DTSExecResult.Failure
+        };
+        #endregion
+
 	}
 }
 
@@ -806,39 +684,29 @@ namespace ST_f5b3686da9674ca19cd452f095fbcd61
 
 
 
+TABLE_CAT	TABLE_SCHEM	TABLE_NAME	COLUMN_NAME	DATA_TYPE	TYPE_NAME	COLUMN_SIZE	BUFFER_LENGTH	DECIMAL_DIGITS	NUM_PREC_RADIX	NULLABLE	REMARKS	COLUMN_DEF	SQL_DATA_TYPE	SQL_DATETIME_SUB	CHAR_OCTET_LENGTH	ORDINAL_POSITION	IS_NULLABLE	SCOPE_CATALOG	SCOPE_SCHEMA	SCOPE_TABLE	SOURCE_DATA_TYPE	IS_AUTOINCREMENT	IS_GENERATEDCOLUMN
+C70DD220	TCATV3DAT	DETFINCT	NUMEROCUENTA	1	CHAR	13	13	(null)	(null)	0	(null)	' '	1	(null)	13	1	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	GRUPOMOVIMIENTOS	1	CHAR	3	3	(null)	(null)	0	(null)	' '	1	(null)	3	2	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	CODIGOOPERACION	1	CHAR	6	6	(null)	(null)	0	(null)	' '	1	(null)	6	3	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	NOCUTRELACIONADO	1	CHAR	12	12	(null)	(null)	0	(null)	' '	1	(null)	12	4	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	MONEDAMOVIMIENTO	1	CHAR	2	2	(null)	(null)	0	(null)	' '	1	(null)	2	5	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	IMPORTE	3	DECIMAL	15	17	2	10	0	(null)	0	3	(null)	(null)	6	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	IMPORTETOTALPLAN	3	DECIMAL	12	14	2	10	0	(null)	0	3	(null)	(null)	7	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	INTERESCUOTALIQUIDA	3	DECIMAL	12	14	2	10	0	(null)	0	3	(null)	(null)	8	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	PLANCUOTACAPITALPEND	3	DECIMAL	14	16	2	10	0	(null)	0	3	(null)	(null)	9	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	PLANCUOTAINTERESPEND	3	DECIMAL	12	14	2	10	0	(null)	0	3	(null)	(null)	10	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	PLANEXTRATASA	3	DECIMAL	8	10	4	10	0	(null)	0	3	(null)	(null)	11	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	NOCUOTALIQUIDADA	3	DECIMAL	3	5	0	10	0	(null)	0	3	(null)	(null)	12	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	CANTIDADCUOTASPLAN	3	DECIMAL	3	5	0	10	0	(null)	0	3	(null)	(null)	13	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	NOMBRETARJETA	1	CHAR	40	40	(null)	(null)	0	(null)	' '	1	(null)	40	14	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	ESINTRA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	15	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	ESEXTRA	1	CHAR	1	1	(null)	(null)	0	(null)	' '	1	(null)	1	16	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	FECHACIERRE	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	17	NO	(null)	(null)	(null)	(null)	NO	NO
+C70DD220	TCATV3DAT	DETFINCT	FECHAOTORGAMIENTO	1	CHAR	10	10	(null)	(null)	0	(null)	' '	1	(null)	10	18	NO	(null)	(null)	(null)	(null)	NO	NO
 
 
 
 
+Id	Proceso	IdParametro	ValorParametro
+71	Financiamientos	ConsultaOrigen	      SELECT NUMEROCUENTA,  GRUPOMOVIMIENTOS,  CODIGOOPERACION,  NOCUTRELACIONADO,  MONEDAMOVIMIENTO,  IMPORTE,  IMPORTETOTALPLAN,  INTERESCUOTALIQUIDA,  PLANCUOTACAPITALPEND,  PLANCUOTAINTERESPEND,  PLANEXTRATASA,  NOCUOTALIQUIDADA,  CANTIDADCUOTASPLAN,  NOMBRETARJETA,  ESINTRA,  ESEXTRA,    CASE          WHEN FECHACIERRE IS NULL           OR FECHACIERRE = ''           OR FECHACIERRE = '0000-00-00'           THEN CHAR('1900-01-01')          ELSE CHAR(FECHACIERRE)           END AS FECHACIERRE,    CASE          WHEN FECHAOTORGAMIENTO IS NULL           OR FECHAOTORGAMIENTO = ''           OR FECHAOTORGAMIENTO = '0000-00-00'           THEN CHAR('1900-01-01')          ELSE CHAR(FECHAOTORGAMIENTO)           END AS FECHAOTORGAMIENTO   FROM {ARCHIVO_ORIGEN}
 
-
-
-
-USE [DescargaInformacionProcesador]
-GO
--- Consulta de origen DEstadoCuenta con TRIM del lado de AS400
-UPDATE ParametrosDescargaTablas
-SET ValorParametro = N'SELECT
-    TRIM(ORIGEN) AS ORIGEN,
-    TRIM(CASE WHEN FECHACARGA = ''0000-00-00'' OR TRIM(FECHACARGA) = '''' OR FECHACARGA IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHACARGA) END) AS FECHACARGA,
-    TRIM(CODIGO_EMISOR) AS CODIGO_EMISOR,
-    TRIM(EC_DETALLENO_CUENTA) AS EC_DETALLENO_CUENTA,
-    TRIM(CASE WHEN FECHA_CORTE = ''0000-00-00'' OR TRIM(FECHA_CORTE) = '''' OR FECHA_CORTE IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHA_CORTE) END) AS FECHA_CORTE,
-    TRIM(EC_DETALLENO_TARJETA) AS EC_DETALLENO_TARJETA,
-    TRIM(NOMBRE_TH_P) AS NOMBRE_TH_P,
-    TRIM(EC_DETALLEEMISOR_MADRE) AS EC_DETALLEEMISOR_MADRE,
-    TRIM(EC_DETALLECUENTA_MADRE) AS EC_DETALLECUENTA_MADRE,
-    TRIM(NO_AUTORIZACION) AS NO_AUTORIZACION,
-    TRIM(CASE WHEN FECHA_CONSUMO = ''0000-00-00'' OR TRIM(FECHA_CONSUMO) = '''' OR FECHA_CONSUMO IS NULL THEN CHAR(''1900-01-01'') ELSE CHAR(FECHA_CONSUMO) END) AS FECHA_CONSUMO,
-    TRIM(CODIGO_MOV) AS CODIGO_MOV,
-    TRIM(DESCRIPCION_MOV) AS DESCRIPCION_MOV,
-    TRIM(MONEDA_MOV) AS MONEDA_MOV,
-    MONTO_MOV,
-    TRIM(TARJETA_IMPRIMIR) AS TARJETA_IMPRIMIR,
-    TASA_EFECTIVA_ANUAL_EF_MN,
-    TASA_EFECTIVA_ANUAL_EF_ME,
-    TRIM(NOCUENTACLARO) AS NOCUENTACLARO,
-    TRIM(MCC) AS MCC
-FROM {ARCHIVO_ORIGEN}'
-WHERE Proceso = 'DEstadoCuenta' AND IdParametro = 'ConsultaOrigen';
-GO
