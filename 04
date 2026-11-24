@@ -1,850 +1,255 @@
-npm install exceljs pdfmake
+USE [BandejaVASA]
+GO
+
+/****** Object:  View [dbo].[uvw_CobranzasRelacionesTC]    Script Date: 24/11/2026 14:29:47 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+-- ==========================================================
+-- Author:		<Elkin Amador>
+-- Create date: <2016-05-10>
+-- Description:	<Obtiene la relación entre Tarjetas y número de identidad entre avales y titulares para cobranzas>
+-- ==========================================================
+CREATE VIEW [dbo].[uvw_CobranzasRelacionesTC]
+AS
+
+WITH Saldos
+AS
+(
+	SELECT NoCuentaClaro, cif,CategoriaTarjeta
+	FROM uvw_SaldosVasa
+	--WHERE  CategoriaTarjeta = '0'
+)
+,
+ TitularesTarjetas
+(
+	RELA_CIF,
+	RELA_IDEN,
+	RELA_TIPO,
+	RELA_NCTA,
+	RELA_TIPR
+)
+AS
+(
+    SELECT s.Cif																				  RELA_CIF,
+           (SELECT top 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=s.NoCuentaClaro) RELA_IDEN,
+           'TDC'																				  RELA_TIPO,
+           s.NoCuentaClaro																		  RELA_NCTA,
+           'SOW'																				  RELA_TIPR--Tipo Referencia
+    FROM    Saldos s 
+    WHERE  s.CategoriaTarjeta = '0'--ND LEN(uc.Cif)>0
+),
+AvalesTarjetas(RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR) AS
+(
+    SELECT f.NumCedulaFiador1									RELA_CIF,
+           f.NumCedulaFiador1									RELA_IDEN,
+           'TDC'												RELA_TIPO,
+           f.NoCuentaClaro										RELA_NCTA,
+           'IND'												RELA_TIPR--Tipo Referencia
+    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro       
+    WHERE  s.CategoriaTarjeta = '0'
+		   AND NumCedulaFiador1 IS NOT NULL
+           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador1))) > 0 
+           AND NumCedulaFiador1 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
+    UNION
+    SELECT f.NumCedulaFiador2									RELA_CIF,
+           f.NumCedulaFiador2									RELA_IDEN,
+           'TDC'												RELA_TIPO,
+           f.NoCuentaClaro										RELA_NCTA,
+           'IND'												RELA_TIPR--Tipo Referencia
+    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro
+    WHERE  s.CategoriaTarjeta = '0'
+		   AND f.NumCedulaFiador2 IS NOT NULL
+           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador2))) > 0 
+           AND NumCedulaFiador2 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
+)
+
+SELECT RELA_CIF,
+       RELA_IDEN,
+       RELA_TIPO,
+       RELA_NCTA,
+       RELA_TIPR
+FROM   TitularesTarjetas
+UNION
+SELECT RELA_CIF,
+       RELA_IDEN,
+       RELA_TIPO,
+       RELA_NCTA,
+       RELA_TIPR
+FROM   AvalesTarjetas
+UNION
+SELECT CONVERT(CHAR(19),RELA_CIF)									RELA_CIF,
+       CONVERT(CHAR(19),RELA_IDEN)									RELA_IDEN,
+       CONVERT(VARCHAR(3),RELA_TIPO)								RELA_TIPO,
+       CONVERT(CHAR(16),RELA_NCTA)									RELA_NCTA,
+       CONVERT(VARCHAR(3),RELA_TIPR)								RELA_TIPR--Tipo Referencia
+FROM   (
+           SELECT cc.No_Cliente										RELA_CIF,
+                  cc.No_Cedula										RELA_IDEN,
+                  'TDC'												RELA_TIPO,
+                  cc.NoCuentaClaro										RELA_NCTA,
+                  'SOW'												RELA_TIPR
+           FROM   uvw_CobranzasCuentas     cc
+           
+           UNION
+           
+           SELECT cc.No_Cliente										RELA_CIF,
+                  cc.Cedula_Fiador_1								RELA_IDEN,
+                  'TDC'												RELA_TIPO,
+                  cc.NoCuentaClaro									RELA_NCTA,
+                  'IND'												RELA_TIPR--Tipo Referencia
+           FROM   uvw_CobranzasCuentas       cc
+           WHERE  cc.Cedula_Fiador_1 IS NOT NULL
+                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_1))) > 0
+                  AND cc.Cedula_Fiador_1 != cc.Cedula_Fiador_1
+           UNION
+           
+           SELECT cc.No_Cliente										RELA_CIF,
+                  cc.Cedula_Fiador_2								RELA_IDEN,
+                  'TDC'												RELA_TIPO,
+                  cc.NoCuentaClaro									RELA_NCTA,
+                  'IND'												RELA_TIPR--Tipo Referencia
+           FROM   uvw_CobranzasCuentas       cc
+           WHERE  cc.Cedula_Fiador_2 IS NOT NULL
+                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_2))) > 0
+                  AND cc.Cedula_Fiador_2 != cc.Cedula_Fiador_2
+       ) AS Empresariales
+WHERE  LEN(RELA_CIF) > 0
+
+
+GO
+
+
+
+USE [BandejaVASA]
+GO
+
+/****** Object:  View [dbo].[uvw_CobranzasCuentas]    Script Date: 24/11/2026 14:30:49 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+--=========================================================================================================
+-- Milton D. Canales
+-- <2015-10-20> <informacion necesaria para el Sistema de Cobranzas>
+--=========================================================================================================
+
+CREATE VIEW [dbo].[uvw_CobranzasCuentas]
+AS
+	SELECT TOP 99.99999 PERCENT
+		CAST(Usu.NoUsuario AS NVARCHAR(13))														No_Cuenta
+		,CAST(Usu.NoClienteUnico AS NVARCHAR(15))												No_Cliente
+		,CAST(Usu.RTN AS NVARCHAR(20))															No_Cedula
+		,CAST(RTRIM(LTRIM(Usu.NombreUsuario)) + ' '	+ 
+		 RTRIM(LTRIM(Usu.DenominacionCuenta)) AS NVARCHAR(81))									Nombre_Cliente
+		,CAST(Usu.DomicilioParticular1 AS NVARCHAR(40))											Direccion_1
+		,CAST(Usu.DomicilioParticular2 AS NVARCHAR(40))											Direccion_2
+		,CAST(Usu.Telefono AS NVARCHAR(30))														Telefono_1
+		,CAST('' AS NVARCHAR(30))																Telefono_2
+		,CAST(LTRIM(RTRIM(Usu.UsuEmailUsuario)) + '@' + 
+		 LTRIM(RTRIM(Usu.UsuEmailDominio)) AS NVARCHAR(61))										Correo
+		,CAST(Usu.Cartera AS INT)																Ciclo
+		,CAST(CASE WHEN 
+			LEN(Usu.CodigoEmpresa) > 0 
+		THEN
+			'J'
+		ELSE
+			'N'
+		END AS NVARCHAR(1))																		TipoPersoneria
+		,CAST(Cc.EstadoCuenta AS INT)															Estado_Cuenta
+		,Cast(Cc.EstadoTarjeta as Int)															Estado_Tarjeta
+		,CONVERT(DATE, Usu.FechaAltaCuenta, 102)												Fecha_Alta
+		,CAST(Usu.ImporteLimiteCompra AS MONEY)													Linea_Credito
+		,CAST(Pos.DisponibleCompraML AS MONEY)													Disp_Compras_MN
+		,CAST(Pos.DisponibleCompraML / Pm.TasaCambio AS MONEY)									Disp_Compras_ME
+		,CONVERT(DATE, Pos.FechaUltimoPagoML, 102)												Fecha_Ult_Pago_MN
+		,CONVERT(DATE, Pos.FechaUltimoPagoUSD, 102)												Fecha_Ult_Pago_ME
+		,CONVERT(DATE, Usu.FechaProcesoABM, 102)												Fecha_Ult_Manto
+		,CAST(Cc.CantidadPagosMN AS INT)														Cantidad_Pagos_MN
+		,CAST(Cc.CantidadPagosUSD AS INT)														Cantidad_Pagos_ME
+		,CAST(Pos.PagosIngresadosML AS MONEY)													Total_Monto_Pagos_MN
+		,CAST(Pos.PagosIngresadosUSD AS MONEY)													Total_Monto_Pagos_ME
+		,CAST(Pos.PagoMinimoUltimaLiquidacionML AS MONEY)										Pago_Minimo_MN
+		,CAST(Pos.PagoMinimoUltimaLiquidacionUSD AS MONEY)										Pago_Minimo_ME
+		,CAST(Pos.PagoContadoML AS MONEY)														Saldo_Inicial_MN
+		,CAST(Pos.PagoContadoUSD AS MONEY)														Saldo_Inicial_ME
+		,CAST(Pos.SaldoActualML AS MONEY)														Saldo_Actual_ML
+		,CAST(Pos.SaldoActualUSD AS MONEY)														Saldo_Actual_ME
+		,CAST(Pos.PeriodosImpagosActualML AS INT)												Ciclos_Vencidos_MN
+		,CAST(Pos.PeriodosImpagosActualUSD AS INT)												Ciclos_Vencidos_ME
+		,CAST(Cc.PagoVencidoML AS MONEY)														Pago_Vencido_ML
+		,CAST(Cc.PagoVencidoUSD AS MONEY)														Pago_Vencido_ME
+		,CAST(ISNULL(Se.SaldoExtraMN, 0) AS MONEY)												Saldo_Extra_MN
+		,CAST(ISNULL(Se.SaldoExtraME, 0) AS MONEY)												Saldo_Extra_ME
+		,CAST(ISNULL(Se.SaldoIntraMN, 0) AS MONEY)												Saldo_Intra_MN
+		,CAST(ISNULL(Se.SaldoIntraME, 0) AS MONEY)												Saldo_Intra_ME
+		,CAST(ISNULL(Mf.NombreFiador1 ,'') AS NVARCHAR(40))										Nombre_Fiador_1
+		,CAST(ISNULL(Mf.NumCedulaFiador1 ,'') AS NVARCHAR(15))									Cedula_Fiador_1
+		,CAST(ISNULL(Mf.Telefono1_1 ,'') AS NVARCHAR(30))										Telefono_1_Fiador_1
+		,CAST(ISNULL(Mf.Telefono1_2 ,'') AS NVARCHAR(30))										Telefono_2_Fiador_1
+		,CAST(ISNULL(Mf.DireccionFiador1 + ' ' + Mf.DireccionFiador1_2 ,'') AS NVARCHAR(81))	Direccion_Fiador_1
+		,CAST(ISNULL(Mf.NombreFiador2 ,'') AS NVARCHAR(40))										Nombre_Fiador_2
+		,CAST(ISNULL(Mf.NumCedulaFiador2 ,'') AS NVARCHAR(15))									Cedula_Fiador_2
+		,CAST(ISNULL(Mf.Telefono2_1 ,'') AS NVARCHAR(30))										Telefono_1_Fiador_2
+		,CAST(ISNULL(Mf.Telefono2_2 ,'') AS NVARCHAR(30))										Telefono_2_Fiador_2
+		,CAST(ISNULL(Mf.DireccionFiador2 + ' ' + Mf.DireccionFiador2_2 ,'') AS NVARCHAR(81))	Direccion_Fiador_2
+		,CAST(ISNULL(Mf.NombreFiador3 ,'') AS NVARCHAR(40))										Nombre_Fiador_3
+		,CAST(ISNULL(Mf.NumCedulaFiador3 ,'') AS NVARCHAR(15))									Cedula_Fiador_3
+		,CAST(ISNULL(Mf.Telefono3_1 ,'') AS NVARCHAR(30))										Telefono_1_Fiador_3
+		,CAST(ISNULL(Mf.Telefono3_2 ,'') AS NVARCHAR(30))										Telefono_2_Fiador_3
+		,CAST(ISNULL(Mf.DireccionFiador3 + ' ' + Mf.DireccionFiador3_2 ,'') AS NVARCHAR(81))	Direccion_Fiador_3
+		,CAST(Pos.DiasMoraML AS INT)															DiasMoraMN
+		,CAST(Pos.DiasMoraUSD AS INT)															DiasMoraUSD
+		,CAST(CASE WHEN 
+			Usu.CodigoPais = '340' 
+		THEN
+			'HONDUREÑA'
+		ELSE
+			'EXTRANJERA'
+		END AS NVARCHAR(30))																	Nacionalidad
+		,CAST('' AS NVARCHAR(3))																Oficial
+		,CAST(Usu.NoCuentaClaro AS NVARCHAR(10))												NoCuentaClaro
+	FROM
+		Parametros Pm,
+		EUsuarios Usu
+	INNER JOIN
+		EPosicionDiaria Pos
+	ON
+		Usu.NoUsuario = Pos.NoUsuario
+	INNER JOIN
+		uvw_CuentasPagos Cc
+	ON
+		Usu.NoUsuario = Cc.NoCuenta
+	LEFT JOIN
+		uvw_SaldosExtras Se
+	ON
+		Se.NumeroCuenta = Usu.NoUsuario
+	LEFT JOIN
+		uvw_NombreFiadores Mf
+	ON
+		Mf.NoUsuario = Usu.NoUsuario
+	WHERE 
+		Pos.NumeroTarjeta = '0000000000000000'
+		AND Cc.TipoTarjeta='E'
+		AND Pos.ModeloLiquidacion != '900'
+	ORDER BY 1 DESC
+
+
+
+GO
 
-
-
-
-    usersExport: "api/users/filter/export",
-
-
-
-  // Todos los usuarios que cumplen el filtro (sin paginar), para los reportes
-  exportData: async (filters) => {
-    const { data } = await apiFeedbackAuthorized.post(
-      endpointsAPI.usersExport,
-      toFilterRequest({ ...filters, pageNumber: null, pageSize: null })
-    );
-    return data.data ?? [];
-  },
-
-
-
-
-
-
-
-
-{
-  "logo": "reports/logo.png",
-  "organization": "Banpaís",
-  "system": "eCoaching · Sistema de Feedback Colaboradores",
-  "primaryColor": "#003964",
-  "accentColor": "#FFC000",
-  "pageSize": "LETTER",
-  "showFilters": true,
-  "showGeneratedBy": true,
-  "footerText": "Documento de uso interno"
-}
-
-
-
-
-
-
-
-
-export { exportReport } from "./exportReport";
-
-
-
-
-
-
-
-
-
-import { loadReportConfig } from "./reportConfig";
-import { buildFileName } from "./reportFormat";
-
-const saveBlob = (blob, fileName) => {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
-
-/**
- * Genera y descarga un reporte en Excel o PDF.
- * Las librerías se cargan solo aquí, al exportar, para no hacer más pesada la app.
- *
- * @param {"excel" | "pdf"} format
- * @param {object} report
- *   title       Título del reporte
- *   subtitle    (opcional) Texto bajo el título
- *   fileName    (opcional) Nombre base del archivo; por defecto, el título
- *   columns     [{ header, key | value(row), type, width, pdfWidth, tone(valor), align, empty }]
- *   rows        Datos
- *   filters     [{ label, value }]  Filtros aplicados (con nombres, no IDs)
- *   summary     [{ label, value, tone }]  Datos extra para la ficha (ej. activos / inactivos)
- *   generatedBy Nombre de quien genera el reporte
- */
-export const exportReport = async (format, report) => {
-  const config = await loadReportConfig();
-  const generatedAt = new Date();
-  const data = { ...report, generatedAt };
-  const baseName = buildFileName(report.fileName ?? report.title, generatedAt);
-
-  if (format === "excel") {
-    const { buildExcel } = await import("./excelReport");
-    saveBlob(await buildExcel(config, data), `${baseName}.xlsx`);
-  } else {
-    const { buildPdf } = await import("./pdfReport");
-    saveBlob(await buildPdf(config, data), `${baseName}.pdf`);
-  }
-};
-
-
-
-
-
-
-
-
-
-
-
-
-/* =========================================================
-   Configuración del encabezado de los reportes.
-   Se lee de public/report-config.json cuando se exporta:
-   para cambiar el logo, colores o textos NO se toca código.
-   ========================================================= */
-
-const BASE = import.meta.env.BASE_URL ?? "/";
-
-// Valores por defecto si el JSON no existe o le falta algún campo
-const DEFAULTS = {
-  logo: null,
-  organization: "",
-  system: "eCoaching",
-  primaryColor: "#003964",
-  accentColor: "#FFC000",
-  pageSize: "LETTER",
-  showFilters: true,
-  showGeneratedBy: true,
-  footerText: "",
-};
-
-const resolveUrl = (path) => (/^(https?:)?\/\//.test(path) || path.startsWith("/") ? path : `${BASE}${path}`);
-
-const blobToDataUrl = (blob) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-
-const imageSize = (src) =>
-  new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => resolve({ width: 0, height: 0 });
-    img.src = src;
-  });
-
-/** Descarga el logo y lo deja listo para Excel y PDF (solo PNG o JPG) */
-const loadLogo = async (path) => {
-  if (!path) return null;
-  try {
-    const res = await fetch(resolveUrl(path), { cache: "no-cache" });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const extension = { "image/png": "png", "image/jpeg": "jpeg", "image/jpg": "jpeg" }[blob.type];
-    if (!extension) {
-      console.warn(`[reportes] El logo debe ser PNG o JPG (se recibió ${blob.type || "un tipo desconocido"}).`);
-      return null;
-    }
-    const dataUrl = await blobToDataUrl(blob);
-    const { width, height } = await imageSize(dataUrl);
-    return { dataUrl, extension, width, height };
-  } catch {
-    return null;
-  }
-};
-
-let cache = null;
-
-/** Configuración + logo. Se descarga una vez y se reutiliza mientras la página esté abierta. */
-export const loadReportConfig = () => {
-  if (!cache) {
-    cache = (async () => {
-      let config = DEFAULTS;
-      try {
-        const res = await fetch(`${BASE}report-config.json`, { cache: "no-cache" });
-        if (res.ok) config = { ...DEFAULTS, ...(await res.json()) };
-      } catch {
-        // Sin JSON: se usan los valores por defecto
-      }
-      return { ...config, logo: await loadLogo(config.logo) };
-    })();
-  }
-  return cache;
-};
-
-
-
-
-
-
-
-
-
-
-/* =========================================================
-   Formatos y colores compartidos por Excel y PDF.
-   Tipos de columna: text | number | integer | money | percent | date | datetime
-   ========================================================= */
-
-/** Colores de las etiquetas (estado, etc.). bg = fondo, fg = texto */
-export const TONES = {
-  green: { bg: "#DCFCE7", fg: "#166534" },
-  red: { bg: "#FEE2E2", fg: "#991B1B" },
-  blue: { bg: "#E0E7FF", fg: "#2E4EB9" },
-  teal: { bg: "#D5F1F4", fg: "#137A85" },
-  pink: { bg: "#F7E1EB", fg: "#B0466F" },
-  amber: { bg: "#FFF4D6", fg: "#8A5A00" },
-  grey: { bg: "#EEF1F5", fg: "#5B6B80" },
-};
-
-/** Valor crudo de una celda: column.value(row) o row[column.key] */
-export const cellValue = (column, row) =>
-  typeof column.value === "function" ? column.value(row) : row?.[column.key];
-
-/** Color de etiqueta de una celda, si la columna lo define (column.tone(valor) → "green") */
-export const cellTone = (column, raw) => {
-  if (typeof column.tone !== "function" || raw === null || raw === undefined || raw === "") return null;
-  return TONES[column.tone(raw)] ?? null;
-};
-
-const toDate = (v) => {
-  if (v === null || v === undefined || v === "") return null;
-  const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-
-const toNumber = (v) => {
-  if (v === null || v === undefined || v === "") return null;
-  const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));
-  return Number.isNaN(n) ? null : n;
-};
-
-/** Valor tipado para Excel (número, fecha o texto) */
-export const excelValue = (column, raw) => {
-  switch (column.type) {
-    case "number":
-    case "integer":
-    case "money":
-    case "percent": return toNumber(raw) ?? (raw ?? "");
-    case "date":
-    case "datetime": return toDate(raw) ?? (raw ?? "");
-    default: return raw === null || raw === undefined ? "" : String(raw);
-  }
-};
-
-/** Formato de número de Excel según el tipo */
-export const excelNumFmt = (column) => {
-  const currency = column.currency ? `"${column.currency} "` : "";
-  return {
-    number: "#,##0.00",
-    integer: "#,##0",
-    money: `${currency}#,##0.00`,
-    percent: '0.00"%"', // el valor ya viene en porcentaje (85 = 85%)
-    date: "dd/mm/yyyy",
-    datetime: "dd/mm/yyyy hh:mm",
-  }[column.type];
-};
-
-const nf = (decimals) =>
-  new Intl.NumberFormat("es-HN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-
-/** Texto ya formateado (PDF) */
-export const displayValue = (column, raw) => {
-  if (raw === null || raw === undefined || raw === "") return column.empty ?? "—";
-  switch (column.type) {
-    case "number": { const n = toNumber(raw); return n === null ? String(raw) : nf(2).format(n); }
-    case "integer": { const n = toNumber(raw); return n === null ? String(raw) : nf(0).format(n); }
-    case "money": {
-      const n = toNumber(raw);
-      return n === null ? String(raw) : `${column.currency ? `${column.currency} ` : ""}${nf(2).format(n)}`;
-    }
-    case "percent": { const n = toNumber(raw); return n === null ? String(raw) : `${nf(2).format(n)}%`; }
-    case "date": { const d = toDate(raw); return d ? formatDate(d) : String(raw); }
-    case "datetime": { const d = toDate(raw); return d ? formatDateTime(d) : String(raw); }
-    default: return String(raw);
-  }
-};
-
-/** Alineación por defecto: números a la derecha, fechas y etiquetas al centro */
-export const columnAlign = (column) =>
-  column.align ?? (["number", "integer", "money", "percent"].includes(column.type)
-    ? "right"
-    : ["date", "datetime"].includes(column.type) || column.tone ? "center" : "left");
-
-const pad = (n) => String(n).padStart(2, "0");
-
-export const formatDate = (d) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-
-export const formatDateTime = (d) => {
-  const h = d.getHours();
-  return `${formatDate(d)} ${pad(h % 12 || 12)}:${pad(d.getMinutes())} ${h < 12 ? "a. m." : "p. m."}`;
-};
-
-/** "Reporte de usuarios" → "reporte-de-usuarios_2026-11-24_0930" */
-export const buildFileName = (name, date) => {
-  const slug = String(name || "reporte")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  return `${slug}_${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}`;
-};
-
-
-
-
-
-
-
-
-
-
-
-
-import ExcelJS from "exceljs";
-import { cellTone, cellValue, columnAlign, excelNumFmt, excelValue, formatDateTime } from "./reportFormat";
-
-const argb = (hex) => `FF${String(hex).replace("#", "").toUpperCase()}`;
-const solid = (hex) => ({ type: "pattern", pattern: "solid", fgColor: { argb: argb(hex) } });
-
-const GREY = "#6B7A8F";
-const LIGHT = "#F4F8FD";
-const LINE = "#E6EBF1";
-const LOGO_HEIGHT = 44; // px
-
-// Ancho automático: el texto más largo de la columna (entre 10 y 45 caracteres)
-const autoWidth = (column, rows) => {
-  const lengths = rows.slice(0, 500).map((r) => String(cellValue(column, r) ?? "").length);
-  return Math.min(45, Math.max(10, column.header.length + 3, ...lengths.map((l) => l + 3)));
-};
-
-/**
- * Arma el Excel y devuelve un Blob.
- * Estructura: logo · franja · título · ficha (fecha, usuario, totales, filtros) · tabla
- */
-export const buildExcel = async (config, report) => {
-  const { title, subtitle, columns, rows, filters = [], summary = [], generatedBy, generatedAt } = report;
-
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = config.system;
-  workbook.created = generatedAt;
-
-  const sheet = workbook.addWorksheet((report.sheetName ?? title).slice(0, 31), {
-    pageSetup: {
-      paperSize: config.pageSize === "A4" ? 9 : 1,
-      orientation: columns.length > 5 ? "landscape" : "portrait",
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 0,
-      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
-    },
-    headerFooter: { oddFooter: `&L&8${config.footerText ?? ""}&R&8Página &P de &N` },
-  });
-
-  const lastCol = Math.max(columns.length, 4);
-  sheet.columns = Array.from({ length: lastCol }, (_, i) =>
-    ({ width: columns[i] ? columns[i].width ?? autoWidth(columns[i], rows) : 12 }));
-
-  let r = 1;
-  const mergeRow = (row, from = 1, to = lastCol) => { if (to > from) sheet.mergeCells(row, from, row, to); };
-  const fillRow = (row, hex) => { for (let c = 1; c <= lastCol; c++) sheet.getCell(row, c).fill = solid(hex); };
-
-  /* ---------- Logo y organización ---------- */
-  sheet.getRow(r).height = LOGO_HEIGHT * 0.8;
-  mergeRow(r);
-  const brand = sheet.getCell(r, 1);
-  brand.value = {
-    richText: [
-      { text: `${config.organization ?? ""}\n`, font: { bold: true, size: 11, color: { argb: argb(config.primaryColor) } } },
-      { text: config.system ?? "", font: { size: 9, color: { argb: argb(GREY) } } },
-    ],
-  };
-  brand.alignment = { horizontal: "right", vertical: "middle", wrapText: true };
-
-  if (config.logo) {
-    const imageId = workbook.addImage({ base64: config.logo.dataUrl, extension: config.logo.extension });
-    const ratio = config.logo.height ? config.logo.width / config.logo.height : 3;
-    sheet.addImage(imageId, { tl: { col: 0.15, row: 0.12 }, ext: { width: LOGO_HEIGHT * ratio, height: LOGO_HEIGHT } });
-  }
-  r++;
-
-  /* ---------- Franja de marca ---------- */
-  sheet.getRow(r).height = 4;
-  fillRow(r, config.accentColor);
-  r++;
-  sheet.getRow(r).height = 8;
-  r++;
-
-  /* ---------- Título ---------- */
-  sheet.getRow(r).height = 28;
-  mergeRow(r);
-  Object.assign(sheet.getCell(r, 1), {
-    value: title,
-    font: { size: 18, bold: true, color: { argb: argb(config.primaryColor) } },
-    alignment: { vertical: "middle" },
-  });
-  r++;
-
-  if (subtitle) {
-    mergeRow(r);
-    Object.assign(sheet.getCell(r, 1), { value: subtitle, font: { size: 10, color: { argb: argb(GREY) } } });
-    r++;
-  }
-  sheet.getRow(r).height = 8;
-  r++;
-
-  /* ---------- Ficha del reporte ---------- */
-  const facts = [
-    { label: "Generado el", value: formatDateTime(generatedAt) },
-    ...(config.showGeneratedBy && generatedBy ? [{ label: "Generado por", value: generatedBy }] : []),
-    { label: "Total de registros", value: String(rows.length) },
-    ...summary.map((s) => ({ label: s.label, value: String(s.value) })),
-  ];
-  const boxStart = r;
-
-  // Etiqueta y valor en pares de columnas (2 datos por fila)
-  const perRow = 2;
-  const span = Math.max(1, Math.floor(lastCol / (perRow * 2)));
-  for (let i = 0; i < facts.length; i += perRow) {
-    sheet.getRow(r).height = 18;
-    facts.slice(i, i + perRow).forEach((fact, j) => {
-      const labelCol = 1 + j * span * 2;
-      const valueCol = labelCol + span;
-      const valueEnd = j === perRow - 1 ? lastCol : valueCol + span - 1;
-      mergeRow(r, labelCol, valueCol - 1);
-      mergeRow(r, valueCol, valueEnd);
-      Object.assign(sheet.getCell(r, labelCol), {
-        value: fact.label.toUpperCase(),
-        font: { size: 8, bold: true, color: { argb: argb(GREY) } },
-        alignment: { vertical: "middle", indent: 1 },
-      });
-      Object.assign(sheet.getCell(r, valueCol), {
-        value: fact.value,
-        font: { size: 10, bold: true, color: { argb: argb(config.primaryColor) } },
-        alignment: { vertical: "middle" },
-      });
-    });
-    r++;
-  }
-
-  if (config.showFilters) {
-    sheet.getRow(r).height = 30;
-    mergeRow(r, 1, span);
-    mergeRow(r, span + 1, lastCol);
-    Object.assign(sheet.getCell(r, 1), {
-      value: "FILTROS",
-      font: { size: 8, bold: true, color: { argb: argb(GREY) } },
-      alignment: { vertical: "middle", indent: 1 },
-    });
-    Object.assign(sheet.getCell(r, span + 1), {
-      value: filters.length ? filters.map((f) => `${f.label}: ${f.value}`).join("   ·   ") : "Sin filtros (todos los registros)",
-      font: { size: 10, color: { argb: argb("#3D4B5C") } },
-      alignment: { vertical: "middle", wrapText: true },
-    });
-    r++;
-  }
-
-  for (let row = boxStart; row < r; row++) fillRow(row, LIGHT);
-  for (let c = 1; c <= lastCol; c++) {
-    sheet.getCell(boxStart, c).border = { top: { style: "thin", color: { argb: argb("#D6E6F6") } } };
-    sheet.getCell(r - 1, c).border = { bottom: { style: "thin", color: { argb: argb("#D6E6F6") } } };
-  }
-  sheet.getRow(r).height = 10;
-  r++;
-
-  /* ---------- Tabla ---------- */
-  const headerRow = r;
-  const head = sheet.getRow(headerRow);
-  head.height = 24;
-  columns.forEach((c, i) => {
-    Object.assign(head.getCell(i + 1), {
-      value: c.header,
-      font: { bold: true, size: 10, color: { argb: "FFFFFFFF" } },
-      fill: solid(config.primaryColor),
-      alignment: { vertical: "middle", horizontal: columnAlign(c), wrapText: true },
-    });
-  });
-  r++;
-
-  const border = { bottom: { style: "thin", color: { argb: argb(LINE) } } };
-  rows.forEach((row, index) => {
-    const excelRow = sheet.getRow(r);
-    columns.forEach((c, i) => {
-      const raw = cellValue(c, row);
-      const cell = excelRow.getCell(i + 1);
-      cell.value = excelValue(c, raw);
-      const fmt = excelNumFmt(c);
-      if (fmt) cell.numFmt = fmt;
-      cell.alignment = { vertical: "middle", horizontal: columnAlign(c), wrapText: Boolean(c.wrap) };
-      cell.border = border;
-      cell.font = { size: 10 };
-      const tone = cellTone(c, raw);
-      if (tone) {
-        cell.fill = solid(tone.bg);
-        cell.font = { size: 10, bold: true, color: { argb: argb(tone.fg) } };
-      } else if (index % 2 === 1) {
-        cell.fill = solid("#F8FAFC");
-      }
-    });
-    r++;
-  });
-
-  if (rows.length === 0) {
-    mergeRow(r);
-    Object.assign(sheet.getCell(r, 1), {
-      value: "No hay registros para los filtros seleccionados.",
-      font: { italic: true, color: { argb: argb(GREY) } },
-      alignment: { horizontal: "center" },
-    });
-  }
-
-  // Encabezado fijo al hacer scroll, filtros de Excel y encabezado repetido al imprimir
-  sheet.views = [{ state: "frozen", ySplit: headerRow, showGridLines: false }];
-  if (rows.length > 0) sheet.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: headerRow, column: columns.length } };
-  sheet.pageSetup.printTitlesRow = `${headerRow}:${headerRow}`;
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-};
-
-
-
-
-
-
-
-
-
-
-
-
-import pdfMake from "pdfmake/build/pdfmake";
-import vfsFonts from "pdfmake/build/vfs_fonts";
-import { cellTone, cellValue, columnAlign, displayValue, formatDateTime } from "./reportFormat";
-
-pdfMake.addVirtualFileSystem(vfsFonts);
-
-const GREY = "#6B7A8F";
-const LIGHT = "#F4F8FD";
-const LINE = "#E6EBF1";
-const MARGIN_X = 36;
-
-/** Definición del documento (pdfmake). Encabezado y pie se repiten en cada página. */
-export const buildPdfDefinition = (config, report) => {
-  const { title, subtitle, columns, rows, filters = [], summary = [], generatedBy, generatedAt } = report;
-  const landscape = report.orientation ? report.orientation === "landscape" : columns.length > 5;
-
-  /* ---------- Encabezado de cada página ---------- */
-  const header = (currentPage, pageCount, pageSize) => ({
-    margin: [MARGIN_X, 18, MARGIN_X, 0],
-    stack: [
-      {
-        columns: [
-          config.logo ? { image: config.logo.dataUrl, fit: [130, 34], width: "auto" } : { text: "", width: "auto" },
-          {
-            width: "*",
-            alignment: "right",
-            margin: [0, 4, 0, 0],
-            stack: [
-              { text: config.organization ?? "", bold: true, fontSize: 10, color: config.primaryColor },
-              { text: config.system ?? "", fontSize: 8, color: GREY, margin: [0, 1, 0, 0] },
-            ],
-          },
-        ],
-      },
-      {
-        margin: [0, 8, 0, 0],
-        canvas: [{ type: "rect", x: 0, y: 0, w: pageSize.width - MARGIN_X * 2, h: 3, color: config.accentColor }],
-      },
-    ],
-  });
-
-  /* ---------- Pie de cada página ---------- */
-  const footer = (currentPage, pageCount, pageSize) => ({
-    margin: [MARGIN_X, 10, MARGIN_X, 0],
-    stack: [
-      { canvas: [{ type: "line", x1: 0, y1: 0, x2: pageSize.width - MARGIN_X * 2, y2: 0, lineWidth: 0.6, lineColor: LINE }] },
-      {
-        margin: [0, 6, 0, 0],
-        fontSize: 7.5,
-        color: "#A3ADBB",
-        columns: [
-          { text: config.footerText ?? "", width: "*" },
-          { text: title, width: "*", alignment: "center" },
-          { text: `Página ${currentPage} de ${pageCount}`, width: "*", alignment: "right", color: GREY },
-        ],
-      },
-    ],
-  });
-
-  /* ---------- Ficha: fecha, usuario y totales ---------- */
-  const facts = [
-    { label: "Generado el", value: formatDateTime(generatedAt) },
-    ...(config.showGeneratedBy && generatedBy ? [{ label: "Generado por", value: generatedBy }] : []),
-    { label: "Total de registros", value: String(rows.length) },
-    ...summary.map((s) => ({ label: s.label, value: String(s.value), tone: s.tone })),
-  ];
-
-  const factCard = (f) => ({
-    fillColor: LIGHT,
-    margin: [8, 7, 8, 7],
-    stack: [
-      { text: f.label.toUpperCase(), fontSize: 6.5, bold: true, color: GREY, characterSpacing: 0.4 },
-      { text: f.value, fontSize: 9.5, bold: true, color: f.tone ? f.tone.fg : config.primaryColor, margin: [0, 3, 0, 0] },
-    ],
-  });
-
-  const content = [
-    { text: title, fontSize: 18, bold: true, color: config.primaryColor },
-    ...(subtitle ? [{ text: subtitle, fontSize: 9, color: GREY, margin: [0, 2, 0, 0] }] : []),
-    {
-      margin: [0, 12, 0, 0],
-      table: { widths: facts.map((f, i) => (i === 0 ? 118 : "*")), body: [facts.map(factCard)] },
-      layout: {
-        hLineWidth: () => 0,
-        vLineWidth: (i, node) => (i === 0 || i === node.table.widths.length ? 0 : 5),
-        vLineColor: () => "#FFFFFF",
-        paddingLeft: () => 0,
-        paddingRight: () => 0,
-        paddingTop: () => 0,
-        paddingBottom: () => 0,
-      },
-    },
-  ];
-
-  /* ---------- Filtros aplicados ---------- */
-  if (config.showFilters) {
-    content.push({
-      margin: [0, 8, 0, 0],
-      fontSize: 8,
-      lineHeight: 1.4,
-      text: [
-        { text: "FILTROS   ", bold: true, color: GREY, fontSize: 6.5, characterSpacing: 0.4 },
-        ...(filters.length
-          ? filters.flatMap((f) => [
-              { text: `  ${f.label}: `, color: GREY, background: "#E8F1FB" },
-              { text: `${f.value}  `, bold: true, color: config.primaryColor, background: "#E8F1FB" },
-              { text: "   " },
-            ])
-          : [{ text: "Sin filtros (todos los registros)", color: GREY, italics: true }]),
-      ],
-    });
-  }
-
-  /* ---------- Tabla ---------- */
-  const headerCells = columns.map((c) => ({
-    text: c.header,
-    bold: true,
-    color: "#FFFFFF",
-    fontSize: 7.5,
-    alignment: columnAlign(c),
-  }));
-
-  const bodyRows = rows.map((row) =>
-    columns.map((c) => {
-      const raw = cellValue(c, row);
-      const tone = cellTone(c, raw);
-      const text = displayValue(c, raw);
-      return tone
-        ? { text: ` ${text} `, bold: true, color: tone.fg, background: tone.bg, alignment: columnAlign(c), fontSize: 7 }
-        : { text, alignment: columnAlign(c), color: text === "—" ? "#A3ADBB" : undefined };
-    })
-  );
-
-  content.push(
-    rows.length > 0
-      ? {
-          margin: [0, 12, 0, 0],
-          table: {
-            headerRows: 1, // el encabezado de la tabla se repite en cada página
-            dontBreakRows: true,
-            widths: columns.map((c) => c.pdfWidth ?? "*"),
-            body: [headerCells, ...bodyRows],
-          },
-          layout: {
-            fillColor: (i) => (i === 0 ? config.primaryColor : i % 2 === 0 ? "#F8FAFC" : null),
-            hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
-            vLineWidth: () => 0,
-            hLineColor: () => LINE,
-            paddingTop: (i) => (i === 0 ? 6 : 4),
-            paddingBottom: (i) => (i === 0 ? 6 : 4),
-            paddingLeft: () => 5,
-            paddingRight: () => 5,
-          },
-        }
-      : {
-          margin: [0, 24, 0, 0],
-          text: "No hay registros para los filtros seleccionados.",
-          alignment: "center",
-          italics: true,
-          color: GREY,
-        }
-  );
-
-  return {
-    pageSize: config.pageSize ?? "LETTER",
-    pageOrientation: landscape ? "landscape" : "portrait",
-    pageMargins: [MARGIN_X, 78, MARGIN_X, 44],
-    info: { title, author: config.organization, creator: config.system },
-    header,
-    footer,
-    content,
-    defaultStyle: { fontSize: 7.5, color: "#22303F" },
-  };
-};
-
-/** Devuelve el PDF como Blob */
-export const buildPdf = (config, report) => pdfMake.createPdf(buildPdfDefinition(config, report)).getBlob();
-
-
-
-
-
-
-
-
-
-
-
-
-import { toTitleCase } from "../../../../helpers/format";
-import { statusLabelFromValue } from "../../../../api/usersService";
-
-/* =========================================================
-   Reporte de usuarios: columnas, filtros y resumen.
-   Lo usa exportReport() para Excel y PDF.
-   ========================================================= */
-
-// Color de la etiqueta de estado
-const STATUS_TONES = {
-  "activo": "green",
-  "inactivo": "red",
-  "de vacaciones": "pink",
-  "maternidad": "teal",
-  "incapacitado(a)": "blue",
-};
-const statusTone = (value) => STATUS_TONES[String(value).toLowerCase()] ?? "grey";
-
-const title = (v) => (v ? toTitleCase(v) : "");
-
-/** Columnas (mismo orden que tenía el reporte del backend) */
-export const userReportColumns = [
-  { header: "Nombre", value: (u) => title(u.firstName) },
-  { header: "Apellido", value: (u) => title(u.lastName) },
-  { header: "Usuario de red", key: "userName" },
-  { header: "Correo electrónico", key: "email", pdfWidth: 124 },
-  { header: "Estado", key: "status", tone: statusTone, pdfWidth: 58 },
-  { header: "Código de cajero", key: "tellerCode", align: "center", pdfWidth: 40 },
-  { header: "Puesto", key: "companyPosition", wrap: true },
-  { header: "Agencia / Zona", key: "companyLocation" },
-  { header: "Nombre de agencia", value: (u) => title(u.companyBranch) },
-  { header: "Área", key: "companyArea" },
-  { header: "Rol asignado", key: "role" },
-];
-
-/** Filtros aplicados con sus nombres (no los IDs) */
-export const userReportFilters = (filters, catalogs) => {
-  const labelOf = (list, value) => list.find((x) => String(x.value) === String(value))?.label ?? value;
-  const result = [];
-  if (filters.search?.trim()) result.push({ label: "Búsqueda", value: filters.search.trim() });
-  if (filters.roleId !== "") result.push({ label: "Rol", value: labelOf(catalogs.roles, filters.roleId) });
-  if (filters.companyAreaId !== "") result.push({ label: "Área", value: labelOf(catalogs.areas, filters.companyAreaId) });
-  if (filters.companyPositionId !== "") result.push({ label: "Puesto", value: labelOf(catalogs.positions, filters.companyPositionId) });
-  if (filters.status !== "") result.push({ label: "Estado", value: statusLabelFromValue(filters.status) });
-  return result;
-};
-
-/** Datos extra para la ficha del encabezado */
-export const userReportSummary = (rows) => {
-  const count = (status) => rows.filter((u) => String(u.status).toLowerCase() === status).length;
-  const active = count("activo");
-  const inactive = count("inactivo");
-  return [
-    { label: "Activos", value: active, tone: { fg: "#166534" } },
-    { label: "Inactivos", value: inactive, tone: { fg: "#991B1B" } },
-    { label: "Otros estados", value: rows.length - active - inactive },
-  ];
-};
-
-
-
-
-
-
-
-import { useAuthStore } from "../../../hooks/useAuthStore";
-import { exportReport } from "../../../shared/reports";
-import { toTitleCase } from "../../../helpers/format";
-import { userReportColumns, userReportFilters, userReportSummary } from "./components/userReport";
-
-
-
-
-
-
-
-
-// Nombre de quien genera el reporte (según lo que traiga la sesión)
-const displayName = (u) =>
-  toTitleCase(u?.fullName ?? u?.name ?? ([u?.firstName, u?.lastName].filter(Boolean).join(" ") || u?.userName || ""));
-
-
-
-
-
-
-
-  const { user } = useAuthStore();
-
-
-
-
-
-
-
-
-
-
-  // Exporta TODOS los usuarios filtrados (no solo la página actual)
-  const handleExport = async (type) => {
-    const label = type === "excel" ? "Excel" : "PDF";
-    setExporting(type);
-    try {
-      const rows = await usersService.exportData(request);
-      await exportReport(type, {
-        title: "Reporte de usuarios",
-        subtitle: "Usuarios del sistema con su rol, ubicación y estado.",
-        fileName: "usuarios",
-        columns: userReportColumns,
-        rows,
-        filters: userReportFilters({ ...filters, search }, catalogs),
-        summary: userReportSummary(rows),
-        generatedBy: displayName(user),
-      });
-      toast.success(`${label} generado`, `Se exportaron ${rows.length} usuarios.`);
-    } catch (err) {
-      console.error(err);
-      toast.error(
-        `No se pudo exportar a ${label}`,
-        err.noAccess
-          ? "No tienes permiso para exportar usuarios."
-          : err.response?.data?.message ?? "Intenta de nuevo en unos momentos."
-      );
-    } finally {
-      setExporting(null);
-    }
-  };
 
 
 
