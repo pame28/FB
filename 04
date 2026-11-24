@@ -1,142 +1,85 @@
 USE [BandejaVASA]
 GO
-
-/****** Object:  View [dbo].[uvw_CuentasPagos]    Script Date: 24/11/2026 15:48:06 ******/
-SET ANSI_NULLS ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-
-
-
-
-
-
-CREATE View [dbo].[uvw_CuentasPagos]
-As
-	With Base As(
-		--Select
-		--	 NoCuenta						NoCuenta
-		--	,IsNull(CantidadPagosMN, 0)		CantidadPagosMN
-		--	,IsNull(CantidadPagosUSD, 0)	CantidadPagosUSD
-		--	,IsNull(PagoVencidoML, 0)		PagoVencidoML
-		--	,IsNull(PagoVencidoUSD, 0)		PagoVencidoUSD
-		--	,Ms.EstadoTarjeta
-		--	,Ms.EstadoCuenta
-		--From
-		--	MaestroSaldos Ms
-		--Inner Join
-		--	ETarjetas Tr
-		--On
-		--	Ms.NumeroTarjeta = Tr.NumeroTarjeta
-		--Where 
-		--	Ms.CategoriaTarjeta In('E', '0')
-		--	And Tr.CategoriaTarjeta In('E', '0')
-		--	And Tr.EstadoHabilitar = ''
-		--Group by
-		--	NoCuenta
-		--	,CantidadPagosMN
-		--	,CantidadPagosUSD
-		--	,PagoVencidoML
-		--	,PagoVencidoUSD
-		--	,Ms.EstadoTarjeta
-		--	,Ms.EstadoCuenta
-	Select 
-		 a.NoCuenta					NoCuenta
-		,a.CantidadPagosMN			CantidadPagosMN
-		,a.CantidadPagosUSD			CantidadPagosUSD
-		,Max(a.PagoVencidoML)		PagoVencidoML
-		,Max(a.PagoVencidoUSD)		PagoVencidoUSD
-		,a.EstadoTarjeta			EstadoTarjeta
-		,a.EstadoCuenta				EstadoCuenta
-		,a.CategoriaTarjeta			TipoTarjeta
-	From 
-		(Select
-			NoCuenta						NoCuenta
-			,IsNull(CantidadPagosMN, 0)		CantidadPagosMN
-			,IsNull(CantidadPagosUSD, 0)	CantidadPagosUSD
-			,IsNull(PagoVencidoML, 0)		PagoVencidoML
-			,IsNull(PagoVencidoUSD, 0)		PagoVencidoUSD
---			,Ms.EstadoTarjeta
-			,Tr.EstadoTarjeta
-			,Ms.EstadoCuenta
-			,Ms.CategoriaTarjeta
-		From
-			MaestroSaldos Ms
-		Inner Join
-			ETarjetas Tr
-		On
-			Ms.NumeroTarjeta = Tr.NumeroTarjeta
-		Where 
-			Ms.CategoriaTarjeta ='E'
-			And Tr.CategoriaTarjeta='E'
-			And Tr.EstadoHabilitar IN ( '','I','*','R','U','A','B','E','D','H','G','K','J' )
-		Group by
-			NoCuenta
-			,CantidadPagosMN
-			,CantidadPagosUSD
-			,PagoVencidoML
-			,PagoVencidoUSD
-			,Tr.EstadoTarjeta
-			,Ms.EstadoCuenta
-		,Ms.CategoriaTarjeta) a
-	Group By
-		 a.NoCuenta
-		,a.CantidadPagosMN
-		,a.CantidadPagosUSD
-		,a.EstadoTarjeta
-		,a.EstadoCuenta
-		,a.CategoriaTarjeta
-	), 
-	Tarjetas20 As
-	(
-		Select * From Base	
-		where EstadoTarjeta = 20 
-	),
-	Tarjetas25 As
-	(
-		Select * From Base A
-		Where EstadoTarjeta = 25 
-		And Not Exists (Select 1 From Tarjetas20 B where a.NoCuenta = b.NoCuenta)
-	)
-
-	Select * From Tarjetas20
-		Union All 
-	Select * From Tarjetas25
-
-
-
-
+CREATE VIEW [dbo].[uvw_NombreFiadores_v2]
+AS
+WITH cteListadoFiadores AS
+(
+    SELECT ROW_NUMBER() OVER (PARTITION BY C.NoUsuario ORDER BY C.NoUsuario) AS NoRow,
+           C.NoUsuario, C.NombreApellido, C.NoDocumento,
+           C.DomicilioParticular1, C.DomicilioParticular2, C.DomicilioParticular3,
+           C.Telefono, C.TelefonoLaboral
+    FROM dbo.EMaestroFiadores C
+),
+Fiadores AS
+(   -- Un registro por usuario con sus 3 fiadores (mismo MAX/CASE del original)
+    SELECT NoUsuario,
+           MAX(CASE NoRow WHEN 1 THEN NombreApellido END)       AS NombreFiador1,
+           MAX(CASE NoRow WHEN 1 THEN NoDocumento END)          AS NumCedulaFiador1,
+           MAX(CASE NoRow WHEN 1 THEN DomicilioParticular1 END) AS DireccionFiador1,
+           MAX(CASE NoRow WHEN 1 THEN DomicilioParticular2 END) AS DireccionFiador1_2,
+           MAX(CASE NoRow WHEN 1 THEN DomicilioParticular3 END) AS DireccionFiador1_3,
+           MAX(CASE NoRow WHEN 1 THEN Telefono END)             AS Telefono1_1,
+           MAX(CASE NoRow WHEN 1 THEN TelefonoLaboral END)      AS Telefono1_2,
+           MAX(CASE NoRow WHEN 2 THEN NombreApellido END)       AS NombreFiador2,
+           MAX(CASE NoRow WHEN 2 THEN NoDocumento END)          AS NumCedulaFiador2,
+           MAX(CASE NoRow WHEN 2 THEN DomicilioParticular1 END) AS DireccionFiador2,
+           MAX(CASE NoRow WHEN 2 THEN DomicilioParticular2 END) AS DireccionFiador2_2,
+           MAX(CASE NoRow WHEN 2 THEN DomicilioParticular3 END) AS DireccionFiador2_3,
+           MAX(CASE NoRow WHEN 2 THEN Telefono END)             AS Telefono2_1,
+           MAX(CASE NoRow WHEN 2 THEN TelefonoLaboral END)      AS Telefono2_2,
+           MAX(CASE NoRow WHEN 3 THEN NombreApellido END)       AS NombreFiador3,
+           MAX(CASE NoRow WHEN 3 THEN NoDocumento END)          AS NumCedulaFiador3,
+           MAX(CASE NoRow WHEN 3 THEN DomicilioParticular1 END) AS DireccionFiador3,
+           MAX(CASE NoRow WHEN 3 THEN DomicilioParticular2 END) AS DireccionFiador3_2,
+           MAX(CASE NoRow WHEN 3 THEN DomicilioParticular3 END) AS DireccionFiador3_3,
+           MAX(CASE NoRow WHEN 3 THEN Telefono END)             AS Telefono3_1,
+           MAX(CASE NoRow WHEN 3 THEN TelefonoLaboral END)      AS Telefono3_2
+    FROM cteListadoFiadores
+    GROUP BY NoUsuario
+),
+Cuentas AS
+(   -- Mismas combinaciones del GROUP BY Tar.NoUsuario, Tar.NoCuentaClaro original
+    SELECT DISTINCT NoUsuario, NoCuentaClaro
+    FROM ETarjetas
+)
+SELECT
+     CAST('VASA' AS VARCHAR(4))                           AS Origen
+    ,CAST(T.NoUsuario AS VARCHAR(13))                     AS NoUsuario
+    ,CAST(ISNULL(F.NombreFiador1, '')      AS VARCHAR(40)) AS NombreFiador1
+    ,CAST(ISNULL(F.NumCedulaFiador1, '')   AS VARCHAR(15)) AS NumCedulaFiador1
+    ,CAST(ISNULL(F.DireccionFiador1, '')   AS VARCHAR(40)) AS DireccionFiador1
+    ,CAST(ISNULL(F.DireccionFiador1_2, '') AS VARCHAR(40)) AS DireccionFiador1_2
+    ,CAST(ISNULL(F.DireccionFiador1_3, '') AS VARCHAR(40)) AS DireccionFiador1_3
+    ,CAST(ISNULL(F.Telefono1_1, '')        AS VARCHAR(30)) AS Telefono1_1
+    ,CAST(ISNULL(F.Telefono1_2, '')        AS VARCHAR(30)) AS Telefono1_2
+    ,CAST(ISNULL(F.NombreFiador2, '')      AS VARCHAR(40)) AS NombreFiador2
+    ,CAST(ISNULL(F.NumCedulaFiador2, '')   AS VARCHAR(15)) AS NumCedulaFiador2
+    ,CAST(ISNULL(F.DireccionFiador2, '')   AS VARCHAR(40)) AS DireccionFiador2
+    ,CAST(ISNULL(F.DireccionFiador2_2, '') AS VARCHAR(40)) AS DireccionFiador2_2
+    ,CAST(ISNULL(F.DireccionFiador2_3, '') AS VARCHAR(40)) AS DireccionFiador2_3
+    ,CAST(ISNULL(F.Telefono2_1, '')        AS VARCHAR(30)) AS Telefono2_1
+    ,CAST(ISNULL(F.Telefono2_2, '')        AS VARCHAR(30)) AS Telefono2_2
+    ,CAST(ISNULL(F.NombreFiador3, '')      AS VARCHAR(40)) AS NombreFiador3
+    ,CAST(ISNULL(F.NumCedulaFiador3, '')   AS VARCHAR(15)) AS NumCedulaFiador3
+    ,CAST(ISNULL(F.DireccionFiador3, '')   AS VARCHAR(40)) AS DireccionFiador3
+    ,CAST(ISNULL(F.DireccionFiador3_2, '') AS VARCHAR(40)) AS DireccionFiador3_2
+    ,CAST(ISNULL(F.DireccionFiador3_3, '') AS VARCHAR(40)) AS DireccionFiador3_3
+    ,CAST(ISNULL(F.Telefono3_1, '')        AS VARCHAR(30)) AS Telefono3_1
+    ,CAST(ISNULL(F.Telefono3_2, '')        AS VARCHAR(30)) AS Telefono3_2
+    ,CAST(T.NoCuentaClaro AS VARCHAR(10))                  AS NoCuentaClaro
+FROM Fiadores F
+INNER JOIN Cuentas T ON T.NoUsuario = F.NoUsuario;
 GO
 
 
 
 
-USE [BandejaVASA]
-GO
 
-/****** Object:  View [dbo].[uvw_SaldosExtras]    Script Date: 24/11/2026 15:48:39 ******/
-SET ANSI_NULLS ON
-GO
 
-SET QUOTED_IDENTIFIER ON
-GO
 
-Create View [dbo].[uvw_SaldosExtras]
-As
-	Select 
-		NumeroCuenta
-		,Sum( Case When GrupoMovimientos = 'EXF' And MonedaLiquidar = '340' Then PlanCuotaCapitalPend Else 0 End) SaldoExtraMN
-		,Sum( Case When GrupoMovimientos = 'EXF' And MonedaLiquidar = '840' Then PlanCuotaCapitalPend Else 0 End) SaldoExtraME
-		,Sum( Case When GrupoMovimientos In('CCT', 'INT') And MonedaLiquidar = '340' Then PlanCuotaCapitalPend Else 0 End) SaldoIntraMN
-		,Sum( Case When GrupoMovimientos In('CCT', 'INT') And MonedaLiquidar = '840' Then PlanCuotaCapitalPend Else 0 End) SaldoIntraME
-	From
-		CuotasPendientes
-	Group By
-		NumeroCuenta
-GO
+
+
+
 
 
 
@@ -144,63 +87,42 @@ GO
 
 USE [BandejaVASA]
 GO
-
-/****** Object:  View [dbo].[uvw_NombreFiadores]    Script Date: 24/11/2026 15:49:03 ******/
-SET ANSI_NULLS ON
+CREATE VIEW [dbo].[uvw_CuentasPagos_v2]
+AS
+WITH Base AS
+(
+    SELECT  NoCuenta
+           ,ISNULL(CantidadPagosMN, 0)      AS CantidadPagosMN
+           ,ISNULL(CantidadPagosUSD, 0)     AS CantidadPagosUSD
+           ,MAX(ISNULL(PagoVencidoML, 0))   AS PagoVencidoML
+           ,MAX(ISNULL(PagoVencidoUSD, 0))  AS PagoVencidoUSD
+           ,Tr.EstadoTarjeta                AS EstadoTarjeta
+           ,Ms.EstadoCuenta                 AS EstadoCuenta
+           ,Ms.CategoriaTarjeta             AS TipoTarjeta
+    FROM MaestroSaldos Ms
+    INNER JOIN ETarjetas Tr ON Ms.NumeroTarjeta = Tr.NumeroTarjeta
+    WHERE Ms.CategoriaTarjeta = 'E'
+      AND Tr.CategoriaTarjeta = 'E'
+      AND Tr.EstadoHabilitar IN ('','I','*','R','U','A','B','E','D','H','G','K','J')
+      AND Tr.EstadoTarjeta IN (20, 25)          -- el resultado solo usa estos dos estados
+    GROUP BY NoCuenta
+            ,ISNULL(CantidadPagosMN, 0)
+            ,ISNULL(CantidadPagosUSD, 0)
+            ,Tr.EstadoTarjeta
+            ,Ms.EstadoCuenta
+            ,Ms.CategoriaTarjeta
+),
+m AS
+(
+    SELECT b.*,
+           CASE WHEN b.NoCuenta IS NULL THEN 0
+                ELSE MAX(CASE WHEN b.EstadoTarjeta = 20 THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta)
+           END AS Tiene20
+    FROM Base b
+)
+SELECT NoCuenta, CantidadPagosMN, CantidadPagosUSD, PagoVencidoML, PagoVencidoUSD,
+       EstadoTarjeta, EstadoCuenta, TipoTarjeta
+FROM m
+WHERE EstadoTarjeta = 20
+   OR (EstadoTarjeta = 25 AND Tiene20 = 0);
 GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-
-
-
-CREATE View [dbo].[uvw_NombreFiadores]
-As
-
-	With cteListadoFiadores As(
-			Select Row_Number() Over (Partition By C.NoUsuario Order By C.NoUsuario) As NoRow, 
-				C.*
-			From dbo.EMaestroFiadores C)
-		
-		Select 
-			 Cast('VASA' As Varchar(4))																				As Origen
-			,Cast(Tar.NoUsuario As Varchar(13))																		As NoUsuario
-			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.NombreApellido End),'') As Varchar(40))			As NombreFiador1
-			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.NoDocumento End), '') As Varchar(15))				As NumCedulaFiador1
-			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.DomicilioParticular1 End),'') As Varchar(40))		As DireccionFiador1
-			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.DomicilioParticular2 End),'') As Varchar(40))		As DireccionFiador1_2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.DomicilioParticular3 End),'') As Varchar(40))		As DireccionFiador1_3
-			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.Telefono End),'') As Varchar(30))					As Telefono1_1
-			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.TelefonoLaboral End),'') As Varchar(30))			As Telefono1_2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.NombreApellido End),'') As Varchar(40))			As NombreFiador2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.NoDocumento End),'') As Varchar(15))				As NumCedulaFiador2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.DomicilioParticular1 End),'') As Varchar(40))		As DireccionFiador2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.DomicilioParticular2 End),'') As Varchar(40))		As DireccionFiador2_2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.DomicilioParticular3 End),'') As Varchar(40))		As DireccionFiador2_3
-			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.Telefono End),'') As Varchar(30))					As Telefono2_1
-			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.TelefonoLaboral End),'') As Varchar(30))			As Telefono2_2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.NombreApellido End),'') As Varchar(40))			As NombreFiador3
-			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.NoDocumento End),'') As Varchar(15))				As NumCedulaFiador3
-			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.DomicilioParticular1 End),'') As Varchar(40))		As DireccionFiador3
-			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.DomicilioParticular2 End),'') As Varchar(40))		As DireccionFiador3_2
-			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.DomicilioParticular3 End),'') As Varchar(40))		As DireccionFiador3_3
-			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.Telefono End),'') As Varchar(30))					As Telefono3_1
-			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.TelefonoLaboral End),'') As Varchar(30))			As Telefono3_2
-			,Cast(Tar.NoCuentaClaro As Varchar(10))																	As NoCuentaClaro
-		From
-			cteListadoFiadores ListF1
-				LEFT OUTER JOIN cteListadoFiadores ListF2 On (ListF2.NoUsuario = ListF1.NoUsuario AND ListF2.NoRow = ListF1.NoRow - 1)
-		Inner Join
-			ETarjetas Tar
-		On Tar.NoUsuario = ListF1.NoUsuario
-		Group By
-			Tar.NoUsuario, Tar.NoCuentaClaro
-
-GO
-
-
-
-
-
-
