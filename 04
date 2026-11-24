@@ -1,455 +1,51 @@
-import { apiFeedbackAuthorized } from "./APIS";
-import { endpointsAPI } from "./endpointApi";
-
-
-export const USER_STATUS = { INACTIVO: 0, ACTIVO: 1 };
-
-// Todas las opciones de estado.
-export const USER_STATUS_OPTIONS = [
-  { value: 1, label: "Activo" },
-  { value: 2, label: "De vacaciones" },
-  { value: 3, label: "Maternidad" },
-  { value: 4, label: "Incapacitado(a)" },
-  { value: 0, label: "Inactivo" },
-];
-
-// "De Vacaciones" / "incapacitado" → valor numérico
-const normalizeStatus = (text = "") => text.toLowerCase().replace("(a)", "").trim();
-export const statusValueFromLabel = (label) =>
-  USER_STATUS_OPTIONS.find((o) => normalizeStatus(o.label) === normalizeStatus(label))?.value ?? "";
-export const statusLabelFromValue = (value) =>
-  USER_STATUS_OPTIONS.find((o) => o.value === Number(value))?.label ?? "";
-
-// Campos que acepta el filtro. null = ese filtro no se aplica.
-const FILTER_FIELDS = [
-  "search",
-  "status",
-  "employeeBranchUbication",
-  "companyPositionId",
-  "companyLocationId",
-  "companyAreaId",
-  "companyBranchId",
-  "roleId",
-  "pageNumber",
-  "pageSize",
-];
-
-const toFilterRequest = (filters = {}) =>
-  Object.fromEntries(
-    FILTER_FIELDS.map((field) => {
-      const value = filters[field];
-      return [field, value === "" || value === undefined ? null : value];
-    })
-  );
-
-export const usersService = {
-  filter: async (filters) => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.usersFilter, toFilterRequest(filters));
-    return data.data;
-  },
-
-  create: async (user) => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.users, user);
-    return data.data;
-  },
-
-    update: async (id, user) => {
-    const { data } = await apiFeedbackAuthorized.put(`${endpointsAPI.users}/${id}`, { id, ...user });
-    return data.data;
-  },
-
-  remove: async (id) => {
-    await apiFeedbackAuthorized.delete(`${endpointsAPI.users}/${id}`);
-  },
-
-  // pageNumber y pageSize en null → exporta todo lo filtrado
-  exportExcel: (filters) =>
-    apiFeedbackAuthorized.post(endpointsAPI.usersExportExcel, toFilterRequest(filters), { responseType: "blob" }),
-
-  exportPdf: (filters) =>
-    apiFeedbackAuthorized.post(endpointsAPI.usersExportPdf, toFilterRequest(filters), { responseType: "blob" }),
-
-    syncAs400: async () => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.usersSyncAs400);
-    return data;
-  },
-
-    // GET /api/users?status=&isLeader=  (los parámetros vacíos no se envían)
-  list: async ({ status, isLeader } = {}) => {
-    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.users, { params: { status, isLeader } });
-    return data.data ?? [];
-  },
-
-  // Activa o quita el rol de líder
-  setLeader: async (id, isLeader) => {
-    const { data } = await apiFeedbackAuthorized.put(`${endpointsAPI.users}/${id}/leader`, { isLeader });
-    return data.data;
-  },
-};
+            userGroup.MapPost("filter/export", ExportFiltered)
+                .WithName("ExportFilteredUsers")
+                .WithSummary("Devuelve todos los usuarios filtrados, sin paginar, para que el frontend genere los reportes.")
+                .RequireAuthorization($"{AuthorizationPolicies.CruUsers}|{AuthorizationPolicies.ReadUsers}")
+                .Produces<ResponseObject<List<UserExportRowDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
 
 
 
 
-export const downloadBlob = (response, fallbackName) => {
-  const disposition = response.headers?.["content-disposition"] ?? "";
-  const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
-  const fileName = match ? decodeURIComponent(match[1]) : fallbackName;
+        /// <summary>
+        /// Devuelve todos los usuarios que cumplen el filtro (sin paginar).
+        /// El frontend arma con estos datos los reportes en Excel y PDF.
+        /// </summary>
+        private static async Task<IResult> ExportFiltered(
+            UserFilterRequestDto filter,
+            IUsersRepository usersRepository,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
 
-  const url = URL.createObjectURL(response.data);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-};
+            try
+            {
+                logger.LogInformation(JsonConvert.SerializeObject(filter));
 
-// En peticiones con responseType "blob", el error también llega como Blob: hay que leerlo como JSON
-export const readBlobError = async (error) => {
-  const data = error.response?.data;
-  if (data instanceof Blob) {
-    try {
-      const json = JSON.parse(await data.text());
-      return json.message ?? null;
-    } catch {
-      return null;
-    }
-  }
-  return data?.message ?? null;
-};
+                var users = await usersRepository.GetFilteredUsers(filter);
 
-
-
-
-import { toTitleCase } from "../../../../helpers/format";
-import styles from "../../../Pages.module.css";
-
-export const fullName = (u) => toTitleCase(`${u.firstName ?? ""} ${u.lastName ?? ""}`.trim());
-export const initials = (u) => `${u.firstName?.[0] ?? ""}${u.lastName?.[0] ?? ""}`.toUpperCase();
-
-// Cada área recibe siempre el mismo color, calculado a partir de su nombre
-const AREA_TONES = [styles.tagBlue, styles.tagPurple, styles.tagPink, styles.tagAmber, styles.tagTeal];
-export const toneFor = (text) =>
-  AREA_TONES[[...text].reduce((sum, c) => sum + c.charCodeAt(0), 0) % AREA_TONES.length];
-
-const dash = <span className={styles.muted}>—</span>;
-
-/** Columnas de usuarios para <DataTable>. Las páginas agregan sus propias columnas (ej. acciones). */
-export const userColumns = [
-  {
-    key: "name",
-    header: "Nombre",
-    render: (u) => <span className={styles.cellMain}>{fullName(u)}</span>,
-  },
-  {
-    key: "userName",
-    header: "Usuario de red",
-    render: (u) => <span className={styles.mono}>{u.userName}</span>,
-  },
-  {
-    key: "companyPosition",
-    header: "Puesto",
-    render: (u) => u.companyPosition || dash,
-  },
-  {
-    key: "companyArea",
-    header: "Área",
-    render: (u) => u.companyArea
-      ? <span className={`${styles.tag} ${toneFor(u.companyArea)}`}>{u.companyArea}</span>
-      : dash,
-  },
-  {
-    key: "roleName",
-    header: "Rol asignado",
-    render: (u) => u.roleName
-      ? <span className={`${styles.tag} ${styles.tagRole}`}>{u.roleName}</span>
-      : <span className={`${styles.tag} ${styles.tagNeutral}`}>Sin rol</span>,
-  },
-  {
-    key: "branch",
-    header: "Agencia / Zona",
-    render: (u) => (
-      <>
-        {u.companyBranch ? toTitleCase(u.companyBranch) : dash}
-        {u.companyLocation && <span className={styles.cellSub}>{u.companyLocation}</span>}
-      </>
-    ),
-  },
-  {
-    key: "tellerCode",
-    header: "Cód. cajero",
-    render: (u) => u.tellerCode
-      ? <span className={`${styles.tag} ${styles.tagAmber}`}>{u.tellerCode}</span>
-      : dash,
-  },
-  {
-    key: "status",
-    header: "Estado",
-    render: (u) => (
-      <span className={`${styles.status} ${u.status === "Activo" ? styles.statusActive : styles.statusInactive}`}>
-        {u.status}
-      </span>
-    ),
-  },
-];
-
-
-
-import { useDispatch, useSelector } from "react-redux";
-import { apiFeedback } from "../api/APIS";
-import { endpointsAPI } from "../api/endpointApi";
-import { encryptPassword } from "../helpers/encryptPassword";
-import { onLogin, onLogout, SESSION_KEY } from "../store/authSlice";
-import { useIDBStore } from "./useIDBStore";
-
-export const useAuthStore = () => {
-  const dispatch = useDispatch();
-  const { status, user, expiresAt } = useSelector((state) => state.auth);
-  const { crearIDB, addData, readData } = useIDBStore();
-
-  // Guarda lo que devuelven login y refresh (tienen la misma forma)
-  const saveSession = async ({ token, expiresIn, user }) => {
-    await crearIDB("Authentication");
-    await addData(token, "Authentication", "token");
-
-    // Verifica que el token realmente quedó guardado
-    const saved = await readData("Authentication", "token");
-    if (saved !== token) {
-      throw new Error("No se pudo guardar la sesión en el navegador.");
-    }
-
-    const expiresAt = new Date(Date.now() + expiresIn * 60_000).toISOString(); // expiresIn en minutos
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ user, expiresAt }));
-    dispatch(onLogin({ user, expiresAt }));
-  };
-
-
-  const startLogin = async (userName, password) => {
-    const { data } = await apiFeedback.post(endpointsAPI.login, {
-      userName: userName.trim(),
-      Password: encryptPassword(password),
-    });
-    await saveSession(data.data);
-  };
-
-  // Renueva el token. Si falla, lanza el error para que quien lo llame cierre la sesión.
-  const refreshSession = async () => {
-    const token = await readData("Authentication", "token");
-    if (!token) throw new Error("No hay token para renovar");
-
-    const { data } = await apiFeedback.post(endpointsAPI.refreshToken, { token });
-    await saveSession(data.data);
-  };
-
-  const logout = async () => {
-    // Borra la base completa del token; crearIDB la vuelve a crear al iniciar sesión
-    await new Promise((resolve) => {
-      const request = indexedDB.deleteDatabase("Authentication");
-      request.onsuccess = request.onerror = request.onblocked = () => resolve();
-    });
-    localStorage.removeItem(SESSION_KEY);
-    dispatch(onLogout());
-  };
-
-  return {
-    status,
-    user,
-    role: user?.role ?? null,
-    expiresAt,
-    startLogin,
-    refreshSession,
-    logout,
-  };
-};
-
-
-
-
-
-export { Navbar } from "./Navbar/Navbar";
-export { Sidebar } from "./Sidebar/Sidebar";
-export { Navcard, CardGrid } from "./Navcard/Navcard";
-export { Button } from "./Button/Button";
-export { Badge } from "./Badge/Badge";
-export { Card } from "./Card/Card";
-export { Heading, Text } from "./Typography/Typography";
-export { Can } from "./Can";
-export { Datatable } from "./DataTable/Datatable";
-export { Modal } from "./Modal/Modal";
-export { ConfirmDialog } from "./ConfirmDialog";
-export { ToastProvider, useToast } from "./Toast";
-export { Pagination } from "./Pagination/Pagination";
-export { StatusSwitch } from "./StatusSwitch/StatusSwitch";
-//export { ModalConfirmation } from "./ModalConfirmation/ModalConfirmation";
-
-
-
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Reporte de Usuarios</title>
-    <style>
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 12px;
-            color: #1f2937;
-            margin: 0;
-            padding: 24px;
+                return Results.Ok(new ResponseObject<List<UserExportRowDto>>
+                {
+                    Code = 200,
+                    Message = "OK",
+                    Data = [.. users.Select(MapExportUser)]
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "ExportFilteredUsersError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
         }
 
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #0f4c81;
-            padding-bottom: 12px;
-        }
-
-        .title {
-            font-size: 22px;
-            font-weight: bold;
-            color: #0f4c81;
-            margin: 0;
-        }
-
-        .subtitle {
-            font-size: 12px;
-            color: #6b7280;
-            margin-top: 4px;
-        }
-
-        .summary {
-            margin: 12px 0 18px 0;
-            padding: 10px 12px;
-            background: #f3f4f6;
-            border-radius: 6px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-
-        thead th {
-            background: #0f4c81;
-            color: white;
-            font-weight: bold;
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            text-align: left;
-            font-size: 11px;
-        }
-
-        tbody td {
-            padding: 8px;
-            border: 1px solid #d1d5db;
-            vertical-align: top;
-            word-wrap: break-word;
-            font-size: 11px;
-        }
-
-        tbody tr:nth-child(even) {
-            background: #f9fafb;
-        }
-
-        .badge-active {
-            background: #dcfce7;
-            color: #166534;
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .badge-inactive {
-            background: #fee2e2;
-            color: #991b1b;
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .badge-maternity {
-            background: #acdee4;
-            color: #1e98a5;
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .badge-disability {
-            background: #8492c2;
-            color: #2e4eb9;
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .badge-vacation {
-            background: #d1b2c0;
-            color: #c75e8d;
-            padding: 3px 8px;
-            border-radius: 999px;
-            font-size: 10px;
-            font-weight: bold;
-            display: inline-block;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div>
-            <h1 class="title">{{Title}}</h1>
-            <div class="subtitle">Generado el {{GeneratedAt}}</div>
-        </div>
-        <div class="subtitle">Total usuarios: <strong>{{TotalUsers}}</strong></div>
-    </div>
-
-    <div class="summary">
-        <strong>Filtros aplicados:</strong> {{FiltersSummary}}
-    </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th>Nombre</th>
-                <th>Apellido</th>
-                <th>Usuario</th>
-                <th>Correo</th>
-                <th>Estado</th>
-                <th>Código Cajero</th>
-                <th>Puesto</th>
-                <th>Agencia / Zona</th>
-                <th>Nombre de agencia</th>
-                <th>Área</th>
-                <th>Rol</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{Rows}}
-        </tbody>
-    </table>
-</body>
-</html>
 
 
 
 
 
-
-Te adjunto algunas imagenes de los campos que deben tener los reportes, estan bien sencillos los reportes pero considero que se puede hacer un encabezado muy bonito, con información necesaria
-
-Y usemoa la opción A
 
