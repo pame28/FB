@@ -1,79 +1,206 @@
 USE [BandejaVASA]
 GO
-CREATE VIEW [dbo].[uvw_SaldosVasa_v2]
-AS
-WITH base AS
-(   -- IDÉNTICO al original
-    SELECT
-          'VASA' Origen
-          ,a.Cif ,a.NoCuenta ,a.NumeroTarjeta ,a.NombreEmpresa ,a.Ciclo ,a.LimiteCredito
-          ,a.DisponibleRetiroML ,a.DisponibleCompraML ,a.DisponibleRetiroUSD ,a.DisponibleCompraUSD
-          ,a.FechaUltimaCompraML ,a.FechaUltimaCompraUSD ,a.FechaUltimoRetiroML ,a.FechaUltimoRetiroUSD
-          ,a.FechaUltimoPagoML ,a.FechaUltimaPagoUSD ,a.FechaUltimoMovimiento ,a.FechaUltimoMantenimiento
-          ,a.CantidadPagosMN ,a.CantidadPagosUSD ,a.PagosIngresadosML ,a.PagosIngresadosUSD
-          ,a.FechaMaximaPago ,a.PagoContadoML ,a.PagoContadoUSD ,a.PagoMinimoML ,a.PagoMinimoUSD
-          ,a.SaldoInicialML ,a.SaldoInicialUSD ,a.SaldoActualML ,a.SaldoActualUSD
-          ,a.CiclosVencidosML ,a.CiclosVencidosUSD ,a.PagoVencidoML ,a.PagoVencidoUSD
-          ,a.SaldoExtraML ,a.SaldoExtraUSD ,a.SaldoIntraML ,a.SaldoIntraUSD
-          ,a.TasaFinanciacionML ,a.TasaFinanciacionUSD ,a.BinTarjeta ,a.FechaUltimaMora
-          ,a.HistorialPagoML ,a.HistorialPagoUSD ,a.FechaPrimeraCompraUSD ,a.FechaPrimeraCompraML
-          ,a.FechaAlta ,a.FechaActivacion ,a.FechaExpiracion ,a.FechaBaja
-          ,a.EstadoTarjeta ,a.EstadoCuenta ,a.FechaUltActualizacionMora
-          ,Right('0' + Cast(Isnull(a.DiasMoraMN30 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraMN60 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraMN90 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraMN120 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraMasMN120 ,0) As Varchar(2)) ,2)  HistorialMoraMN
-          ,Right('0' + Cast(Isnull(a.DiasMoraME30 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraME60 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraME90 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraME120 ,0) As Varchar(2)) ,2) +
-           Right('0' + Cast(Isnull(a.DiasMoraMasME120 ,0) As Varchar(2)) ,2)  HistorialMoraUSD
-          ,a.DiasMoraMN ,a.DiasMoraUSD ,t.TarjetaImprimir ,a.CategoriaTarjeta ,a.NoCuentaClaro
-          ,t.BinTarjeta + 'XXXXXX' + t.TarjetaImprimir AS NumTarjetaTruncada
-    FROM MaestroSaldos a WITH (NOLOCK)
-    INNER JOIN ETarjetas t WITH (NOLOCK) ON a.NumeroTarjeta = t.NumeroTarjeta
-    WHERE t.EstadoHabilitar IN ('','I','*','R','U','A','B','E','D','H','G','K','J')
-),
-m AS
-(
-    SELECT b.*,
-        -- ¿La cuenta está en TarjetaNormales (titular, estado 20)?   (NoCuenta NULL nunca hacía match en el NOT EXISTS)
-        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 20 AND b.CategoriaTarjeta = '0' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS EnNormales,
-        -- ¿La cuenta está en TarjetaNormalesAdi (adicional, estado 20)?
-        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 20 AND b.CategoriaTarjeta = '1' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS EnNormalesAdi,
-        -- ¿Tiene tarjeta titular / adicional en estado 25?
-        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 25 AND b.CategoriaTarjeta = '0' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS Tiene25,
-        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 25 AND b.CategoriaTarjeta = '1' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS Tiene25Adi,
-        -- Max(NumeroTarjeta) por cuenta dentro de cada grupo (estado + categoría), igual que los GROUP BY NoCuenta originales
-        MAX(b.NumeroTarjeta) OVER (PARTITION BY b.NoCuenta, b.EstadoTarjeta, b.CategoriaTarjeta) AS MaxTarjeta
-    FROM base b
-)
-SELECT Origen, Cif, NoCuenta, NumeroTarjeta, NombreEmpresa, Ciclo, LimiteCredito, DisponibleRetiroML, DisponibleCompraML,
-       DisponibleRetiroUSD, DisponibleCompraUSD, FechaUltimaCompraML, FechaUltimaCompraUSD, FechaUltimoRetiroML, FechaUltimoRetiroUSD,
-       FechaUltimoPagoML, FechaUltimaPagoUSD, FechaUltimoMovimiento, FechaUltimoMantenimiento, CantidadPagosMN, CantidadPagosUSD,
-       PagosIngresadosML, PagosIngresadosUSD, FechaMaximaPago, PagoContadoML, PagoContadoUSD, PagoMinimoML, PagoMinimoUSD,
-       SaldoInicialML, SaldoInicialUSD, SaldoActualML, SaldoActualUSD, CiclosVencidosML, CiclosVencidosUSD, PagoVencidoML,
-       PagoVencidoUSD, SaldoExtraML, SaldoExtraUSD, SaldoIntraML, SaldoIntraUSD, TasaFinanciacionML, TasaFinanciacionUSD,
-       BinTarjeta, FechaUltimaMora, HistorialPagoML, HistorialPagoUSD, FechaPrimeraCompraUSD, FechaPrimeraCompraML, FechaAlta,
-       FechaActivacion, FechaExpiracion, FechaBaja, EstadoTarjeta, EstadoCuenta, FechaUltActualizacionMora, HistorialMoraMN,
-       HistorialMoraUSD, DiasMoraMN, DiasMoraUSD, TarjetaImprimir, CategoriaTarjeta, NoCuentaClaro, NumTarjetaTruncada
-FROM m
-WHERE
-       -- TarjetasNormalesTitular
-       (EstadoTarjeta = 20 AND CategoriaTarjeta = '0' AND NumeroTarjeta = MaxTarjeta)
-       -- TarjetasNormalesAdicional
-    OR (EstadoTarjeta = 20 AND CategoriaTarjeta = '1' AND NumeroTarjeta = MaxTarjeta)
-       -- TarjetasProblemaTitular
-    OR (EstadoTarjeta = 25 AND CategoriaTarjeta = '0' AND EnNormales = 0 AND NumeroTarjeta = MaxTarjeta)
-       -- TarjetasProblemasAdicionales
-    OR (EstadoTarjeta = 25 AND CategoriaTarjeta = '1' AND EnNormalesAdi = 0 AND NumeroTarjeta = MaxTarjeta)
-       -- TarjetaOrdenNoRenovar (el original une TODAS, no solo la máxima)
-    OR (EstadoTarjeta = 22 AND CategoriaTarjeta = '0' AND EnNormales = 0)
-       -- TarjetaOrdenNoRenovarAdi (el original la compara contra TarjetaNormales titular, se respeta)
-    OR (EstadoTarjeta = 22 AND CategoriaTarjeta = '1' AND EnNormales = 0)
-       -- TarjetasCerradasTitular
-    OR (EstadoTarjeta = 29 AND CategoriaTarjeta = '0' AND EnNormales = 0 AND Tiene25 = 0 AND NumeroTarjeta = MaxTarjeta)
-       -- TarjetasCerradasAdicional
-    OR (EstadoTarjeta = 29 AND CategoriaTarjeta = '1' AND EnNormalesAdi = 0 AND Tiene25Adi = 0 AND NumeroTarjeta = MaxTarjeta);
+
+/****** Object:  View [dbo].[uvw_CuentasPagos]    Script Date: 24/11/2026 15:48:06 ******/
+SET ANSI_NULLS ON
 GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+
+CREATE View [dbo].[uvw_CuentasPagos]
+As
+	With Base As(
+		--Select
+		--	 NoCuenta						NoCuenta
+		--	,IsNull(CantidadPagosMN, 0)		CantidadPagosMN
+		--	,IsNull(CantidadPagosUSD, 0)	CantidadPagosUSD
+		--	,IsNull(PagoVencidoML, 0)		PagoVencidoML
+		--	,IsNull(PagoVencidoUSD, 0)		PagoVencidoUSD
+		--	,Ms.EstadoTarjeta
+		--	,Ms.EstadoCuenta
+		--From
+		--	MaestroSaldos Ms
+		--Inner Join
+		--	ETarjetas Tr
+		--On
+		--	Ms.NumeroTarjeta = Tr.NumeroTarjeta
+		--Where 
+		--	Ms.CategoriaTarjeta In('E', '0')
+		--	And Tr.CategoriaTarjeta In('E', '0')
+		--	And Tr.EstadoHabilitar = ''
+		--Group by
+		--	NoCuenta
+		--	,CantidadPagosMN
+		--	,CantidadPagosUSD
+		--	,PagoVencidoML
+		--	,PagoVencidoUSD
+		--	,Ms.EstadoTarjeta
+		--	,Ms.EstadoCuenta
+	Select 
+		 a.NoCuenta					NoCuenta
+		,a.CantidadPagosMN			CantidadPagosMN
+		,a.CantidadPagosUSD			CantidadPagosUSD
+		,Max(a.PagoVencidoML)		PagoVencidoML
+		,Max(a.PagoVencidoUSD)		PagoVencidoUSD
+		,a.EstadoTarjeta			EstadoTarjeta
+		,a.EstadoCuenta				EstadoCuenta
+		,a.CategoriaTarjeta			TipoTarjeta
+	From 
+		(Select
+			NoCuenta						NoCuenta
+			,IsNull(CantidadPagosMN, 0)		CantidadPagosMN
+			,IsNull(CantidadPagosUSD, 0)	CantidadPagosUSD
+			,IsNull(PagoVencidoML, 0)		PagoVencidoML
+			,IsNull(PagoVencidoUSD, 0)		PagoVencidoUSD
+--			,Ms.EstadoTarjeta
+			,Tr.EstadoTarjeta
+			,Ms.EstadoCuenta
+			,Ms.CategoriaTarjeta
+		From
+			MaestroSaldos Ms
+		Inner Join
+			ETarjetas Tr
+		On
+			Ms.NumeroTarjeta = Tr.NumeroTarjeta
+		Where 
+			Ms.CategoriaTarjeta ='E'
+			And Tr.CategoriaTarjeta='E'
+			And Tr.EstadoHabilitar IN ( '','I','*','R','U','A','B','E','D','H','G','K','J' )
+		Group by
+			NoCuenta
+			,CantidadPagosMN
+			,CantidadPagosUSD
+			,PagoVencidoML
+			,PagoVencidoUSD
+			,Tr.EstadoTarjeta
+			,Ms.EstadoCuenta
+		,Ms.CategoriaTarjeta) a
+	Group By
+		 a.NoCuenta
+		,a.CantidadPagosMN
+		,a.CantidadPagosUSD
+		,a.EstadoTarjeta
+		,a.EstadoCuenta
+		,a.CategoriaTarjeta
+	), 
+	Tarjetas20 As
+	(
+		Select * From Base	
+		where EstadoTarjeta = 20 
+	),
+	Tarjetas25 As
+	(
+		Select * From Base A
+		Where EstadoTarjeta = 25 
+		And Not Exists (Select 1 From Tarjetas20 B where a.NoCuenta = b.NoCuenta)
+	)
+
+	Select * From Tarjetas20
+		Union All 
+	Select * From Tarjetas25
+
+
+
+
+GO
+
+
+
+
+USE [BandejaVASA]
+GO
+
+/****** Object:  View [dbo].[uvw_SaldosExtras]    Script Date: 24/11/2026 15:48:39 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+Create View [dbo].[uvw_SaldosExtras]
+As
+	Select 
+		NumeroCuenta
+		,Sum( Case When GrupoMovimientos = 'EXF' And MonedaLiquidar = '340' Then PlanCuotaCapitalPend Else 0 End) SaldoExtraMN
+		,Sum( Case When GrupoMovimientos = 'EXF' And MonedaLiquidar = '840' Then PlanCuotaCapitalPend Else 0 End) SaldoExtraME
+		,Sum( Case When GrupoMovimientos In('CCT', 'INT') And MonedaLiquidar = '340' Then PlanCuotaCapitalPend Else 0 End) SaldoIntraMN
+		,Sum( Case When GrupoMovimientos In('CCT', 'INT') And MonedaLiquidar = '840' Then PlanCuotaCapitalPend Else 0 End) SaldoIntraME
+	From
+		CuotasPendientes
+	Group By
+		NumeroCuenta
+GO
+
+
+
+
+
+USE [BandejaVASA]
+GO
+
+/****** Object:  View [dbo].[uvw_NombreFiadores]    Script Date: 24/11/2026 15:49:03 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+CREATE View [dbo].[uvw_NombreFiadores]
+As
+
+	With cteListadoFiadores As(
+			Select Row_Number() Over (Partition By C.NoUsuario Order By C.NoUsuario) As NoRow, 
+				C.*
+			From dbo.EMaestroFiadores C)
+		
+		Select 
+			 Cast('VASA' As Varchar(4))																				As Origen
+			,Cast(Tar.NoUsuario As Varchar(13))																		As NoUsuario
+			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.NombreApellido End),'') As Varchar(40))			As NombreFiador1
+			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.NoDocumento End), '') As Varchar(15))				As NumCedulaFiador1
+			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.DomicilioParticular1 End),'') As Varchar(40))		As DireccionFiador1
+			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.DomicilioParticular2 End),'') As Varchar(40))		As DireccionFiador1_2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.DomicilioParticular3 End),'') As Varchar(40))		As DireccionFiador1_3
+			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.Telefono End),'') As Varchar(30))					As Telefono1_1
+			,Cast(IsNull(Max(Case ListF1.NoRow When 1 Then ListF1.TelefonoLaboral End),'') As Varchar(30))			As Telefono1_2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.NombreApellido End),'') As Varchar(40))			As NombreFiador2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.NoDocumento End),'') As Varchar(15))				As NumCedulaFiador2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.DomicilioParticular1 End),'') As Varchar(40))		As DireccionFiador2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.DomicilioParticular2 End),'') As Varchar(40))		As DireccionFiador2_2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.DomicilioParticular3 End),'') As Varchar(40))		As DireccionFiador2_3
+			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.Telefono End),'') As Varchar(30))					As Telefono2_1
+			,Cast(IsNull(Max(Case ListF1.NoRow When 2 Then ListF1.TelefonoLaboral End),'') As Varchar(30))			As Telefono2_2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.NombreApellido End),'') As Varchar(40))			As NombreFiador3
+			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.NoDocumento End),'') As Varchar(15))				As NumCedulaFiador3
+			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.DomicilioParticular1 End),'') As Varchar(40))		As DireccionFiador3
+			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.DomicilioParticular2 End),'') As Varchar(40))		As DireccionFiador3_2
+			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.DomicilioParticular3 End),'') As Varchar(40))		As DireccionFiador3_3
+			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.Telefono End),'') As Varchar(30))					As Telefono3_1
+			,Cast(IsNull(Max(Case ListF1.NoRow When 3 Then ListF1.TelefonoLaboral End),'') As Varchar(30))			As Telefono3_2
+			,Cast(Tar.NoCuentaClaro As Varchar(10))																	As NoCuentaClaro
+		From
+			cteListadoFiadores ListF1
+				LEFT OUTER JOIN cteListadoFiadores ListF2 On (ListF2.NoUsuario = ListF1.NoUsuario AND ListF2.NoRow = ListF1.NoRow - 1)
+		Inner Join
+			ETarjetas Tar
+		On Tar.NoUsuario = ListF1.NoUsuario
+		Group By
+			Tar.NoUsuario, Tar.NoCuentaClaro
+
+GO
+
+
+
+
+
+
