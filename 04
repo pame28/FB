@@ -1,32 +1,2001 @@
--- PASO 1: ¿Qué fechas existen en reservas (GDROP44F)?
-SELECT GDRANO44, GDRMES44, GDRDIA44, COUNT(*) 
-FROM BPDAT.GDROP44F
-GROUP BY GDRANO44, GDRMES44, GDRDIA44
-ORDER BY 1 DESC, 2 DESC, 3 DESC
-FETCH FIRST 10 ROWS ONLY;
+Mira que necesito realizar un cambio tanto en el backend como en frontend. actualmente en el backend tenemos este endpoint:
+https://apifeedbackcolaboradoresde.banpais.hn/api/users/filter/export/excel
 
--- PASO 2: ¿Cómo queda la fecha armada como texto? (los corchetes muestran espacios)
-SELECT DISTINCT '[' || GDRANO44 || '-' || LPAD(GDRMES44, 2, 0) || '-' || LPAD(GDRDIA44, 2, 0) || ']'
-FROM BPDAT.GDROP44F
-WHERE GDRANO44 = 2026 AND GDRMES44 = 11;
+request: {
+  "search": null,
+  "status": null,
+  "employeeBranchUbication": null,
+  "companyPositionId": null,
+  "companyLocationId": null,
+  "companyAreaId": null,
+  "companyBranchId": null,
+  "roleId": 1,
+  "pageNumber": 1,
+  "pageSize": 10
+}
 
--- PASO 3: ¿Qué fechas existen en cartera (GDROPR1F)?
-SELECT GDRANO01, GDRMES01, GDRDIA01, COUNT(*) 
-FROM BPDAT.GDROPR1F
-GROUP BY GDRANO01, GDRMES01, GDRDIA01
-ORDER BY 1 DESC, 2 DESC, 3 DESC
-FETCH FIRST 10 ROWS ONLY;
+response:
+xml��=o1�w$�C��"�UU��Џ��@����E$vz����B�*L�����<�����a�T녙k������c�2��J
+P�	k�Gѫ�tR��	E
+1�Ժ/%=X+��b8!
+1��#1�;��m�C{;��Y�T�ʬ:�r:Q�z����� m2���|��R
+�A�LvG�/��b2�qGz��f�Aۋ���2���m�9��;��
+km�`�8o>�7�z��ܶ�a�n�����KfL�ӹ���@���9��\*;>��
 
--- PASO 4: ¿Cruzan reservas y cartera ese día?
-SELECT COUNT(*)
-FROM BPDAT.GDROP44F RES
-INNER JOIN BPDAT.GDROPR1F O
-   ON RES.GDRNUM44 = O.GDRNUM01 AND RES.GDRMON44 = O.GDRMON01
-  AND RES.GDRANO44 = O.GDRANO01 AND RES.GDRMES44 = O.GDRMES01 AND RES.GDRDIA44 = O.GDRDIA01
-WHERE RES.GDRANO44 = 2026 AND RES.GDRMES44 = 11 AND RES.GDRDIA44 = 19;
+la cosa es que, no nos parece correcto que sea el backend quien genere el excel, considero es una tarea que deberia hacerla el frontend y el backend solo deberia devolvernos la información.
+Entonces, eso es lo que vamos a hacer.
+La libreria que vamos a utilizar en frontend para excel es: 
 
--- PASO 5: ¿Cómo viene la empresa y el castigado en esa fecha?
-SELECT '[' || O.GDREMP01 || ']' AS EMPRESA, O.GDRSCA01 = 0 AS NO_CASTIGADO, COUNT(*)
-FROM BPDAT.GDROPR1F O
-WHERE O.GDRANO01 = 2026 AND O.GDRMES01 = 11 AND O.GDRDIA01 = 19
-GROUP BY '[' || O.GDREMP01 || ']', O.GDRSCA01 = 0;
+Libreria para Excel  --- ExcelJS
+
+Tambien tengo este endpoint para pdf:
+
+https://apifeedbackcolaboradoresde.banpais.hn/api/users/filter/export/pdf
+
+que funciona basicamente igual al de excel
+Libreria para PDF --- pdfmake
+
+
+
+Ahorita te paso lo que está actualmente en el backend:
+
+
+
+using ApiCoaching.Dtos;
+using ApiCoaching.Dtos.Services;
+using ApiCoaching.Models;
+using ApiCoaching.Services.Interfaces;
+using FluentValidation;
+using System.Net;
+using System.Security.Claims;
+using System.Text;
+using Newtonsoft.Json;
+using ApiCoaching.Repositories.Interfaces;
+using ApiCoaching.Dtos.Users;
+using ApiCoaching.Constants;
+
+namespace ApiCoaching.Endpoints
+{
+    /// <summary>
+    /// Endpoints para el módulo de seguridad relacionados con la gestión de usuarios, incluyendo operaciones CRUD y validaciones.
+    /// </summary>
+    public static class UserEndpoints
+    {
+        public static void MapUserEndpoints(this IEndpointRouteBuilder app)
+        {
+            var userGroup = app.MapGroup("/api/users")
+                .WithTags("Users");
+
+            userGroup.MapGet(string.Empty, GetAll)
+                .WithName("GetUsers")
+                .WithSummary("Obtiene el listado de usuarios con filtros opcionales por estado y liderazgo.")
+                .RequireAuthorization()//$"{AuthorizationPolicies.CruUsers}|{AuthorizationPolicies.ReadUsers}")
+                .Produces<ResponseObject<List<UserDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            userGroup.MapPost("filter", Filter)
+                .WithName("FilterUsers")
+                .WithSummary("Filtra usuarios por uno o varios criterios en un único objeto de filtros.")
+                .RequireAuthorization()//$"{AuthorizationPolicies.CruUsers}|{AuthorizationPolicies.ReadUsers}")
+                .Produces<ResponseObject<PagedResult<UserDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            userGroup.MapPost("filter/export/excel", ExportFilteredExcel)
+                .WithName("ExportFilteredUsers")
+                .WithSummary("Exporta a Excel los usuarios filtrados con la misma entrada del endpoint de filtro.")
+                .RequireAuthorization($"{AuthorizationPolicies.CruUsers}|{AuthorizationPolicies.ReadUsers}");
+
+
+            userGroup.MapPost("filter/export/pdf", ExportFilteredPdf)
+                .WithName("ExportFilteredUsersPdf")
+                .WithSummary("Exporta a PDF los usuarios filtrados con la misma entrada del endpoint de filtro.")
+                .RequireAuthorization();//$"{AuthorizationPolicies.CruUsers}|{AuthorizationPolicies.ReadUsers}");
+
+            userGroup.MapGet("{id}", GetById)
+                .WithName("GetUserById")
+                .WithSummary("Obtiene un usuario por su identificador.")
+                .RequireAuthorization()//$"{AuthorizationPolicies.CruUsers}|{AuthorizationPolicies.ReadUsers}")
+                .Produces<ResponseObject<UserDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            userGroup.MapPost(string.Empty, Create)
+                .WithName("CreateUser")
+                .WithSummary("Crea un nuevo usuario.")
+                .RequireAuthorization()//AuthorizationPolicies.CruUsers)
+                .Produces<ResponseObject<UserDto>>(StatusCodes.Status201Created)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            userGroup.MapPost("sync/as400", SyncUsersAs400)
+                .WithName("SyncUsersAs400")
+                .WithSummary("Sincroniza usuarios desde el AS400 usando el procedimiento almacenado de cajeros.")
+                .RequireAuthorization()//AuthorizationPolicies.SyncAs400Users)
+                .Produces<ResponseObject<SyncUsersAs400ResultDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            userGroup.MapPut("{id}", Update)
+                .WithName("UpdateUser")
+                .WithSummary("Actualiza un usuario existente.")
+                .RequireAuthorization()//$"{AuthorizationPolicies.CruUsers}|{AuthorizationPolicies.UpdateUser}")
+                .Produces<ResponseObject<UserDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            userGroup.MapPut("{id}/leader", SetLeaderStatus)
+                .WithName("SetUserLeaderStatus")
+                .WithSummary("Activa o desactiva el flag de líder de un usuario.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<string>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            userGroup.MapDelete("{id}", Delete)
+                .WithName("DeleteUser")
+                .WithSummary("Elimina un usuario.")
+                .RequireAuthorization()//$"{AuthorizationPolicies.DeleteUsers}")
+                .Produces(StatusCodes.Status204NoContent)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+        }
+
+        /// <summary>
+        /// Obtiene todos los usuarios junto con su rol y devuelve la respuesta HTTP correspondiente.
+        /// </summary>
+        /// <remarks>Registra la excepción cuando ocurre un error y devuelve una respuesta de error
+        /// estándar.</remarks>
+        /// <param name="usersRepository">Repositorio usado para recuperar los usuarios con su información de rol.</param>
+        /// <param name="loggerFactory">Fábrica usada para crear el registrador de errores de la operación.</param>
+        /// <returns>Una tarea que representa la operación asincrónica y produce un <see cref="IResult"/> con código 200 y la
+        /// colección de usuarios, o código 500 si se produce un error interno.</returns>
+        private static async Task<IResult> GetAll(
+            int? status,
+            bool? isLeader,
+            IUsersRepository usersRepository,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+
+            try
+            {
+                var users = await usersRepository.GetAllWithFilters(status, isLeader);
+
+                var response = new ResponseObject<List<UserDto>>
+                {
+                    Code = 200,
+                    Message = "OK",
+                    Data = [.. users.Select(MapUser)]
+                };
+
+                return Results.Ok(response);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "GetUsersError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        /// <summary>
+        /// Realiza la sincronización de usuarios desde el AS400 y devuelve la respuesta HTTP correspondiente.
+        /// </summary>
+        /// <param name="coachingCajerosService"></param>
+        /// <param name="usersRepository"></param>
+        /// <param name="modelLogsRepository"></param>
+        /// <param name="claimsPrincipal"></param>
+        /// <param name="loggerFactory"></param>
+        /// <returns></returns>
+        private static async Task<IResult> SyncUsersAs400(
+            IUsersTellersAs400Service coachingCajerosService,
+            IUsersRepository usersRepository,
+            IModelLogsRepository modelLogsRepository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 401,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var cajeros = await coachingCajerosService.ObtenerCajerosAsync();
+                var syncResult = await usersRepository.SyncAs400Users(cajeros);
+
+                await modelLogsRepository.CreateLog(new ModelLog
+                {
+                    OperationType = OperationType.Update,
+                    ModelName = nameof(User),
+                    EndpointFunction = nameof(SyncUsersAs400),
+                    OperationDate = DateTime.Now,
+                    JsonModel = JsonConvert.SerializeObject(new
+                    {
+                        syncResult.Total,
+                        syncResult.Created,
+                        syncResult.Updated
+                    }),
+                    UserId = currentUserId
+                });
+
+                return Results.Ok(new ResponseObject<SyncUsersAs400ResultDto>
+                {
+                    Code = 200,
+                    Message = "Sincronización realizada exitosamente.",
+                    Data = syncResult
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "SyncUsersAs400Error");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        /// <summary>
+        /// Exporta a PDF los usuarios filtrados usando una plantilla HTML editable.
+        /// </summary>
+        private static async Task<IResult> ExportFilteredPdf(
+            UserFilterRequestDto filter,
+            IUsersRepository usersRepository,
+            IHtmlTemplateService htmlTemplateService,
+            IPdfExportService pdfExportService,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+
+            try
+            {
+                logger.LogInformation(JsonConvert.SerializeObject(filter));
+
+                var users = await usersRepository.GetFilteredUsers(filter);
+                var exportRows = users.Select(MapExportUser).ToList();
+
+                var rowsHtml = BuildUserRowsHtml(exportRows);
+                var replacements = new Dictionary<string, string>
+                {
+                    ["Title"] = "Reporte de usuarios",
+                    ["GeneratedAt"] = DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+                    ["TotalUsers"] = exportRows.Count.ToString(),
+                    ["FiltersSummary"] = BuildFiltersSummary(filter),
+                    ["Rows"] = rowsHtml
+                };
+
+                var html = htmlTemplateService.LoadTemplate("Templates/Users/UsersReportTemplate.html", replacements);
+                var pdfBytes = pdfExportService.ConvertHtmlToPdf(html);
+                var fileName = $"usuarios_{DateTime.UtcNow:yyyyMMddHHmmss}.pdf";
+
+
+                return Results.File(pdfBytes, "application/pdf", fileName);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "ExportFilteredUsersPdfError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        /// <summary>
+        /// Exporta a Excel los usuarios filtrados usando la misma entrada del filtro.
+        /// </summary>
+        private static async Task<IResult> ExportFilteredExcel(
+            UserFilterRequestDto filter,
+            IUsersRepository usersRepository,
+            IExcelExportService excelExportService,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+
+            try
+            {
+                logger.LogInformation(JsonConvert.SerializeObject(filter));
+
+                var users = await usersRepository.GetFilteredUsers(filter);
+                var exportRows = users.Select(MapExportUser).ToList();
+
+                var columnMappings = new Dictionary<string, string>
+                {
+                    ["FirstName"] = "Nombre",
+                    ["LastName"] = "Apellido",
+                    ["UserName"] = "Usuario de red",
+                    ["Email"] = "Correo electrónico",
+                    ["Status"] = "Estado",
+                    ["TellerCode"] = "Código de cajero",
+                    ["CompanyPosition"] = "Puesto",
+                    ["CompanyLocation"] = "Agencia / Zona",
+                    ["CompanyBranch"] = "Nombre de agencia",
+                    ["CompanyDepartment"] = "Área",
+                    ["Role"] = "Rol asignado"
+                };
+
+                var excelBytes = excelExportService.ConvertListToExcel(exportRows, columnMappings, "Usuarios");
+                var fileName = $"usuarios_{DateTime.UtcNow:yyyyMMddHHmmss}.xlsx";
+
+                return Results.File(
+                    excelBytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    fileName);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "ExportFilteredUsersError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        /// <summary>
+        /// Filtra usuarios usando un único objeto de criterios para evitar una gran cantidad de parámetros.
+        /// </summary>
+        private static async Task<IResult> Filter(
+            UserFilterRequestDto filter,
+            IUsersRepository usersRepository,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+
+            try
+            {
+                logger.LogInformation(JsonConvert.SerializeObject(filter));
+
+                var pagedUsers = await usersRepository.GetFiltered(filter);
+
+                var response = new ResponseObject<PagedResult<UserDto>>
+                {
+                    Code = 200,
+                    Message = "OK",
+                    Data = new PagedResult<UserDto>
+                    {
+                        Items = [.. pagedUsers.Items.Select(user => MapUser(user))],
+                        PageNumber = pagedUsers.PageNumber,
+                        PageSize = pagedUsers.PageSize,
+                        TotalCount = pagedUsers.TotalCount,
+                        TotalPages = pagedUsers.TotalPages
+                    }
+                };
+
+                logger.LogInformation(JsonConvert.SerializeObject(response));
+
+                return Results.Ok(response);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "FilterUsersError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        /// <summary>
+        /// Obtiene un usuario por su identificador, incluyendo su rol y permisos.
+        /// </summary>
+        /// <remarks>Registra la excepción con la clave "GetUserByIdError" cuando se produce un error
+        /// interno.</remarks>
+        /// <param name="id">Identificador único del usuario.</param>
+        /// <param name="usersRepository">Repositorio de usuarios usado para consultar los datos del usuario.</param>
+        /// <param name="loggerFactory">Fábrica de registros usada para crear el registrador de la operación.</param>
+        /// <returns>Un <see cref="IResult"/> con código 200 y el usuario cuando existe; 404 si no se encuentra; o 500 si se
+        /// produce un error.</returns>
+        private static async Task<IResult> GetById(
+            string id,
+            IUsersRepository usersRepository,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+
+            try
+            {
+                logger.LogInformation("UserId: {UserId}", id);
+
+                var user = await usersRepository.GetByIdWithRoleAndPermissions(id);
+
+                if (user == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 404,
+                        Message = GenericErrors.UserNotFound
+                    }, statusCode: StatusCodes.Status404NotFound);
+                }
+
+                var response = new ResponseObject<UserDto>
+                {
+                    Code = 200,
+                    Message = "OK",
+                    Data = MapUser(user)
+                };
+
+                logger.LogInformation(JsonConvert.SerializeObject(response));
+
+                return Results.Ok(response);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "GetUserByIdError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = "Ha ocurrido un error interno al realizar la solicitud."
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        /// <summary>
+        /// Crea un usuario, valida la solicitud, comprueba entidades relacionadas y devuelve el resultado HTTP de la
+        /// operación.
+        /// </summary>
+        /// <remarks>Devuelve errores de validación cuando la solicitud es inválida y registra cualquier
+        /// excepción no controlada.</remarks>
+        /// <param name="request">Datos necesarios para crear el usuario.</param>
+        /// <param name="serviceProvider">Proveedor de servicios usado para resolver los repositorios requeridos.</param>
+        /// <param name="validator">Validador de la solicitud de creación de usuario.</param>
+        /// <param name="loggerFactory">Fábrica de registros usada para crear el registrador de la operación.</param>
+        /// <returns>Una tarea que representa la operación asincrónica y contiene un <see cref="IResult"/> con 201 (creado), 400
+        /// (solicitud no válida), 409 (conflicto) o 500 (error interno).</returns>
+        private static async Task<IResult> Create(
+            CreateUserRequestDto request,
+            IValidator<CreateUserRequestDto> validator,
+            IServiceProvider serviceProvider,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                logger.LogInformation(JsonConvert.SerializeObject(request));
+
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 401,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var validationResult = await validator.ValidateAsync(request);
+
+
+                if (!validationResult.IsValid)
+                {
+
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "Error en la validación del request.",
+                        Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage)
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var usersRepository = serviceProvider.GetRequiredService<IUsersRepository>();
+
+                if (await usersRepository.ExistsByUserName(request.UserName))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 409,
+                        Message = "Ya existe un usuario con el mismo nombre de usuario."
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+
+                var rolesRepository = serviceProvider.GetRequiredService<IRolesRepository>();
+
+                var roleExists = await rolesRepository.ExistsById(request.RoleId);
+
+                if (!roleExists)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "El rol especificado no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var companyDepartmentsRepository = serviceProvider.GetRequiredService<ICompanyAreasRepository>();
+
+                var departmentExists = await companyDepartmentsRepository.ExistsById(request.CompanyAreaId);
+
+                if (!departmentExists)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "El área especificada no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var companyPositionsRepository = serviceProvider.GetRequiredService<ICompanyPositionsRepository>();
+                var companyLocationsRepository = serviceProvider.GetRequiredService<ICompanyLocationsRepository>();
+                var companyBranchesRepository = serviceProvider.GetRequiredService<ICompanyBranchesRepository>();
+
+                var companyPosition = await companyPositionsRepository.GetById(request.CompanyPositionId);
+                if (companyPosition == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "El puesto especificado no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var companyLocation = await companyLocationsRepository.GetById(request.CompanyLocationId);
+                if (companyLocation == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "La ubicación especificada no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                CompanyBranch? companyBranch = null;
+                if (request.CompanyBranchId.HasValue)
+                {
+                    companyBranch = await companyBranchesRepository.GetById(request.CompanyBranchId.Value);
+                    if (companyBranch == null)
+                    {
+                        return Results.Json(new ResponseObjectError
+                        {
+                            Code = 400,
+                            Message = "La agencia especificada no existe."
+                        }, statusCode: StatusCodes.Status400BadRequest);
+                    }
+                }
+
+                var user = new User
+                {
+                    FirstName = request.FirstName,
+                    LastName = request.LastName,
+                    UserName = request.UserName,
+                    Email = request.Email,
+                    Status = request.Status,
+                    EmployeeBranchUbication = request.EmployeeBranchUbication,
+                    TellerCode = request.TellerCode,
+                    CompanyPositionId = companyPosition.Id,
+                    CompanyLocationId = companyLocation.Id,
+                    CompanyBranchId = companyBranch?.Id,
+                    CompanyAreaId = request.CompanyAreaId,
+                    RoleId = request.RoleId
+                };
+
+                await usersRepository.Create(user);
+
+                var modelLogsRepository = serviceProvider.GetRequiredService<IModelLogsRepository>();
+
+                await modelLogsRepository.CreateLog(new ModelLog
+                {
+                    OperationType = OperationType.Create,
+                    ModelName = nameof(User),
+                    OperationDate = DateTime.Now,
+                    EndpointFunction = nameof(Create),
+                    JsonModel = JsonConvert.SerializeObject(request),
+                    UserId = currentUserId
+                });
+
+                var createdUser = await usersRepository.GetByIdWithRoleAndPermissions(user.Id);
+
+                var response = new ResponseObject<UserDto>
+                {
+                    Code = 201,
+                    Message = "Usuario creado correctamente.",
+                    Data = MapUser(createdUser ?? user)
+                };
+
+                return Results.Created($"/api/users/{user.Id}", response);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "CreateUserError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        /// <summary>
+        /// Actualiza un usuario existente, validando la solicitud y comprobando entidades relacionadas antes de devolver el resultado HTTP.
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="request"></param>
+        /// <param name="serviceProvider"></param>
+        /// <param name="validator"></param>
+        /// <param name="loggerFactory"></param>
+        /// <returns></returns>
+        private static async Task<IResult> Update(
+            string id,
+            UpdateUserRequestDto request,
+            IServiceProvider serviceProvider,
+            IValidator<UpdateUserRequestDto> validator,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 401,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                if (!string.Equals(id, request.Id, StringComparison.Ordinal))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "El identificador de la ruta no coincide con el del request."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var validationResult = await validator.ValidateAsync(request);
+
+                if (!validationResult.IsValid)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "Error en la validación del request.",
+                        Errors = validationResult.Errors.ToDictionary(e => e.PropertyName, e => e.ErrorMessage)
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var usersRepository = serviceProvider.GetRequiredService<IUsersRepository>();
+
+                var user = await usersRepository.GetById(id);
+
+                if (user == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 404,
+                        Message = GenericErrors.UserNotFound
+                    }, statusCode: StatusCodes.Status404NotFound);
+                }
+
+                if (await usersRepository.ExistsByUserName(request.UserName, id))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 409,
+                        Message = "Ya existe otro usuario con el mismo nombre de usuario."
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+
+                var rolesRepository = serviceProvider.GetRequiredService<IRolesRepository>();
+
+
+                var roleExists = await rolesRepository.ExistsById(request.RoleId);
+
+                if (!roleExists)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "El rol especificado no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var companyDepartmentsRepository = serviceProvider.GetRequiredService<ICompanyAreasRepository>();
+
+
+                var departmentExists = await companyDepartmentsRepository.ExistsById(request.CompanyAreaId);
+
+                if (!departmentExists)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "El departamento especificado no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var companyPositionsRepository = serviceProvider.GetRequiredService<ICompanyPositionsRepository>();
+                var companyLocationsRepository = serviceProvider.GetRequiredService<ICompanyLocationsRepository>();
+                var companyBranchesRepository = serviceProvider.GetRequiredService<ICompanyBranchesRepository>();
+
+                var companyPosition = await companyPositionsRepository.GetById(request.CompanyPositionId);
+                if (companyPosition == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "El puesto especificado no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var companyLocation = await companyLocationsRepository.GetById(request.CompanyLocationId);
+                if (companyLocation == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 400,
+                        Message = "La ubicación especificada no existe."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                CompanyBranch? companyBranch = null;
+                if (request.CompanyBranchId.HasValue)
+                {
+                    companyBranch = await companyBranchesRepository.GetById(request.CompanyBranchId.Value);
+                    if (companyBranch == null)
+                    {
+                        return Results.Json(new ResponseObjectError
+                        {
+                            Code = 400,
+                            Message = "La agencia especificada no existe."
+                        }, statusCode: StatusCodes.Status400BadRequest);
+                    }
+                }
+
+                user.FirstName = request.FirstName;
+                user.LastName = request.LastName;
+                user.UserName = request.UserName;
+                user.Email = request.Email;
+                user.Status = request.Status;
+                user.EmployeeBranchUbication = request.EmployeeBranchUbication;
+                user.TellerCode = request.TellerCode;
+                user.CompanyPositionId = companyPosition.Id;
+                user.CompanyLocationId = companyLocation.Id;
+                user.CompanyBranchId = companyBranch?.Id;
+                user.CompanyAreaId = request.CompanyAreaId;
+                user.RoleId = request.RoleId;
+
+                await usersRepository.Update(user);
+
+                var modelLogsRepository = serviceProvider.GetRequiredService<IModelLogsRepository>();
+
+                await modelLogsRepository.CreateLog(new ModelLog
+                {
+                    OperationType = OperationType.Update,
+                    ModelName = nameof(User),
+                    EndpointFunction = nameof(Update),
+                    OperationDate = DateTime.Now,
+                    JsonModel = JsonConvert.SerializeObject(request),
+                    UserId = currentUserId
+                });
+
+                var updatedUser = await usersRepository.GetByIdWithRoleAndPermissions(id);
+
+                var response = new ResponseObject<UserDto>
+                {
+                    Code = 200,
+                    Message = "Usuario actualizado correctamente.",
+                    Data = MapUser(updatedUser ?? user)
+                };
+
+                return Results.Ok(response);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "UpdateUserError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+
+        /// <summary>
+        /// Asigna el flag de líder a un usuario.
+        /// </summary>
+        private static async Task<IResult> SetLeaderStatus(
+            string id,
+            SetLeaderStatusRequestDto request,
+            IUsersRepository usersRepository,
+            IServiceProvider serviceProvider,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 401,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var user = await usersRepository.GetById(id);
+
+                if (user == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 404,
+                        Message = GenericErrors.UserNotFound
+                    }, statusCode: StatusCodes.Status404NotFound);
+                }
+
+                user.IsLeader = request.IsLeader;
+
+                await usersRepository.Update(user);
+
+                var modelLogsRepository = serviceProvider.GetRequiredService<IModelLogsRepository>();
+
+                await modelLogsRepository.CreateLog(new ModelLog
+                {
+                    OperationType = OperationType.Update,
+                    ModelName = nameof(User),
+                    EndpointFunction = nameof(SetLeaderStatus),
+                    OperationDate = DateTime.Now,
+                    JsonModel = JsonConvert.SerializeObject(new
+                    {
+                        user.Id,
+                        user.IsLeader
+                    }),
+                    UserId = currentUserId
+                });
+
+                return Results.Ok(new ResponseObject<string>
+                {
+                    Code = 200,
+                    Message = request.IsLeader ? "Líder designado correctamente." : "Permiso de líder quitado correctamente.",
+                    Data = null
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "SetUserLeaderStatusError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+
+        /// <summary>
+        /// Elimina un usuario por su identificador.
+        /// </summary>
+        private static async Task<IResult> Delete(
+            string id,
+            IUsersRepository usersRepository,
+            IServiceProvider serviceProvider,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(UserEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 401,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var user = await usersRepository.GetById(id);
+
+                if (user == null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = 404,
+                        Message = GenericErrors.UserNotFound
+                    }, statusCode: StatusCodes.Status404NotFound);
+                }
+
+                await usersRepository.Delete(user);
+
+                var modelLogsRepository = serviceProvider.GetRequiredService<IModelLogsRepository>();
+
+                await modelLogsRepository.CreateLog(new ModelLog
+                {
+                    OperationType = OperationType.Delete,
+                    ModelName = nameof(User),
+                    EndpointFunction = nameof(Delete),
+                    OperationDate = DateTime.Now,
+                    UserId = currentUserId
+                });
+
+                return Results.Ok(new ResponseObject<string>
+                {
+                    Code = 200,
+                    Message = "Usuario eliminado correctamente.",
+                    Data = null
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "DeleteUserError");
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = 500,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+
+        private static UserDto MapUser(User user)
+        {
+            return new UserDto
+            {
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                UserName = user.UserName,
+                Email = user.Email,
+                Status = GetUserStatus(user.Status),
+                IsLeader = user.IsLeader,
+                EmployeeBranchUbication = user.EmployeeBranchUbication,
+                TellerCode = user.TellerCode,
+                CompanyPositionId = user.CompanyPositionId,
+                CompanyPosition = user.CompanyPosition?.Name ?? string.Empty,
+                CompanyLocationId = user.CompanyLocationId,
+                CompanyLocation = user.CompanyLocation?.Name ?? string.Empty,
+                CompanyBranchId = user.CompanyBranchId,
+                CompanyBranch = user.CompanyBranch?.Name ?? string.Empty,
+                CompanyAreaId = user.CompanyAreaId,
+                CompanyArea = user.CompanyArea?.Name ?? string.Empty,
+                RoleId = user.RoleId,
+                RoleName = user.Role?.Name ?? string.Empty
+            };
+        }
+
+        private static UserExportRowDto MapExportUser(User user)
+        {
+            return new UserExportRowDto
+            {
+                Id = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                UserName = user.UserName,
+                Email = user.Email ?? "",
+                Status = GetUserStatus(user.Status),
+                TellerCode = user.TellerCode,
+                CompanyPosition = user.CompanyPosition?.Name ?? string.Empty,
+                CompanyLocation = user.CompanyLocation?.Name ?? string.Empty,
+                CompanyBranch = user.CompanyBranch?.Name,
+                CompanyArea = user.CompanyArea?.Name ?? string.Empty,
+                Role = user.Role?.Name ?? string.Empty
+            };
+        }
+
+        private static string GetUserStatus(UserStatus status)
+        {
+            return status switch
+            {
+                UserStatus.Activo => "Activo",
+                UserStatus.Inactivo => "Inactivo",
+                UserStatus.Vacaciones => "De vacaciones",
+                UserStatus.Maternidad => "Maternidad",
+                UserStatus.Incapacidad => "Incapacitado(a)",
+                _ => "Desconocido"
+            };
+        }
+
+        private static string BuildUserRowsHtml(IEnumerable<UserExportRowDto> rows)
+        {
+            var builder = new StringBuilder();
+
+            foreach (var row in rows)
+            {
+                string statusBadge =
+
+                    row.Status == "Activo" ? 
+                    "<span class=\"badge-active\">Activo</span>"
+                    : "<span class=\"badge-inactive\">Inactivo</span>";
+                   
+                
+
+                builder.AppendLine($"<tr><td>{WebUtility.HtmlEncode(row.FirstName)}</td><td>{WebUtility.HtmlEncode(row.LastName)}</td><td>{WebUtility.HtmlEncode(row.UserName)}</td><td>{WebUtility.HtmlEncode(row.Email)}</td><td>{statusBadge}</td><td>{WebUtility.HtmlEncode(row.TellerCode ?? string.Empty)}</td><td>{WebUtility.HtmlEncode(row.CompanyPosition)}</td><td>{WebUtility.HtmlEncode(row.CompanyLocation)}</td><td>{WebUtility.HtmlEncode(row.CompanyBranch ?? string.Empty)}</td><td>{WebUtility.HtmlEncode(row.CompanyArea)}</td><td>{WebUtility.HtmlEncode(row.Role)}</td></tr>");
+            }
+
+            return builder.ToString();
+        }
+
+        private static string BuildFiltersSummary(UserFilterRequestDto filter)
+        {
+            var filters = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(filter.Search))
+            {
+                filters.Add($"Búsqueda: {filter.Search}");
+            }
+
+            if (filter.Status.HasValue)
+            {
+                filters.Add($"Estado laboral: {filter.Status.Value}");
+            }
+
+            if (filter.EmployeeBranchUbication.HasValue)
+            {
+                filters.Add($"Ubicación de sucursal: {filter.EmployeeBranchUbication.Value}");
+            }
+
+            if (filter.CompanyPositionId.HasValue)
+            {
+                filters.Add($"Puesto: {filter.CompanyPositionId.Value}");
+            }
+
+            if (filter.CompanyLocationId.HasValue)
+            {
+                filters.Add($"Agencia/Zona: {filter.CompanyLocationId.Value}");
+            }
+
+            if (filter.CompanyBranchId.HasValue)
+            {
+                filters.Add($"Nombre de agencia: {filter.CompanyBranchId.Value}");
+            }
+
+            if (filter.CompanyAreaId.HasValue)
+            {
+                filters.Add($"Área: {filter.CompanyAreaId.Value}");
+            }
+
+            if (filter.RoleId.HasValue)
+            {
+                filters.Add($"Rol: {filter.RoleId.Value}");
+            }
+
+            return filters.Count == 0 ? "Sin filtros" : string.Join(" | ", filters);
+        }
+
+        private static string? GetCurrentUserId(ClaimsPrincipal claimsPrincipal)
+        {
+            return claimsPrincipal.FindFirstValue("userId")
+                ?? claimsPrincipal.FindFirstValue(ClaimTypes.NameIdentifier);
+        }
+    }
+}
+
+
+
+
+using ApiCoaching.Services.Interfaces;
+using SelectPdf;
+
+namespace ApiCoaching.Services
+{
+    public class PdfExportService : IPdfExportService
+    {
+        public byte[] ConvertHtmlToPdf(string html)
+        {
+            var converter = new HtmlToPdf();
+            converter.Options.PdfPageSize = PdfPageSize.A4;
+            converter.Options.MarginTop = 10;
+            converter.Options.MarginBottom = 10;
+            converter.Options.MarginLeft = 10;
+            converter.Options.MarginRight = 10;
+            converter.Options.WebPageWidth = 1200;
+
+            var document = converter.ConvertHtmlString(html);
+            using var stream = new MemoryStream();
+            document.Save(stream);
+            document.Close();
+            return stream.ToArray();
+        }
+    }
+}
+
+
+
+
+using ApiCoaching.Services.Interfaces;
+using System.IO.Compression;
+using System.Reflection;
+using System.Xml.Linq;
+
+namespace ApiCoaching.Services
+{
+    public class ExcelExportService : IExcelExportService
+    {
+        private static readonly string XmlSegment = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+        public byte[] ConvertListToExcel<T>(IEnumerable<T> items, IReadOnlyDictionary<string, string>? columnMappings = null, string sheetName = "Sheet1")
+        {
+            var rows = BuildRows(items);
+            var properties = rows.Count > 0 ? rows[0].Keys.ToList() : [];
+
+            using var stream = new MemoryStream();
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                WriteContentTypes(archive);
+                WriteRels(archive);
+                WriteWorkbook(archive, sheetName);
+                WriteWorkbookRels(archive);
+                WriteWorksheet(archive, rows, properties, columnMappings);
+            }
+
+            return stream.ToArray();
+        }
+
+        private static List<Dictionary<string, string>> BuildRows<T>(IEnumerable<T> items)
+        {
+            var rows = new List<Dictionary<string, string>>();
+
+            if (items is null)
+            {
+                return rows;
+            }
+
+            var properties = typeof(T)
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(p => p.CanRead)
+                .ToArray();
+
+            foreach (var item in items)
+            {
+                var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var property in properties)
+                {
+                    var value = property.GetValue(item);
+                    row[property.Name] = value?.ToString() ?? string.Empty;
+                }
+
+                rows.Add(row);
+            }
+
+            return rows;
+        }
+
+        private static void WriteContentTypes(ZipArchive archive)
+        {
+            var entry = archive.CreateEntry("[Content_Types].xml");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                          <Default Extension="xml" ContentType="application/xml"/>
+                          <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                          <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                        </Types>
+                        """);
+        }
+
+        private static void WriteRels(ZipArchive archive)
+        {
+            var entry = archive.CreateEntry("_rels/.rels");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                        </Relationships>
+                        """);
+        }
+
+        private static void WriteWorkbook(ZipArchive archive, string sheetName)
+        {
+            var safeSheetName = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName;
+            var entry = archive.CreateEntry("xl/workbook.xml");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write($"""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                          <sheets>
+                            <sheet name="{safeSheetName}" sheetId="1" r:id="rId1"/>
+                          </sheets>
+                        </workbook>
+                        """);
+        }
+
+        private static void WriteWorkbookRels(ZipArchive archive)
+        {
+            var entry = archive.CreateEntry("xl/_rels/workbook.xml.rels");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                        </Relationships>
+                        """);
+        }
+
+        private static void WriteWorksheet(
+            ZipArchive archive,
+            List<Dictionary<string, string>> rows,
+            List<string> properties,
+            IReadOnlyDictionary<string, string>? columnMappings)
+        {
+            var entry = archive.CreateEntry("xl/worksheets/sheet1.xml");
+            using var writer = new StreamWriter(entry.Open());
+
+            var dimensionRef = properties.Count == 0
+                ? "A1"
+                : $"A1:{ColumnName(properties.Count)}{rows.Count + 1}";
+
+            var xml = new XDocument(
+                new XDeclaration("1.0", "UTF-8", "yes"),
+                new XElement(XName.Get("worksheet", XmlSegment),
+                    new XAttribute(XNamespace.Xmlns + "r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
+                    new XElement(XName.Get("dimension", XmlSegment), new XAttribute("ref", dimensionRef)),
+                    new XElement(XName.Get("sheetViews", XmlSegment),
+                        new XElement(XName.Get("sheetView", XmlSegment),
+                            new XAttribute("workbookViewId", 0))),
+                    new XElement(XName.Get("sheetFormatPr", XmlSegment), new XAttribute("defaultRowHeight", 15)),
+                    new XElement(XName.Get("sheetData", XmlSegment),
+                        CreateHeaderRow(properties, columnMappings),
+                        CreateDataRows(rows, properties))));
+
+            xml.Save(writer);
+        }
+
+        private static XElement CreateHeaderRow(List<string> properties, IReadOnlyDictionary<string, string>? columnMappings)
+        {
+            var ns = XName.Get("row", XmlSegment);
+            var cellName = XName.Get("c", XmlSegment);
+            var inlineStringName = XName.Get("is", XmlSegment);
+            var textName = XName.Get("t", XmlSegment);
+
+            var row = new XElement(ns, new XAttribute("r", 1));
+
+            for (var index = 0; index < properties.Count; index++)
+            {
+                var propertyName = properties[index];
+                var header = columnMappings != null && columnMappings.TryGetValue(propertyName, out var mappedName)
+                    ? mappedName
+                    : propertyName;
+
+                row.Add(new XElement(cellName,
+                    new XAttribute("r", $"{ColumnName(index + 1)}1"),
+                    new XAttribute("t", "inlineStr"),
+                    new XElement(inlineStringName,
+                        new XElement(textName, header))));
+            }
+
+            return row;
+        }
+
+        private static IEnumerable<XElement> CreateDataRows(List<Dictionary<string, string>> rows, List<string> properties)
+        {
+            var rowName = XName.Get("row", XmlSegment);
+            var cellName = XName.Get("c", XmlSegment);
+            var inlineStringName = XName.Get("is", XmlSegment);
+            var textName = XName.Get("t", XmlSegment);
+
+            for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                var row = new XElement(rowName, new XAttribute("r", rowIndex + 2));
+                var data = rows[rowIndex];
+
+                for (var columnIndex = 0; columnIndex < properties.Count; columnIndex++)
+                {
+                    var propertyName = properties[columnIndex];
+                    data.TryGetValue(propertyName, out var value);
+
+                    row.Add(new XElement(cellName,
+                        new XAttribute("r", $"{ColumnName(columnIndex + 1)}{rowIndex + 2}"),
+                        new XAttribute("t", "inlineStr"),
+                        new XElement(inlineStringName,
+                            new XElement(textName, value ?? string.Empty))));
+                }
+
+                yield return row;
+            }
+        }
+
+        private static string ColumnName(int index)
+        {
+            var dividend = index;
+            var columnName = string.Empty;
+
+            var stringBuilder = new System.Text.StringBuilder();
+            while (dividend > 0)
+            {
+                var modulo = (dividend - 1) % 26;
+                stringBuilder.Append(Convert.ToChar('A' + modulo) + columnName);
+                dividend = (dividend - modulo) / 26;
+            }
+
+            return stringBuilder.ToString();
+        }
+
+    }
+}
+
+
+
+
+namespace ApiCoaching.Services.Interfaces
+{
+    public interface IExcelExportService
+    {
+        byte[] ConvertListToExcel<T>(IEnumerable<T> items, IReadOnlyDictionary<string, string>? columnMappings = null, string sheetName = "Sheet1");
+    }
+}
+
+
+
+namespace ApiCoaching.Services.Interfaces
+{
+    public interface IPdfExportService
+    {
+        byte[] ConvertHtmlToPdf(string html);
+    }
+}
+
+
+
+
+using ApiCoaching.Services.Interfaces;
+using System.IO.Compression;
+using System.Reflection;
+using System.Xml.Linq;
+
+namespace ApiCoaching.Services
+{
+    public class ExcelExportService : IExcelExportService
+    {
+        private static readonly string XmlSegment = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+        public byte[] ConvertListToExcel<T>(IEnumerable<T> items, IReadOnlyDictionary<string, string>? columnMappings = null, string sheetName = "Sheet1")
+        {
+            var rows = BuildRows(items);
+            var properties = rows.Count > 0 ? rows[0].Keys.ToList() : [];
+
+            using var stream = new MemoryStream();
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                WriteContentTypes(archive);
+                WriteRels(archive);
+                WriteWorkbook(archive, sheetName);
+                WriteWorkbookRels(archive);
+                WriteWorksheet(archive, rows, properties, columnMappings);
+            }
+
+            return stream.ToArray();
+        }
+
+        private static List<Dictionary<string, string>> BuildRows<T>(IEnumerable<T> items)
+        {
+            var rows = new List<Dictionary<string, string>>();
+
+            if (items is null)
+            {
+                return rows;
+            }
+
+            var properties = typeof(T)
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(p => p.CanRead)
+                .ToArray();
+
+            foreach (var item in items)
+            {
+                var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var property in properties)
+                {
+                    var value = property.GetValue(item);
+                    row[property.Name] = value?.ToString() ?? string.Empty;
+                }
+
+                rows.Add(row);
+            }
+
+            return rows;
+        }
+
+        private static void WriteContentTypes(ZipArchive archive)
+        {
+            var entry = archive.CreateEntry("[Content_Types].xml");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                          <Default Extension="xml" ContentType="application/xml"/>
+                          <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                          <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                        </Types>
+                        """);
+        }
+
+        private static void WriteRels(ZipArchive archive)
+        {
+            var entry = archive.CreateEntry("_rels/.rels");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                        </Relationships>
+                        """);
+        }
+
+        private static void WriteWorkbook(ZipArchive archive, string sheetName)
+        {
+            var safeSheetName = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName;
+            var entry = archive.CreateEntry("xl/workbook.xml");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write($"""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                          <sheets>
+                            <sheet name="{safeSheetName}" sheetId="1" r:id="rId1"/>
+                          </sheets>
+                        </workbook>
+                        """);
+        }
+
+        private static void WriteWorkbookRels(ZipArchive archive)
+        {
+            var entry = archive.CreateEntry("xl/_rels/workbook.xml.rels");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("""
+                        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                        </Relationships>
+                        """);
+        }
+
+        private static void WriteWorksheet(
+            ZipArchive archive,
+            List<Dictionary<string, string>> rows,
+            List<string> properties,
+            IReadOnlyDictionary<string, string>? columnMappings)
+        {
+            var entry = archive.CreateEntry("xl/worksheets/sheet1.xml");
+            using var writer = new StreamWriter(entry.Open());
+
+            var dimensionRef = properties.Count == 0
+                ? "A1"
+                : $"A1:{ColumnName(properties.Count)}{rows.Count + 1}";
+
+            var xml = new XDocument(
+                new XDeclaration("1.0", "UTF-8", "yes"),
+                new XElement(XName.Get("worksheet", XmlSegment),
+                    new XAttribute(XNamespace.Xmlns + "r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
+                    new XElement(XName.Get("dimension", XmlSegment), new XAttribute("ref", dimensionRef)),
+                    new XElement(XName.Get("sheetViews", XmlSegment),
+                        new XElement(XName.Get("sheetView", XmlSegment),
+                            new XAttribute("workbookViewId", 0))),
+                    new XElement(XName.Get("sheetFormatPr", XmlSegment), new XAttribute("defaultRowHeight", 15)),
+                    new XElement(XName.Get("sheetData", XmlSegment),
+                        CreateHeaderRow(properties, columnMappings),
+                        CreateDataRows(rows, properties))));
+
+            xml.Save(writer);
+        }
+
+        private static XElement CreateHeaderRow(List<string> properties, IReadOnlyDictionary<string, string>? columnMappings)
+        {
+            var ns = XName.Get("row", XmlSegment);
+            var cellName = XName.Get("c", XmlSegment);
+            var inlineStringName = XName.Get("is", XmlSegment);
+            var textName = XName.Get("t", XmlSegment);
+
+            var row = new XElement(ns, new XAttribute("r", 1));
+
+            for (var index = 0; index < properties.Count; index++)
+            {
+                var propertyName = properties[index];
+                var header = columnMappings != null && columnMappings.TryGetValue(propertyName, out var mappedName)
+                    ? mappedName
+                    : propertyName;
+
+                row.Add(new XElement(cellName,
+                    new XAttribute("r", $"{ColumnName(index + 1)}1"),
+                    new XAttribute("t", "inlineStr"),
+                    new XElement(inlineStringName,
+                        new XElement(textName, header))));
+            }
+
+            return row;
+        }
+
+        private static IEnumerable<XElement> CreateDataRows(List<Dictionary<string, string>> rows, List<string> properties)
+        {
+            var rowName = XName.Get("row", XmlSegment);
+            var cellName = XName.Get("c", XmlSegment);
+            var inlineStringName = XName.Get("is", XmlSegment);
+            var textName = XName.Get("t", XmlSegment);
+
+            for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                var row = new XElement(rowName, new XAttribute("r", rowIndex + 2));
+                var data = rows[rowIndex];
+
+                for (var columnIndex = 0; columnIndex < properties.Count; columnIndex++)
+                {
+                    var propertyName = properties[columnIndex];
+                    data.TryGetValue(propertyName, out var value);
+
+                    row.Add(new XElement(cellName,
+                        new XAttribute("r", $"{ColumnName(columnIndex + 1)}{rowIndex + 2}"),
+                        new XAttribute("t", "inlineStr"),
+                        new XElement(inlineStringName,
+                            new XElement(textName, value ?? string.Empty))));
+                }
+
+                yield return row;
+            }
+        }
+
+        private static string ColumnName(int index)
+        {
+            var dividend = index;
+            var columnName = string.Empty;
+
+            var stringBuilder = new System.Text.StringBuilder();
+            while (dividend > 0)
+            {
+                var modulo = (dividend - 1) % 26;
+                stringBuilder.Append(Convert.ToChar('A' + modulo) + columnName);
+                dividend = (dividend - modulo) / 26;
+            }
+
+            return stringBuilder.ToString();
+        }
+
+    }
+}
+
+
+
+
+using ApiCoaching.Models;
+using ApiCoaching.Dtos.Users;
+using ApiCoaching.Dtos;
+using ApiCoaching.Dtos.Services;
+using ApiCoaching.Models.SpResults;
+
+namespace ApiCoaching.Repositories.Interfaces
+{
+    public interface IUsersRepository
+    {
+        public Task<User?> GetByUserNameWithRoleAndPermissions(string userName);
+        public Task<User?> GetByUserName(string userName);
+        public Task<User?> GetByIdWithRoleAndPermissions(string userId);
+        public Task<User?> GetLoggedUserById(string userId);
+        public Task<bool> HasPermission(string userId, string permissionName);
+        public Task<bool> HasAnyPermission(string userId, IEnumerable<string> permissionNames);
+        public Task<List<User>> GetAllWithRole();
+        public Task<List<User>> GetAllWithFilters(int? status, bool? isLeader);
+        public Task<List<User>> GetAvailableLeaders(int? status, int? companyAreaId);
+        public Task<List<User>> GetAvailableMembers(int? status, int? companyAreaId);
+        public Task<PagedResult<User>> GetFiltered(UserFilterRequestDto filter);
+        public Task<List<User>> GetFilteredUsers(UserFilterRequestDto filter);
+        public Task<User?> GetById(string userId);
+        public Task<bool> ExistsByUserName(string userName, string? excludeUserId = null);
+        public Task<int> Create(User user);
+        public Task<int> Update(User user);
+        public Task<SyncUsersAs400ResultDto> SyncAs400Users(IEnumerable<CoachingCajeroDto> cajeros);
+        public Task<int> SyncLoggedUserAs400(User user, CoachingCajeroDto cajero);
+        public Task<int> Delete(User user);
+        public Task<UspGetAS400Queries> GetUsersTellersAS400Queries();
+    }
+}
+
+
+
+
+
+namespace ApiCoaching.Dtos.Users
+{
+    public class UserExportRowDto
+    {
+        public string Id { get; set; } = null!;
+        public string FirstName { get; set; } = null!;
+        public string LastName { get; set; } = null!;
+        public string UserName { get; set; } = null!;
+        public string Email { get; set; } = null!;
+        public string Status { get; set; } = null!;
+        public string? TellerCode { get; set; }
+        public string CompanyPosition { get; set; } = null!;
+        public string CompanyLocation { get; set; } = null!;
+        public string? CompanyBranch { get; set; }
+        public string CompanyArea { get; set; } = null!;
+        public string Role { get; set; } = null!;
+    }
+}
+
+
+
+En el frontend está asi:
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle, FileSpreadsheet, FileText, Info,
+  Loader2, Pencil, Plus, Search, Trash2, TriangleAlert,
+} from "lucide-react";
+import { Can, ConfirmDialog, Datatable, useToast } from "../../../shared/components";
+import { usersService, USER_STATUS } from "../../../api/usersService";
+import { useCatalogs } from "../../../hooks/useCatalogs";
+import { useDebounce } from "../../../hooks/useDebounce";
+import { downloadBlob, readBlobError } from "../../../helpers/downloadFile";
+import { fullName, initials, userColumns } from "./components/UserColumns";
+import { UserFormModal } from "./components/UserFormModal";
+import styles from "../../Pages.module.css";
+
+const PAGE_SIZE = 10;
+const EMPTY_FILTERS = { search: "", roleId: "", companyAreaId: "", companyPositionId: "", status: "" };
+
+const toNumber = (value) => (value === "" ? undefined : Number(value));
+
+
+function StatCard({ value, label, tone }) {
+  return (
+    <div className={`${styles.statCard} ${tone}`}>
+      <div className={styles.statValue}>{value ?? "—"}</div>
+      <div className={styles.statLabel}>{label}</div>
+    </div>
+  );
+}
+
+export const UsuariosRolesPage = () => {
+  const catalogs = useCatalogs();
+  const toast = useToast();
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [firstLoad, setFirstLoad] = useState(true);
+  const search = useDebounce(filters.search, 400);
+  const [page, setPage] = useState(1);
+
+  const [result, setResult] = useState({ items: [], totalCount: 0, totalPages: 0, pageSize: PAGE_SIZE });
+  const [stats, setStats] = useState({ active: null, inactive: null });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(null); // "excel" | "pdf" | null
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Formulario: open + user (null = crear, objeto = editar)
+  const [form, setForm] = useState({ open: false, user: null });
+
+  // Eliminar
+  const [toDelete, setToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  // Filtros en el formato que espera la API
+  const request = useMemo(() => ({
+    search: search.trim() || undefined,
+    roleId: toNumber(filters.roleId),
+    companyAreaId: toNumber(filters.companyAreaId),
+    companyPositionId: toNumber(filters.companyPositionId),
+    status: toNumber(filters.status),
+  }), [search, filters.roleId, filters.companyAreaId, filters.companyPositionId, filters.status]);
+
+  const hasFilters = Object.values(filters).some((v) => v !== "");
+
+  // Lista de usuarios
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    usersService
+      .filter({ ...request, pageNumber: page, pageSize: PAGE_SIZE })
+      .then((data) => { if (!cancelled) setResult(data); setFirstLoad(false); })
+      .catch((err) => {
+        if (!cancelled) setError(err.noAccess
+          ? "No tienes permiso para ver la lista de usuarios."
+          : "No se pudo cargar la lista de usuarios. Intenta de nuevo.");
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [request, page, reloadKey]);
+
+  // Tarjetas: usan los mismos filtros que la tabla
+  useEffect(() => {
+    let cancelled = false;
+
+    const count = (status) =>
+      usersService
+        .filter({ ...request, status, pageNumber: 1, pageSize: 1 })
+        .then((d) => d.totalCount)
+        .catch(() => null);
+
+    // Si ya se filtró por un estado, el otro estado es 0 sin necesidad de consultar
+    const applies = (status) => request.status === undefined || request.status === status;
+
+    Promise.all([
+      applies(USER_STATUS.ACTIVO) ? count(USER_STATUS.ACTIVO) : 0,
+      applies(USER_STATUS.INACTIVO) ? count(USER_STATUS.INACTIVO) : 0,
+    ]).then(([active, inactive]) => {
+      if (!cancelled) setStats({ active, inactive });
+    });
+
+    return () => { cancelled = true; };
+  }, [request, reloadKey]);
+
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((f) => ({ ...f, [name]: value }));
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setPage(1);
+  };
+
+  // Exporta TODOS los usuarios filtrados (no solo la página actual)
+  const handleExport = async (type) => {
+    const label = type === "excel" ? "Excel" : "PDF";
+    setExporting(type);
+    try {
+      const exportRequest = { ...request, pageNumber: 1, pageSize: Math.max(result.totalCount, 1) };
+      const response = type === "excel"
+        ? await usersService.exportExcel(exportRequest)
+        : await usersService.exportPdf(exportRequest);
+      downloadBlob(response, type === "excel" ? "usuarios.xlsx" : "usuarios.pdf");
+      toast.success(`${label} generado`, `Se exportaron ${result.totalCount} usuarios.`);
+    } catch (err) {
+      const apiMessage = await readBlobError(err);
+      toast.error(
+        `No se pudo exportar a ${label}`,
+        err.noAccess ? "No tienes permiso para exportar usuarios." : apiMessage ?? "Intenta de nuevo en unos momentos."
+      );
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleSaved = (user, isEdit) => {
+    setForm({ open: false, user: null });
+    toast.success(
+      isEdit ? "Usuario actualizado" : "Usuario creado",
+      isEdit
+        ? `Los datos de ${fullName(user)} se actualizaron correctamente.`
+        : `${fullName(user)} se agregó al sistema.`
+    );
+    setReloadKey((k) => k + 1);
+  };
+
+  const openDelete = (user) => {
+    setDeleteError("");
+    setToDelete(user);
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await usersService.remove(toDelete.id);
+      toast.success("Usuario eliminado", `${fullName(toDelete)} se eliminó del sistema.`);
+      setToDelete(null);
+      // Si era el último de la página, regresa a la anterior
+      if (result.items.length === 1 && page > 1) setPage((p) => p - 1);
+      else setReloadKey((k) => k + 1);
+    } catch (err) {
+      setDeleteError(err.noAccess
+        ? "No tienes permiso para eliminar usuarios."
+        : err.response?.data?.message ?? "No se pudo eliminar el usuario. Intenta de nuevo.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const columns = [
+    ...userColumns,
+    {
+      key: "actions",
+      header: "Acciones",
+      align: "right",
+      render: (u) => (
+        <div className={styles.rowActions}>
+          <Can permission="edit.users">
+            <button type="button" className={styles.iconBtn} title="Editar"
+              aria-label={`Editar a ${fullName(u)}`} onClick={() => setForm({ open: true, user: u })}>
+              <Pencil size={16} />
+            </button>
+          </Can>
+          <Can permission="delete.users">
+            <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
+              aria-label={`Eliminar a ${fullName(u)}`} onClick={() => openDelete(u)}>
+              <Trash2 size={16} />
+            </button>
+          </Can>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>Administración</span>
+          <h1 className={styles.title}>Usuarios del sistema</h1>
+          <p className={styles.subtitle}>Gestiona el acceso y el rol asignado. Cada usuario tiene un único rol.</p>
+        </div>
+
+        <div className={styles.actions}>
+          <button type="button" className={`${styles.btn} ${styles.btnOutline} ${styles.btnExcel}`}
+            onClick={() => handleExport("excel")} disabled={exporting !== null}>
+            {exporting === "excel" ? <Loader2 size={18} className={styles.spin} /> : <FileSpreadsheet size={18} />}
+            Exportar Excel
+          </button>
+
+          <button type="button" className={`${styles.btn} ${styles.btnOutline} ${styles.btnPdf}`}
+            onClick={() => handleExport("pdf")} disabled={exporting !== null}>
+            {exporting === "pdf" ? <Loader2 size={18} className={styles.spin} /> : <FileText size={18} />}
+            Exportar PDF
+          </button>
+
+          <Can permission="create.users">
+            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
+              onClick={() => setForm({ open: true, user: null })}>
+              <Plus size={18} /> Nuevo usuario
+            </button>
+          </Can>
+        </div>
+      </header>
+
+      <section className={styles.stats} aria-label="Resumen de usuarios">
+        <StatCard
+          value={firstLoad ? null : result.totalCount}
+          label={hasFilters ? "Usuarios encontrados" : "Usuarios totales"}
+          tone={styles.statTeal}
+        />
+        <StatCard value={stats.active} label="Activos" tone={styles.statYellow} />
+        <StatCard value={stats.inactive} label="Inactivos" tone={styles.statBlue} />
+      </section>
+
+      <div className={styles.banner}>
+        <Info size={18} />
+        <p>
+          Los permisos se heredan del <strong>rol asignado</strong>. Para cambiar los permisos de un grupo
+          de usuarios, modifica el rol en <strong>Permisos por rol</strong>.
+        </p>
+      </div>
+
+      {catalogs.warnings.map((warning) => (
+        <div key={warning} className={`${styles.banner} ${styles.bannerWarning}`} role="status">
+          <TriangleAlert size={18} />
+          <p>{warning} Algunos filtros u opciones no estarán disponibles.</p>
+        </div>
+      ))}
+
+
+      {error && (
+        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
+          <AlertCircle size={18} />
+          <p>{error}</p>
+        </div>
+      )}
+
+      <section className={styles.panel}>
+        <div className={styles.toolbar}>
+          <label className={styles.search}>
+            <Search size={16} />
+            <input name="search" className={styles.input} placeholder="Buscar por nombre o usuario"
+              value={filters.search} onChange={handleFilterChange} aria-label="Buscar usuarios" />
+          </label>
+
+          <select name="roleId" className={styles.select} value={filters.roleId}
+            onChange={handleFilterChange} aria-label="Filtrar por rol">
+            <option value="">Todos los roles</option>
+            {catalogs.roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+
+          {catalogs.areas.length > 0 && (
+            <select name="companyAreaId" className={styles.select} value={filters.companyAreaId}
+              onChange={handleFilterChange} aria-label="Filtrar por área">
+              <option value="">Todas las áreas</option>
+              {catalogs.areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          )}
+
+          {catalogs.positions.length > 0 && (
+            <select name="companyPositionId" className={styles.select} value={filters.companyPositionId}
+              onChange={handleFilterChange} aria-label="Filtrar por puesto">
+              <option value="">Todos los puestos</option>
+              {catalogs.positions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          )}
+
+          <select name="status" className={styles.select} value={filters.status}
+            onChange={handleFilterChange} aria-label="Filtrar por estado">
+            <option value="">Todos los estados</option>
+            <option value={USER_STATUS.ACTIVO}>Activo</option>
+            <option value={USER_STATUS.INACTIVO}>Inactivo</option>
+          </select>
+
+          {hasFilters && (
+            <button type="button" className={styles.linkBtn} onClick={clearFilters}>Limpiar filtros</button>
+          )}
+
+          <span className={styles.count}>{result.totalCount} usuarios</span>
+        </div>
+
+        <Datatable
+          columns={columns}
+          rows={result.items}
+          loading={loading}
+          emptyMessage={hasFilters ? "Ningún usuario coincide con los filtros." : "Aún no hay usuarios registrados."}
+          pagination={{
+            page,
+            pageSize: result.pageSize || PAGE_SIZE,
+            totalCount: result.totalCount,
+            totalPages: result.totalPages,
+            onPageChange: setPage,
+          }}
+        />
+      </section>
+
+      <UserFormModal
+        open={form.open}
+        user={form.user}
+        onClose={() => setForm({ open: false, user: null })}
+        onSaved={handleSaved}
+        catalogs={catalogs}
+      />
+
+
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        danger
+        title="¿ Seguro de Eliminar usuario?"
+        message="Esta acción no se puede deshacer."
+        detail={toDelete && (
+          <div className={styles.personChip}>
+            <div className={styles.personAvatar}>{initials(toDelete)}</div>
+            <div className={styles.personInfo}>
+              <span className={styles.personName}>{fullName(toDelete)}</span>
+              <span className={styles.personMeta}>Usuario: {toDelete.userName}</span>
+            </div>
+          </div>
+        )}
+        confirmText={deleting ? "Eliminando..." : "Sí, eliminar"}
+        loading={deleting}
+        error={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      />
+    </>
+  );
+};
+
+
+
+Esto fue lo que logré identificar. Ayudame a realizar las modificaciones correspondientes de manera ordenada, indicandome paso a paso y brindandome codigo completo, listo para copiar y pegar.
+Antes de empezar revisa si necesitas otro archivo para compartirtelo.
+
