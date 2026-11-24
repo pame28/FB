@@ -1,27 +1,7 @@
-USE [BandejaTC_Procesador]
+USE [BandejaTC_Procesador];
 GO
-
-/****** Object:  Table [dbo].[RELACIONES_TC]    Script Date: 24/11/2026 14:38:38 ******/
-SET ANSI_NULLS ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-CREATE TABLE [dbo].[RELACIONES_TC](
-	[RELA_CIF] [char](19) NOT NULL,
-	[RELA_IDEN] [char](19) NOT NULL,
-	[RELA_TIPO] [varchar](3) NOT NULL,
-	[RELA_NCTA] [char](16) NOT NULL,
-	[RELA_TIPR] [varchar](3) NOT NULL
-) ON [PRIMARY]
-GO
-
-
-
-
-
-este es el destino mira
-
-
-Ayudame a realizar el update
+SELECT i.name AS Indice, i.type_desc, i.is_primary_key, c.name AS Columna
+FROM sys.indexes i
+JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+JOIN sys.columns c        ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+WHERE i.object_id = OBJECT_ID('dbo.RELACIONES_TC');
