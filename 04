@@ -1,7 +1,15 @@
 USE [BandejaTC_Procesador];
 GO
-SELECT i.name AS Indice, i.type_desc, i.is_primary_key, c.name AS Columna
-FROM sys.indexes i
-JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
-JOIN sys.columns c        ON c.object_id = ic.object_id AND c.column_id = ic.column_id
-WHERE i.object_id = OBJECT_ID('dbo.RELACIONES_TC');
+BEGIN TRAN;
+
+ALTER TABLE dbo.RELACIONES_TC ALTER COLUMN RELA_IDEN CHAR(19) NULL;
+ALTER TABLE dbo.RELACIONES_TC ALTER COLUMN RELA_NCTA CHAR(16) NULL;
+
+-- Verificación
+SELECT c.name, ty.name AS tipo, c.max_length, c.is_nullable
+FROM sys.columns c
+JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+WHERE c.object_id = OBJECT_ID('dbo.RELACIONES_TC');
+
+COMMIT;   -- si algo se ve mal, ejecuta ROLLBACK en lugar de COMMIT
+GO
