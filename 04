@@ -1,84 +1,79 @@
 USE [BandejaVASA]
 GO
-CREATE VIEW dbo.uvw_CobranzasRelacionesTC_v2
+CREATE VIEW [dbo].[uvw_SaldosVasa_v2]
 AS
-WITH Base AS
-(   -- Mismos filtros que uvw_SaldosVasa, solo categoría 0 y solo las columnas necesarias
-    SELECT a.Cif, a.NoCuenta, a.NoCuentaClaro, a.NumeroTarjeta, a.EstadoTarjeta, t.NoDocumento
+WITH base AS
+(   -- IDÉNTICO al original
+    SELECT
+          'VASA' Origen
+          ,a.Cif ,a.NoCuenta ,a.NumeroTarjeta ,a.NombreEmpresa ,a.Ciclo ,a.LimiteCredito
+          ,a.DisponibleRetiroML ,a.DisponibleCompraML ,a.DisponibleRetiroUSD ,a.DisponibleCompraUSD
+          ,a.FechaUltimaCompraML ,a.FechaUltimaCompraUSD ,a.FechaUltimoRetiroML ,a.FechaUltimoRetiroUSD
+          ,a.FechaUltimoPagoML ,a.FechaUltimaPagoUSD ,a.FechaUltimoMovimiento ,a.FechaUltimoMantenimiento
+          ,a.CantidadPagosMN ,a.CantidadPagosUSD ,a.PagosIngresadosML ,a.PagosIngresadosUSD
+          ,a.FechaMaximaPago ,a.PagoContadoML ,a.PagoContadoUSD ,a.PagoMinimoML ,a.PagoMinimoUSD
+          ,a.SaldoInicialML ,a.SaldoInicialUSD ,a.SaldoActualML ,a.SaldoActualUSD
+          ,a.CiclosVencidosML ,a.CiclosVencidosUSD ,a.PagoVencidoML ,a.PagoVencidoUSD
+          ,a.SaldoExtraML ,a.SaldoExtraUSD ,a.SaldoIntraML ,a.SaldoIntraUSD
+          ,a.TasaFinanciacionML ,a.TasaFinanciacionUSD ,a.BinTarjeta ,a.FechaUltimaMora
+          ,a.HistorialPagoML ,a.HistorialPagoUSD ,a.FechaPrimeraCompraUSD ,a.FechaPrimeraCompraML
+          ,a.FechaAlta ,a.FechaActivacion ,a.FechaExpiracion ,a.FechaBaja
+          ,a.EstadoTarjeta ,a.EstadoCuenta ,a.FechaUltActualizacionMora
+          ,Right('0' + Cast(Isnull(a.DiasMoraMN30 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraMN60 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraMN90 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraMN120 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraMasMN120 ,0) As Varchar(2)) ,2)  HistorialMoraMN
+          ,Right('0' + Cast(Isnull(a.DiasMoraME30 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraME60 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraME90 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraME120 ,0) As Varchar(2)) ,2) +
+           Right('0' + Cast(Isnull(a.DiasMoraMasME120 ,0) As Varchar(2)) ,2)  HistorialMoraUSD
+          ,a.DiasMoraMN ,a.DiasMoraUSD ,t.TarjetaImprimir ,a.CategoriaTarjeta ,a.NoCuentaClaro
+          ,t.BinTarjeta + 'XXXXXX' + t.TarjetaImprimir AS NumTarjetaTruncada
     FROM MaestroSaldos a WITH (NOLOCK)
     INNER JOIN ETarjetas t WITH (NOLOCK) ON a.NumeroTarjeta = t.NumeroTarjeta
     WHERE t.EstadoHabilitar IN ('','I','*','R','U','A','B','E','D','H','G','K','J')
-      AND a.CategoriaTarjeta = '0'
-      AND a.EstadoTarjeta IN (20,22,25,29)
 ),
-Marcada AS
+m AS
 (
     SELECT b.*,
-           MAX(CASE WHEN b.EstadoTarjeta = 20 THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) AS Tiene20,
-           MAX(CASE WHEN b.EstadoTarjeta = 25 THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) AS Tiene25,
-           MAX(b.NumeroTarjeta) OVER (PARTITION BY b.NoCuenta, b.EstadoTarjeta)          AS MaxTarjeta
-    FROM Base b
-),
-Saldos AS
-(   -- Replica la prioridad de uvw_SaldosVasa: Normal(20) > NoRenovar(22) / Problema(25) > Cerrada(29)
-    SELECT DISTINCT Cif, NoCuentaClaro, NoDocumento
-    FROM Marcada
-    WHERE (EstadoTarjeta = 20 AND NumeroTarjeta = MaxTarjeta)
-       OR (EstadoTarjeta = 22 AND Tiene20 = 0)
-       OR (EstadoTarjeta = 25 AND Tiene20 = 0 AND NumeroTarjeta = MaxTarjeta)
-       OR (EstadoTarjeta = 29 AND Tiene20 = 0 AND Tiene25 = 0 AND NumeroTarjeta = MaxTarjeta)
-),
-DocTitular AS
-(
-    SELECT NoCuentaClaro, MAX(NoDocumento) AS NoDocumento
-    FROM Saldos
-    GROUP BY NoCuentaClaro
-),
-Titulares AS
-(
-    SELECT Cif AS RELA_CIF, NoDocumento AS RELA_IDEN, 'TDC' AS RELA_TIPO,
-           NoCuentaClaro AS RELA_NCTA, 'SOW' AS RELA_TIPR
-    FROM Saldos
-),
-Avales AS
-(   -- Fiador 1 y 2 en una sola lectura
-    SELECT x.Cedula AS RELA_CIF, x.Cedula AS RELA_IDEN, 'TDC' AS RELA_TIPO,
-           f.NoCuentaClaro AS RELA_NCTA, 'IND' AS RELA_TIPR
-    FROM uvw_NombreFiadores f
-    INNER JOIN DocTitular d ON d.NoCuentaClaro = f.NoCuentaClaro
-    CROSS APPLY (VALUES (f.NumCedulaFiador1), (f.NumCedulaFiador2)) x(Cedula)
-    WHERE LEN(LTRIM(RTRIM(x.Cedula))) > 0
-      AND (d.NoDocumento IS NULL OR x.Cedula <> d.NoDocumento)
-),
-Empresariales AS
-(   -- Directo a tablas base en lugar de uvw_CobranzasCuentas (mismos filtros y conversiones)
-    SELECT CONVERT(CHAR(19), CAST(Usu.NoClienteUnico AS NVARCHAR(15))) AS RELA_CIF,
-           CONVERT(CHAR(19), CAST(Usu.RTN AS NVARCHAR(20)))            AS RELA_IDEN,
-           'TDC' AS RELA_TIPO,
-           CONVERT(CHAR(16), CAST(Usu.NoCuentaClaro AS NVARCHAR(10)))  AS RELA_NCTA,
-           'SOW' AS RELA_TIPR
-    FROM EUsuarios Usu WITH (NOLOCK)
-    INNER JOIN EPosicionDiaria Pos WITH (NOLOCK) ON Usu.NoUsuario = Pos.NoUsuario
-    WHERE Pos.NumeroTarjeta = '0000000000000000'
-      AND Pos.ModeloLiquidacion != '900'
-      AND EXISTS (SELECT 1 FROM uvw_CuentasPagos Cc
-                  WHERE Cc.NoCuenta = Usu.NoUsuario AND Cc.TipoTarjeta = 'E')
-      AND EXISTS (SELECT 1 FROM Parametros)   -- la vista original hace cross join con Parametros
-      AND LEN(CAST(Usu.NoClienteUnico AS NVARCHAR(15))) > 0
-),
-Resultado AS
-(
-    SELECT RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR FROM Titulares
-    UNION ALL
-    SELECT RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR FROM Avales
-    UNION ALL
-    SELECT RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR FROM Empresariales
+        -- ¿La cuenta está en TarjetaNormales (titular, estado 20)?   (NoCuenta NULL nunca hacía match en el NOT EXISTS)
+        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 20 AND b.CategoriaTarjeta = '0' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS EnNormales,
+        -- ¿La cuenta está en TarjetaNormalesAdi (adicional, estado 20)?
+        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 20 AND b.CategoriaTarjeta = '1' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS EnNormalesAdi,
+        -- ¿Tiene tarjeta titular / adicional en estado 25?
+        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 25 AND b.CategoriaTarjeta = '0' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS Tiene25,
+        CASE WHEN b.NoCuenta IS NULL THEN 0 ELSE MAX(CASE WHEN b.EstadoTarjeta = 25 AND b.CategoriaTarjeta = '1' THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) END AS Tiene25Adi,
+        -- Max(NumeroTarjeta) por cuenta dentro de cada grupo (estado + categoría), igual que los GROUP BY NoCuenta originales
+        MAX(b.NumeroTarjeta) OVER (PARTITION BY b.NoCuenta, b.EstadoTarjeta, b.CategoriaTarjeta) AS MaxTarjeta
+    FROM base b
 )
-SELECT DISTINCT
-       CAST(ISNULL(RELA_CIF,  '') AS CHAR(19))   AS RELA_CIF,
-       CAST(ISNULL(RELA_IDEN, '') AS CHAR(19))   AS RELA_IDEN,
-       CAST(ISNULL(RELA_TIPO, '') AS VARCHAR(3)) AS RELA_TIPO,
-       CAST(ISNULL(RELA_NCTA, '') AS CHAR(16))   AS RELA_NCTA,
-       CAST(ISNULL(RELA_TIPR, '') AS VARCHAR(3)) AS RELA_TIPR
-FROM Resultado;
+SELECT Origen, Cif, NoCuenta, NumeroTarjeta, NombreEmpresa, Ciclo, LimiteCredito, DisponibleRetiroML, DisponibleCompraML,
+       DisponibleRetiroUSD, DisponibleCompraUSD, FechaUltimaCompraML, FechaUltimaCompraUSD, FechaUltimoRetiroML, FechaUltimoRetiroUSD,
+       FechaUltimoPagoML, FechaUltimaPagoUSD, FechaUltimoMovimiento, FechaUltimoMantenimiento, CantidadPagosMN, CantidadPagosUSD,
+       PagosIngresadosML, PagosIngresadosUSD, FechaMaximaPago, PagoContadoML, PagoContadoUSD, PagoMinimoML, PagoMinimoUSD,
+       SaldoInicialML, SaldoInicialUSD, SaldoActualML, SaldoActualUSD, CiclosVencidosML, CiclosVencidosUSD, PagoVencidoML,
+       PagoVencidoUSD, SaldoExtraML, SaldoExtraUSD, SaldoIntraML, SaldoIntraUSD, TasaFinanciacionML, TasaFinanciacionUSD,
+       BinTarjeta, FechaUltimaMora, HistorialPagoML, HistorialPagoUSD, FechaPrimeraCompraUSD, FechaPrimeraCompraML, FechaAlta,
+       FechaActivacion, FechaExpiracion, FechaBaja, EstadoTarjeta, EstadoCuenta, FechaUltActualizacionMora, HistorialMoraMN,
+       HistorialMoraUSD, DiasMoraMN, DiasMoraUSD, TarjetaImprimir, CategoriaTarjeta, NoCuentaClaro, NumTarjetaTruncada
+FROM m
+WHERE
+       -- TarjetasNormalesTitular
+       (EstadoTarjeta = 20 AND CategoriaTarjeta = '0' AND NumeroTarjeta = MaxTarjeta)
+       -- TarjetasNormalesAdicional
+    OR (EstadoTarjeta = 20 AND CategoriaTarjeta = '1' AND NumeroTarjeta = MaxTarjeta)
+       -- TarjetasProblemaTitular
+    OR (EstadoTarjeta = 25 AND CategoriaTarjeta = '0' AND EnNormales = 0 AND NumeroTarjeta = MaxTarjeta)
+       -- TarjetasProblemasAdicionales
+    OR (EstadoTarjeta = 25 AND CategoriaTarjeta = '1' AND EnNormalesAdi = 0 AND NumeroTarjeta = MaxTarjeta)
+       -- TarjetaOrdenNoRenovar (el original une TODAS, no solo la máxima)
+    OR (EstadoTarjeta = 22 AND CategoriaTarjeta = '0' AND EnNormales = 0)
+       -- TarjetaOrdenNoRenovarAdi (el original la compara contra TarjetaNormales titular, se respeta)
+    OR (EstadoTarjeta = 22 AND CategoriaTarjeta = '1' AND EnNormales = 0)
+       -- TarjetasCerradasTitular
+    OR (EstadoTarjeta = 29 AND CategoriaTarjeta = '0' AND EnNormales = 0 AND Tiene25 = 0 AND NumeroTarjeta = MaxTarjeta)
+       -- TarjetasCerradasAdicional
+    OR (EstadoTarjeta = 29 AND CategoriaTarjeta = '1' AND EnNormalesAdi = 0 AND Tiene25Adi = 0 AND NumeroTarjeta = MaxTarjeta);
 GO
