@@ -1,262 +1,27 @@
-USE [BandejaVASA]
+USE [BandejaTC_Procesador]
 GO
 
-/****** Object:  View [dbo].[uvw_CobranzasRelacionesTC]    Script Date: 24/11/2026 14:29:47 ******/
+/****** Object:  Table [dbo].[RELACIONES_TC]    Script Date: 24/11/2026 14:38:38 ******/
 SET ANSI_NULLS ON
 GO
 
 SET QUOTED_IDENTIFIER ON
 GO
 
-
-
-
--- ==========================================================
--- Author:		<Elkin Amador>
--- Create date: <2016-05-10>
--- Description:	<Obtiene la relación entre Tarjetas y número de identidad entre avales y titulares para cobranzas>
--- ==========================================================
-CREATE VIEW [dbo].[uvw_CobranzasRelacionesTC]
-AS
-
-WITH Saldos
-AS
-(
-	SELECT NoCuentaClaro, cif,CategoriaTarjeta
-	FROM uvw_SaldosVasa
-	--WHERE  CategoriaTarjeta = '0'
-)
-,
- TitularesTarjetas
-(
-	RELA_CIF,
-	RELA_IDEN,
-	RELA_TIPO,
-	RELA_NCTA,
-	RELA_TIPR
-)
-AS
-(
-    SELECT s.Cif																				  RELA_CIF,
-           (SELECT top 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=s.NoCuentaClaro) RELA_IDEN,
-           'TDC'																				  RELA_TIPO,
-           s.NoCuentaClaro																		  RELA_NCTA,
-           'SOW'																				  RELA_TIPR--Tipo Referencia
-    FROM    Saldos s 
-    WHERE  s.CategoriaTarjeta = '0'--ND LEN(uc.Cif)>0
-),
-AvalesTarjetas(RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR) AS
-(
-    SELECT f.NumCedulaFiador1									RELA_CIF,
-           f.NumCedulaFiador1									RELA_IDEN,
-           'TDC'												RELA_TIPO,
-           f.NoCuentaClaro										RELA_NCTA,
-           'IND'												RELA_TIPR--Tipo Referencia
-    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro       
-    WHERE  s.CategoriaTarjeta = '0'
-		   AND NumCedulaFiador1 IS NOT NULL
-           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador1))) > 0 
-           AND NumCedulaFiador1 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
-    UNION
-    SELECT f.NumCedulaFiador2									RELA_CIF,
-           f.NumCedulaFiador2									RELA_IDEN,
-           'TDC'												RELA_TIPO,
-           f.NoCuentaClaro										RELA_NCTA,
-           'IND'												RELA_TIPR--Tipo Referencia
-    FROM   uvw_NombreFiadores f INNER JOIN Saldos s ON  f.NoCuentaClaro=s.NoCuentaClaro
-    WHERE  s.CategoriaTarjeta = '0'
-		   AND f.NumCedulaFiador2 IS NOT NULL
-           AND LEN(LTRIM(RTRIM(f.NumCedulaFiador2))) > 0 
-           AND NumCedulaFiador2 != (SELECT TOP 1 et.NoDocumento FROM ETarjetas et WHERE et.NoCuentaClaro=f.NoCuentaClaro)
-)
-
-SELECT RELA_CIF,
-       RELA_IDEN,
-       RELA_TIPO,
-       RELA_NCTA,
-       RELA_TIPR
-FROM   TitularesTarjetas
-UNION
-SELECT RELA_CIF,
-       RELA_IDEN,
-       RELA_TIPO,
-       RELA_NCTA,
-       RELA_TIPR
-FROM   AvalesTarjetas
-UNION
-SELECT CONVERT(CHAR(19),RELA_CIF)									RELA_CIF,
-       CONVERT(CHAR(19),RELA_IDEN)									RELA_IDEN,
-       CONVERT(VARCHAR(3),RELA_TIPO)								RELA_TIPO,
-       CONVERT(CHAR(16),RELA_NCTA)									RELA_NCTA,
-       CONVERT(VARCHAR(3),RELA_TIPR)								RELA_TIPR--Tipo Referencia
-FROM   (
-           SELECT cc.No_Cliente										RELA_CIF,
-                  cc.No_Cedula										RELA_IDEN,
-                  'TDC'												RELA_TIPO,
-                  cc.NoCuentaClaro										RELA_NCTA,
-                  'SOW'												RELA_TIPR
-           FROM   uvw_CobranzasCuentas     cc
-           
-           UNION
-           
-           SELECT cc.No_Cliente										RELA_CIF,
-                  cc.Cedula_Fiador_1								RELA_IDEN,
-                  'TDC'												RELA_TIPO,
-                  cc.NoCuentaClaro									RELA_NCTA,
-                  'IND'												RELA_TIPR--Tipo Referencia
-           FROM   uvw_CobranzasCuentas       cc
-           WHERE  cc.Cedula_Fiador_1 IS NOT NULL
-                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_1))) > 0
-                  AND cc.Cedula_Fiador_1 != cc.Cedula_Fiador_1
-           UNION
-           
-           SELECT cc.No_Cliente										RELA_CIF,
-                  cc.Cedula_Fiador_2								RELA_IDEN,
-                  'TDC'												RELA_TIPO,
-                  cc.NoCuentaClaro									RELA_NCTA,
-                  'IND'												RELA_TIPR--Tipo Referencia
-           FROM   uvw_CobranzasCuentas       cc
-           WHERE  cc.Cedula_Fiador_2 IS NOT NULL
-                  AND LEN(LTRIM(RTRIM(cc.Cedula_Fiador_2))) > 0
-                  AND cc.Cedula_Fiador_2 != cc.Cedula_Fiador_2
-       ) AS Empresariales
-WHERE  LEN(RELA_CIF) > 0
-
-
-GO
-
-
-
-USE [BandejaVASA]
-GO
-
-/****** Object:  View [dbo].[uvw_CobranzasCuentas]    Script Date: 24/11/2026 14:30:49 ******/
-SET ANSI_NULLS ON
-GO
-
-SET QUOTED_IDENTIFIER ON
+CREATE TABLE [dbo].[RELACIONES_TC](
+	[RELA_CIF] [char](19) NOT NULL,
+	[RELA_IDEN] [char](19) NOT NULL,
+	[RELA_TIPO] [varchar](3) NOT NULL,
+	[RELA_NCTA] [char](16) NOT NULL,
+	[RELA_TIPR] [varchar](3) NOT NULL
+) ON [PRIMARY]
 GO
 
 
 
 
 
---=========================================================================================================
--- Milton D. Canales
--- <2015-10-20> <informacion necesaria para el Sistema de Cobranzas>
---=========================================================================================================
-
-CREATE VIEW [dbo].[uvw_CobranzasCuentas]
-AS
-	SELECT TOP 99.99999 PERCENT
-		CAST(Usu.NoUsuario AS NVARCHAR(13))														No_Cuenta
-		,CAST(Usu.NoClienteUnico AS NVARCHAR(15))												No_Cliente
-		,CAST(Usu.RTN AS NVARCHAR(20))															No_Cedula
-		,CAST(RTRIM(LTRIM(Usu.NombreUsuario)) + ' '	+ 
-		 RTRIM(LTRIM(Usu.DenominacionCuenta)) AS NVARCHAR(81))									Nombre_Cliente
-		,CAST(Usu.DomicilioParticular1 AS NVARCHAR(40))											Direccion_1
-		,CAST(Usu.DomicilioParticular2 AS NVARCHAR(40))											Direccion_2
-		,CAST(Usu.Telefono AS NVARCHAR(30))														Telefono_1
-		,CAST('' AS NVARCHAR(30))																Telefono_2
-		,CAST(LTRIM(RTRIM(Usu.UsuEmailUsuario)) + '@' + 
-		 LTRIM(RTRIM(Usu.UsuEmailDominio)) AS NVARCHAR(61))										Correo
-		,CAST(Usu.Cartera AS INT)																Ciclo
-		,CAST(CASE WHEN 
-			LEN(Usu.CodigoEmpresa) > 0 
-		THEN
-			'J'
-		ELSE
-			'N'
-		END AS NVARCHAR(1))																		TipoPersoneria
-		,CAST(Cc.EstadoCuenta AS INT)															Estado_Cuenta
-		,Cast(Cc.EstadoTarjeta as Int)															Estado_Tarjeta
-		,CONVERT(DATE, Usu.FechaAltaCuenta, 102)												Fecha_Alta
-		,CAST(Usu.ImporteLimiteCompra AS MONEY)													Linea_Credito
-		,CAST(Pos.DisponibleCompraML AS MONEY)													Disp_Compras_MN
-		,CAST(Pos.DisponibleCompraML / Pm.TasaCambio AS MONEY)									Disp_Compras_ME
-		,CONVERT(DATE, Pos.FechaUltimoPagoML, 102)												Fecha_Ult_Pago_MN
-		,CONVERT(DATE, Pos.FechaUltimoPagoUSD, 102)												Fecha_Ult_Pago_ME
-		,CONVERT(DATE, Usu.FechaProcesoABM, 102)												Fecha_Ult_Manto
-		,CAST(Cc.CantidadPagosMN AS INT)														Cantidad_Pagos_MN
-		,CAST(Cc.CantidadPagosUSD AS INT)														Cantidad_Pagos_ME
-		,CAST(Pos.PagosIngresadosML AS MONEY)													Total_Monto_Pagos_MN
-		,CAST(Pos.PagosIngresadosUSD AS MONEY)													Total_Monto_Pagos_ME
-		,CAST(Pos.PagoMinimoUltimaLiquidacionML AS MONEY)										Pago_Minimo_MN
-		,CAST(Pos.PagoMinimoUltimaLiquidacionUSD AS MONEY)										Pago_Minimo_ME
-		,CAST(Pos.PagoContadoML AS MONEY)														Saldo_Inicial_MN
-		,CAST(Pos.PagoContadoUSD AS MONEY)														Saldo_Inicial_ME
-		,CAST(Pos.SaldoActualML AS MONEY)														Saldo_Actual_ML
-		,CAST(Pos.SaldoActualUSD AS MONEY)														Saldo_Actual_ME
-		,CAST(Pos.PeriodosImpagosActualML AS INT)												Ciclos_Vencidos_MN
-		,CAST(Pos.PeriodosImpagosActualUSD AS INT)												Ciclos_Vencidos_ME
-		,CAST(Cc.PagoVencidoML AS MONEY)														Pago_Vencido_ML
-		,CAST(Cc.PagoVencidoUSD AS MONEY)														Pago_Vencido_ME
-		,CAST(ISNULL(Se.SaldoExtraMN, 0) AS MONEY)												Saldo_Extra_MN
-		,CAST(ISNULL(Se.SaldoExtraME, 0) AS MONEY)												Saldo_Extra_ME
-		,CAST(ISNULL(Se.SaldoIntraMN, 0) AS MONEY)												Saldo_Intra_MN
-		,CAST(ISNULL(Se.SaldoIntraME, 0) AS MONEY)												Saldo_Intra_ME
-		,CAST(ISNULL(Mf.NombreFiador1 ,'') AS NVARCHAR(40))										Nombre_Fiador_1
-		,CAST(ISNULL(Mf.NumCedulaFiador1 ,'') AS NVARCHAR(15))									Cedula_Fiador_1
-		,CAST(ISNULL(Mf.Telefono1_1 ,'') AS NVARCHAR(30))										Telefono_1_Fiador_1
-		,CAST(ISNULL(Mf.Telefono1_2 ,'') AS NVARCHAR(30))										Telefono_2_Fiador_1
-		,CAST(ISNULL(Mf.DireccionFiador1 + ' ' + Mf.DireccionFiador1_2 ,'') AS NVARCHAR(81))	Direccion_Fiador_1
-		,CAST(ISNULL(Mf.NombreFiador2 ,'') AS NVARCHAR(40))										Nombre_Fiador_2
-		,CAST(ISNULL(Mf.NumCedulaFiador2 ,'') AS NVARCHAR(15))									Cedula_Fiador_2
-		,CAST(ISNULL(Mf.Telefono2_1 ,'') AS NVARCHAR(30))										Telefono_1_Fiador_2
-		,CAST(ISNULL(Mf.Telefono2_2 ,'') AS NVARCHAR(30))										Telefono_2_Fiador_2
-		,CAST(ISNULL(Mf.DireccionFiador2 + ' ' + Mf.DireccionFiador2_2 ,'') AS NVARCHAR(81))	Direccion_Fiador_2
-		,CAST(ISNULL(Mf.NombreFiador3 ,'') AS NVARCHAR(40))										Nombre_Fiador_3
-		,CAST(ISNULL(Mf.NumCedulaFiador3 ,'') AS NVARCHAR(15))									Cedula_Fiador_3
-		,CAST(ISNULL(Mf.Telefono3_1 ,'') AS NVARCHAR(30))										Telefono_1_Fiador_3
-		,CAST(ISNULL(Mf.Telefono3_2 ,'') AS NVARCHAR(30))										Telefono_2_Fiador_3
-		,CAST(ISNULL(Mf.DireccionFiador3 + ' ' + Mf.DireccionFiador3_2 ,'') AS NVARCHAR(81))	Direccion_Fiador_3
-		,CAST(Pos.DiasMoraML AS INT)															DiasMoraMN
-		,CAST(Pos.DiasMoraUSD AS INT)															DiasMoraUSD
-		,CAST(CASE WHEN 
-			Usu.CodigoPais = '340' 
-		THEN
-			'HONDUREÑA'
-		ELSE
-			'EXTRANJERA'
-		END AS NVARCHAR(30))																	Nacionalidad
-		,CAST('' AS NVARCHAR(3))																Oficial
-		,CAST(Usu.NoCuentaClaro AS NVARCHAR(10))												NoCuentaClaro
-	FROM
-		Parametros Pm,
-		EUsuarios Usu
-	INNER JOIN
-		EPosicionDiaria Pos
-	ON
-		Usu.NoUsuario = Pos.NoUsuario
-	INNER JOIN
-		uvw_CuentasPagos Cc
-	ON
-		Usu.NoUsuario = Cc.NoCuenta
-	LEFT JOIN
-		uvw_SaldosExtras Se
-	ON
-		Se.NumeroCuenta = Usu.NoUsuario
-	LEFT JOIN
-		uvw_NombreFiadores Mf
-	ON
-		Mf.NoUsuario = Usu.NoUsuario
-	WHERE 
-		Pos.NumeroTarjeta = '0000000000000000'
-		AND Cc.TipoTarjeta='E'
-		AND Pos.ModeloLiquidacion != '900'
-	ORDER BY 1 DESC
+este es el destino mira
 
 
-
-GO
-
-
-
-
-
-
-
-
-
-
-
+Ayudame a realizar el update
