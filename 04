@@ -1,7 +1,3526 @@
-  // Todos los usuarios que cumplen el filtro (sin paginar), para los reportes.
-  // No se envían pageNumber ni pageSize: este endpoint no pagina.
-  exportData: async (filters) => {
-    const { pageNumber, pageSize, ...body } = toFilterRequest(filters);
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.usersExport, body);
-    return data.data ?? [];
-  },
+Ahora necesito realizar estos dos reportes (pdf y excel)
+
+esta parte no la hice yo, pero te mostraré el codigo
+
+
+
+import { useState } from "react";
+import { Download, Check, X, Info, ChevronLeft, TriangleAlert, Clock } from "lucide-react";
+import { Modal, useToast } from "../../../shared/components";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./ConsultaCoachingPage.module.css";
+
+const STATUS = {
+    pending: "Pendiente de aprobación",
+    approved: "Aprobado",
+};
+
+const STATUS_PILL = {
+    [STATUS.pending]: ui.pillPending,
+    [STATUS.approved]: ui.pillApproved,
+};
+
+const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+const YEARS = ["2025", "2024"];
+const ACTIVE_YEAR = "2025";
+
+// Mock: en una aplicación real vendría de la sesión y de la API
+const CURRENT_USER = "Jorge Flores";
+
+const buildProcess = (id, month, date, status) => ({
+    id,
+    year: "2025",
+    month,
+    date,
+    status,
+    coachName: "Ana Rodríguez",
+    position: "Cajero",
+    area: "HN - Agencias",
+    location: "La Ceiba",
+    startDate: `01/${String(month + 1).padStart(2, "0")}/2025`,
+    endDate: `${new Date(2025, month + 1, 0).getDate()}/${String(month + 1).padStart(2, "0")}/2025`,
+    indicators: [
+        { name: "Tiempo promedio de atención al cliente", result: "3.2 min", goal: "≤ 4 min", passed: true },
+        { name: "Calidad de servicio al cliente", result: "92%", goal: "≥ 85%", passed: true },
+        { name: "Cumplimiento de procedimientos", result: "88%", goal: "100%", passed: false },
+    ],
+    actionPlan: [
+        {
+            type: "Cuantitativa",
+            commitDate: `${new Date(2025, month + 1, 0).getDate()}/${String(month + 1).padStart(2, "0")}/2025`,
+            opportunity: "Mejorar el cumplimiento de los procedimientos establecidos para el cierre de cajas.",
+            action: "Revisar el manual de procedimientos y asistir a la capacitación de cierre de mes programada.",
+        },
+    ],
+    coachApproval: { name: "Ana Rodríguez", date: `${date} 14:32` },
+    collaboratorApproval: status === STATUS.approved ? { name: CURRENT_USER, date: `${date} 18:10` } : null,
+});
+
+const INITIAL_PROCESSES = [
+    buildProcess(1, 4, "15/05/2025", STATUS.pending),
+    buildProcess(2, 3, "10/04/2025", STATUS.approved),
+    buildProcess(3, 2, "08/03/2025", STATUS.approved),
+    buildProcess(4, 1, "05/02/2025", STATUS.approved),
+];
+
+const getInitials = (name) =>
+    name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+
+const processTitle = (p) => `Coaching — ${MONTHS[p.month]} ${p.year}`;
+
+function StatCard({ value, label, tone }) {
+    return (
+        <div className={`${ui.statCard} ${tone ?? ""}`}>
+            <div className={ui.statValue}>{value}</div>
+            <div className={ui.statLabel}>{label}</div>
+        </div>
+    );
+}
+
+export const ConsultaCoachingPage = () => {
+    const toast = useToast();
+
+    const [processes, setProcesses] = useState(INITIAL_PROCESSES);
+    const [selectedId, setSelectedId] = useState(null);
+    const [filters, setFilters] = useState({ year: ACTIVE_YEAR, month: "todos", status: "todos" });
+    const [showApproveModal, setShowApproveModal] = useState(false);
+    const [approveStamp, setApproveStamp] = useState("");
+
+    const selected = processes.find((p) => p.id === selectedId) ?? null;
+
+    const filtered = processes.filter(
+        (p) =>
+            (filters.year === "todos" || p.year === filters.year) &&
+            (filters.month === "todos" || String(p.month) === filters.month) &&
+            (filters.status === "todos" || p.status === filters.status)
+    );
+
+    const isApproved = (p) => p.status === STATUS.approved;
+
+    const handleDownloadExcel = () => toast.success("Descargando resultados en Excel...");
+
+    const handleDownloadPDF = (p) => {
+        const filename = `Coaching_${MONTHS[p.month]}_${p.year}.pdf`;
+        toast.success("Descargando PDF", filename);
+        // Aquí se integraría la generación real del PDF
+    };
+
+    const handleOpenApprove = () => {
+        setApproveStamp(new Date().toLocaleString("es-ES"));
+        setShowApproveModal(true);
+    };
+
+    const handleConfirmApprove = () => {
+        setProcesses((prev) =>
+            prev.map((p) =>
+                p.id === selectedId
+                    ? { ...p, status: STATUS.approved, collaboratorApproval: { name: CURRENT_USER, date: approveStamp } }
+                    : p
+            )
+        );
+        setShowApproveModal(false);
+        toast.success("Coaching aprobado correctamente");
+    };
+
+    const onRowKey = (e, fn) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fn();
+        }
+    };
+
+    /* ===================== DETALLE ===================== */
+    if (selected) {
+        const p = selected;
+        const approved = isApproved(p);
+
+        return (
+            <div className={base.page}>
+                <div className={ui.topBar}>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setSelectedId(null)}>
+                        <ChevronLeft size={15} /> Volver al listado
+                    </button>
+                    <div className={ui.topActions}>
+                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={handleDownloadExcel}>
+                            <Download size={15} /> Excel
+                        </button>
+                        {approved ? (
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadPDF(p)}>
+                                <Download size={15} /> Descargar PDF
+                            </button>
+                        ) : (
+                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleOpenApprove}>
+                                <Check size={15} /> Aprobar coaching
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div>
+                    <h1 className={ui.detailTitle}>{processTitle(p)}</h1>
+                    <p className={ui.detailSub}>Información en modo solo lectura. No es posible modificar datos desde esta sección.</p>
+                </div>
+
+                <section className={ui.hero}>
+                    <div className={ui.heroAvatar}>{getInitials(p.coachName)}</div>
+                    <div className={ui.heroInfo}>
+                        <div className={ui.heroName}>Coach: {p.coachName}</div>
+                        <div className={ui.heroMeta}>{p.position} · {p.area} · {p.location}</div>
+                    </div>
+                    <div className={ui.heroField}>
+                        <span className={ui.heroLabel}>Estado</span>
+                        <span className={`${ui.pill} ${STATUS_PILL[p.status]}`}>{p.status}</span>
+                    </div>
+                    <div className={ui.heroField}>
+                        <span className={ui.heroLabel}>Fecha de inicio</span>
+                        <span className={ui.heroValue}>{p.startDate}</span>
+                    </div>
+                    <div className={ui.heroField}>
+                        <span className={ui.heroLabel}>Fecha de fin</span>
+                        <span className={ui.heroValue}>{p.endDate}</span>
+                    </div>
+                </section>
+
+                {!approved && (
+                    <div className={ui.warning}>
+                        <TriangleAlert size={16} />
+                        <span>
+                            Este proceso está <strong>Pendiente de tu aprobación</strong>. Revisa los indicadores y el plan de acción, luego presiona <strong>Aprobar coaching</strong> para confirmar.
+                        </span>
+                    </div>
+                )}
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Indicadores evaluados</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        <div className={ui.indicatorList}>
+                            {p.indicators.map((ind) => (
+                                <div key={ind.name} className={ui.indicatorItem}>
+                                    <span>{ind.name}</span>
+                                    <div className={ui.indicatorRight}>
+                                        <span className={`${ui.result} ${ind.passed ? ui.pass : ui.fail}`}>
+                                            {ind.result} {ind.passed ? <Check size={12} /> : <X size={12} />}
+                                        </span>
+                                        <span className={ui.goal}>Meta: {ind.goal}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Plan de acción</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        {p.actionPlan.map((a, idx) => (
+                            <div key={idx} className={ui.actionBox}>
+                                <span className={ui.actionNumber}>Acción #{idx + 1}</span>
+                                <div className={ui.actionGrid}>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Tipo de medición</span>
+                                        <div className={ui.fieldValue}>{a.type}</div>
+                                    </div>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Fecha compromiso</span>
+                                        <div className={ui.fieldValue}>{a.commitDate}</div>
+                                    </div>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Oportunidad de mejora</span>
+                                        <div className={ui.fieldValue}>{a.opportunity}</div>
+                                    </div>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Acción a realizar</span>
+                                        <div className={ui.fieldValue}>{a.action}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Aprobaciones digitales</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        <div className={ui.approvalList}>
+                            <div className={`${ui.approvalItem} ${ui.done}`}>
+                                <Check size={15} />
+                                <div>
+                                    <span className={ui.approvalName}>Coach — {p.coachApproval.name}</span>
+                                    <span className={ui.approvalDate}>{p.coachApproval.date}</span>
+                                </div>
+                            </div>
+                            {p.collaboratorApproval ? (
+                                <div className={`${ui.approvalItem} ${ui.done}`}>
+                                    <Check size={15} />
+                                    <div>
+                                        <span className={ui.approvalName}>Colaborador — {p.collaboratorApproval.name}</span>
+                                        <span className={ui.approvalDate}>{p.collaboratorApproval.date}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className={`${ui.approvalItem} ${ui.waiting}`}>
+                                    <Clock size={15} />
+                                    <div>
+                                        <span className={ui.approvalName}>Colaborador — {CURRENT_USER}</span>
+                                        <span className={ui.approvalDate}>Pendiente de aprobación</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {approved && (
+                        <div className={ui.cardFooter}>
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadPDF(p)}>
+                                <Download size={15} /> Descargar PDF
+                            </button>
+                        </div>
+                    )}
+                </section>
+
+                <Modal
+                    open={showApproveModal}
+                    title="Aprobar coaching"
+                    onClose={() => setShowApproveModal(false)}
+                    footer={
+                        <div className={ui.modalFooter}>
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setShowApproveModal(false)}>
+                                Cancelar
+                            </button>
+                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleConfirmApprove}>
+                                <Check size={15} /> Sí, aprobar coaching
+                            </button>
+                        </div>
+                    }
+                >
+                    <p className={base.modalText}>
+                        Al aprobar confirmas que has revisado y aceptas el proceso de coaching registrado por tu coach. La aprobación quedará registrada con tu sesión activa.
+                    </p>
+                    <div className={ui.modalGrid}>
+                        <div>
+                            <span className={base.statLabel}>Usuario que aprueba</span>
+                            <div className={base.statBox}>{CURRENT_USER}</div>
+                        </div>
+                        <div>
+                            <span className={base.statLabel}>Fecha y hora</span>
+                            <div className={base.statBox}>{approveStamp}</div>
+                        </div>
+                    </div>
+                    <div className={base.warningBanner}>
+                        <TriangleAlert size={16} />
+                        <span>Una vez aprobado el proceso quedará protegido. Cualquier modificación posterior invalidará esta aprobación.</span>
+                    </div>
+                </Modal>
+            </div>
+        );
+    }
+
+    /* ===================== LISTADO ===================== */
+    const approvedCount = processes.filter(isApproved).length;
+    const pendingCount = processes.filter((p) => p.status === STATUS.pending).length;
+
+    return (
+        <>
+            <header className={styles.pageHeader}>
+                <div>
+                    <h1 className={styles.title}>Mis procesos de coaching</h1>
+                    <p className={styles.subtitle}>Consulta el historial de tus procesos de coaching. Solo puedes ver tu propia información.</p>
+                </div>
+            </header>
+
+            <div className={base.page}>
+                <div className={base.infoBanner}>
+                    <Info size={16} />
+                    <span>
+                        La información se muestra en modo <strong>solo lectura</strong>. No es posible modificar ningún dato desde esta sección.
+                    </span>
+                </div>
+
+                <div className={ui.stats}>
+                    <StatCard value={processes.length} label="Total procesos" />
+                    <StatCard value={pendingCount} label="Pend. aprobación" tone={ui.pending} />
+                    <StatCard value={approvedCount} label="Aprobados" tone={ui.approved} />
+                    <StatCard value={ACTIVE_YEAR} label="Año activo" tone={ui.year} />
+                </div>
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Filtrar procesos</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        <div className={ui.filterGrid}>
+                            <div className={base.field}>
+                                <label className={base.label} htmlFor="cq-year">Año</label>
+                                <select id="cq-year" className={base.select} value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })}>
+                                    <option value="todos">Todos los años</option>
+                                    {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                            </div>
+                            <div className={base.field}>
+                                <label className={base.label} htmlFor="cq-month">Mes</label>
+                                <select id="cq-month" className={base.select} value={filters.month} onChange={(e) => setFilters({ ...filters, month: e.target.value })}>
+                                    <option value="todos">Todos los meses</option>
+                                    {MONTHS.map((m, i) => <option key={m} value={String(i)}>{m}</option>)}
+                                </select>
+                            </div>
+                            <div className={base.field}>
+                                <label className={base.label} htmlFor="cq-status">Estado</label>
+                                <select id="cq-status" className={base.select} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+                                    <option value="todos">Todos los estados</option>
+                                    {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className={ui.list}>
+                    {filtered.length === 0 ? (
+                        <div className={ui.empty}>No hay procesos de coaching que coincidan con los filtros.</div>
+                    ) : (
+                        filtered.map((p) => (
+                            <div
+                                key={p.id}
+                                className={ui.row}
+                                onClick={() => setSelectedId(p.id)}
+                                onKeyDown={(e) => e.target === e.currentTarget && onRowKey(e, () => setSelectedId(p.id))}
+                                tabIndex={0}
+                                role="button"
+                                aria-label={`Ver ${processTitle(p)}`}
+                            >
+                                <div className={ui.rowAvatar}>{getInitials(p.coachName)}</div>
+                                <div className={ui.rowInfo}>
+                                    <div className={ui.rowTitle}>{processTitle(p)}</div>
+                                    <div className={ui.rowSub}>Coach: {p.coachName} · {p.indicators.length} indicadores evaluados</div>
+                                </div>
+                                <div className={ui.rowRight}>
+                                    <span className={`${ui.pill} ${STATUS_PILL[p.status]}`}>{p.status}</span>
+                                    <span className={ui.rowDate}>{p.date}</span>
+                                    <div className={ui.rowButtons}>
+                                        <button
+                                            type="button"
+                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDownloadExcel();
+                                            }}
+                                        >
+                                            <Download size={15} /> Excel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`}
+                                            disabled={!isApproved(p)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDownloadPDF(p);
+                                            }}
+                                        >
+                                            <Download size={15} /> PDF
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        </>
+    );
+};
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   Mis procesos de coaching (consulta del colaborador)
+   Estilos base (botones, campos, tarjetas) en coach/CollaboratorCoachingPage.module.css
+   ========================================================= */
+
+/* ---- Estadísticas ---- */
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.statCard {
+    padding: 16px 18px;
+    border-radius: 12px;
+    border-left: 4px solid var(--cc-cyan);
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 57, 100, 0.1);
+}
+
+.statCard.pending {
+    border-left-color: var(--cc-gold);
+}
+
+.statCard.approved {
+    border-left-color: #2f9e6e;
+}
+
+.statCard.year {
+    border-left-color: var(--cc-navy);
+}
+
+.statValue {
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--cc-navy);
+}
+
+.statLabel {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--cc-muted);
+}
+
+/* ---- Filtros ---- */
+.filterGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+/* ---- Lista ---- */
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 57, 100, 0.1);
+    cursor: pointer;
+    transition: box-shadow 0.15s ease;
+}
+
+.row:hover {
+    box-shadow: 0 2px 8px rgba(0, 57, 100, 0.16);
+}
+
+.row:focus-visible {
+    outline: 2px solid var(--cc-cyan);
+    outline-offset: 2px;
+}
+
+.rowAvatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    background: var(--cc-cyan);
+    color: var(--cc-navy);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.rowInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.rowTitle {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--cc-navy);
+}
+
+.rowSub {
+    margin-top: 2px;
+    font-size: 12.5px;
+    color: #6b7a8f;
+}
+
+.rowRight {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+}
+
+.rowDate {
+    font-size: 12.5px;
+    color: var(--cc-muted);
+}
+
+.rowButtons {
+    display: flex;
+    gap: 8px;
+}
+
+.btnTeal {
+    border-color: #9fd9cf;
+    color: #0F6E56;
+}
+
+.btnTeal:hover:not(:disabled) {
+    border-color: #0F6E56;
+}
+
+.empty {
+    padding: 36px 16px;
+    border-radius: 12px;
+    background: #fff;
+    text-align: center;
+    font-size: 14px;
+    color: var(--cc-muted);
+}
+
+.pill {
+    display: inline-block;
+    padding: 3px 14px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.pillApproved {
+    background: #e5f6ee;
+    border-color: #a8dcc3;
+    color: #0F6E56;
+}
+
+.pillPending {
+    background: #fff8e1;
+    border-color: #f0d27a;
+    color: #7A4F00;
+}
+
+/* ---- Detalle ---- */
+.topBar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.topActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.detailTitle {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--cc-navy);
+}
+
+.detailSub {
+    margin-top: 4px;
+    font-size: 13.5px;
+    color: #5b6b80;
+}
+
+.hero {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 32px;
+    padding: 18px 24px;
+    border-radius: 14px;
+    background: var(--cc-navy);
+    color: #fff;
+}
+
+.heroAvatar {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    background: var(--cc-cyan);
+    color: var(--cc-navy);
+    font-size: 17px;
+    font-weight: 800;
+}
+
+.heroInfo {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.heroName {
+    font-size: 17px;
+    font-weight: 800;
+}
+
+.heroMeta {
+    margin-top: 4px;
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.heroField {
+    text-align: right;
+}
+
+.heroLabel {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.heroValue {
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.warning {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border: 1px solid #f3dc9b;
+    border-radius: 10px;
+    background: #fff8e1;
+    color: #7A4F00;
+    font-size: 13.5px;
+    line-height: 1.4;
+}
+
+.warning svg {
+    flex-shrink: 0;
+}
+
+.indicatorList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.indicatorItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid #e6edf5;
+    border-radius: 8px;
+    background: var(--cc-soft);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--cc-navy);
+}
+
+.indicatorRight {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+}
+
+.goal {
+    min-width: 90px;
+    text-align: right;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--cc-muted);
+}
+
+.result {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.result.pass {
+    background: #e5f6ee;
+    color: #0F6E56;
+}
+
+.result.fail {
+    background: #fdeaea;
+    color: #A32D2D;
+}
+
+.actionBox {
+    padding: 14px 18px 16px;
+    border: 1px solid #e6edf5;
+    border-radius: 10px;
+    background: var(--cc-soft);
+}
+
+.actionBox + .actionBox {
+    margin-top: 12px;
+}
+
+.actionNumber {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cc-navy);
+}
+
+.actionGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 24px;
+}
+
+.fieldLabel {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cc-muted);
+}
+
+.fieldValue {
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: #3d4b5f;
+}
+
+.approvalList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.approvalItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 13.5px;
+}
+
+.approvalItem svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.approvalItem.done {
+    background: #e5f6ee;
+    border-color: #a8dcc3;
+    color: #0F6E56;
+}
+
+.approvalItem.waiting {
+    background: #fff8e1;
+    border-color: #f0d27a;
+    color: #7A4F00;
+}
+
+.approvalName {
+    display: block;
+    font-weight: 800;
+}
+
+.approvalDate {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+.cardFooter {
+    display: flex;
+    justify-content: flex-end;
+    padding: 14px 24px;
+    border-top: 1px solid #eef1f5;
+}
+
+/* ---- Modal ---- */
+.modalGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.modalFooter {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+    .filterGrid,
+    .actionGrid,
+    .modalGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .row {
+        flex-wrap: wrap;
+    }
+
+    .rowRight {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .heroField {
+        text-align: left;
+    }
+
+    .indicatorItem {
+        flex-wrap: wrap;
+    }
+}
+
+
+
+
+
+
+/* =========================================================
+   Estilos para el módulo de Coaching a Colaborador
+   ========================================================= */
+
+/* Variables de color */
+:root {
+    --bp-blue-expert: #003964;
+    --bp-cyan-digital: #05C0CF;
+    --bp-yellow-optimist: #FFFD00;
+    --bp-cyan-light: #7F0FDF;
+    --bp-yellow-soft: #FBC544;
+    --bp-grey-light: #EEEEEE;
+    --bp-white: #FFFFFF;
+    --bp-red-danger: #A3220D;
+    --bp-orange-warning: #F74F00;
+    --bp-green-success: #0FEF56;
+    --bp-blue-sync: #0C5A8A;
+}
+
+/* ---- Progress Bar ---- */
+.progressContainer {
+    margin-bottom: 32px;
+    padding: 24px;
+    background: var(--bp-white);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.progressBar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0;
+    position: relative;
+    padding: 0 12px;
+    --progress-width: 0%;
+}
+
+.progressBar::before {
+    content: '';
+    position: absolute;
+    top: 24px;
+    left: 48px;
+    right: 48px;
+    height: 2px;
+    background: linear-gradient(to right,
+            var(--bp-cyan-digital) 0%,
+            var(--bp-cyan-digital) var(--progress-width, 0%),
+            #d1d5db var(--progress-width, 0%),
+            #d1d5db 100%);
+    z-index: 0;
+    pointer-events: none;
+    transition: background 0.3s ease;
+}
+
+.progressStep {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    position: relative;
+    z-index: 1;
+}
+
+.progressCircle {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bp-grey-light);
+    border: 3px solid #d1d5db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    color: #6b7280;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.progressCircle.active {
+    background: var(--bp-cyan-digital);
+    border-color: var(--bp-cyan-digital);
+    color: var(--bp-white);
+}
+
+.progressCircle.current {
+    background: var(--bp-blue-expert);
+    border-color: var(--bp-blue-expert);
+    color: var(--bp-white);
+    box-shadow: 0 0 0 4px rgba(0, 4, 59, 0.2);
+}
+
+.stepLabel {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-align: center;
+    width: 100%;
+}
+
+/* ---- Step Container ---- */
+.stepContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.card {
+    display: block;
+    background: var(--bp-white);
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.stepTitle {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+    margin-bottom: 8px;
+}
+
+.stepDescription {
+    font-size: 13.5px;
+    color: #6b7280;
+    margin-bottom: 24px;
+}
+
+/* ---- Search Section (Step 1) ---- */
+.searchSection {
+    display: block;
+    gap: 16px;
+    margin-bottom: 28px;
+    align-items: flex-end;
+}
+
+.searchGroup {
+    display: flex;
+    grid-template-columns: 3fr 1fr;
+    margin: 20px;
+}
+
+.formGroup {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%
+}
+
+.label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.input {
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 13.5px;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.input:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+.input.readOnly {
+    background: var(--bp-grey-light);
+    cursor: not-allowed;
+    color: #6b7280;
+}
+
+.input:disabled {
+    background: var(--bp-grey-light);
+    cursor: not-allowed;
+    color: #9ca3af;
+}
+
+/* ---- Table Wrapper ---- */
+.tableWrapper {
+    margin-bottom: 24px;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+/* ---- Selected Collaborator Info ---- */
+.selectedCollaboratorInfo {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.collaboratorCard {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.collaboratorHeader {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.collaboratorAvatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bp-cyan-digital);
+    color: var(--bp-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.collaboratorDetails {
+    flex: 1;
+}
+
+.collaboratorName {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+    margin: 0;
+}
+
+.collaboratorPosition {
+    font-size: 13px;
+    color: #6b7280;
+    margin: 4px 0 0 0;
+}
+
+.collaboratorMeta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.metaItem {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.metaLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.metaValue {
+    font-size: 14px;
+    color: var(--bp-blue-expert);
+    font-weight: 600;
+}
+
+/* ---- Selected Collaborator Badge ---- */
+.selectedCollaboratorBadge {
+    background: var(--bp-cyan-digital);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.collaboratorBadgeContent {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    color: var(--bp-white);
+}
+
+.collaboratorBadgeName {
+    font-weight: 700;
+    font-size: 15px;
+}
+
+.collaboratorBadgeCode {
+    font-size: 12px;
+    opacity: 0.9;
+    font-weight: 500;
+}
+
+/* ---- Indicators Step 2 Layout ---- */
+.indicatorSearchWrapper {
+    margin-bottom: 20px;
+}
+
+.indicatorsColumnHeader {
+    display: grid;
+    grid-template-columns: 40px 1fr 200px 100px;
+    gap: 16px;
+    padding: 12px 16px;
+    background: #f9fafb;
+    border-bottom: 2px solid #d1d5db;
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    align-items: center;
+}
+
+.indicatorColCheckbox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+}
+
+.indicatorColCheckbox input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+.indicatorColName {
+    font-weight: 600;
+}
+
+.indicatorColType {
+    text-align: left;
+}
+
+.indicatorColWeight {
+    text-align: center;
+}
+
+/* ---- Indicators Table List ---- */
+.indicatorsTableList {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 24px;
+}
+
+.indicatorRow {
+    display: grid;
+    grid-template-columns: 40px 1fr 200px 100px;
+    gap: 16px;
+    padding: 16px;
+    align-items: center;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-bottom: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.indicatorRow:last-child {
+    border-bottom: 1px solid #e5e7eb;
+    border-radius: 0 0 8px 8px;
+}
+
+.indicatorRow:first-child {
+    border-radius: 8px 8px 0 0;
+}
+
+.indicatorRow:hover {
+    background: #f3f4f6;
+    border-color: var(--bp-cyan-digital);
+}
+
+.indicatorRow.selected {
+    background: #ecf5ff;
+    border-color: var(--bp-cyan-digital);
+}
+
+.indicatorNameText {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+    margin-bottom: 4px;
+}
+
+.indicatorDescriptionText {
+    font-size: 12px;
+    color: #9ca3af;
+}
+
+.weightInputSmall {
+    width: 80px;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    font-family: inherit;
+}
+
+.weightInputSmall:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+.weightPlaceholder {
+    font-size: 13px;
+    color: #d1d5db;
+}
+
+/* ---- Weight Summary Improved ---- */
+.weightSummaryImproved {
+    padding: 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.weightTopRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.weightSummaryLabel {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4b5563;
+    text-transform: capitalize;
+}
+
+.weightPercentageDisplay {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--bp-blue-expert);
+}
+
+.progressBarContainer {
+    width: 100%;
+    height: 12px;
+    background: #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.progressBarFill {
+    height: 100%;
+    background: linear-gradient(to right, #0F6E56, #10B981);
+    border-radius: 6px;
+    transition: width 0.3s ease;
+}
+
+.weightBottomRow {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.weightStatus {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0F6E56;
+    text-transform: capitalize;
+}
+
+
+.dateGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin: 20px;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.dateFullWidth {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 32px;
+    width: 100%;
+}
+
+.metasSeparator {
+    height: 1px;
+    background: #e5e7eb;
+    margin: 24px 0 16px 0;
+}
+
+.metasTitle {
+    font-size: 13px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 16px 0 20px 0;
+    text-align: center;
+}
+
+/* ---- Metas por Indicador Container ---- */
+.indicatorMetasContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.indicatorMetaCard {
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.metaHeaderRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.metaNameSection {
+    flex: 1;
+}
+
+.metaIndicatorName {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+    margin: 0;
+    line-height: 1.4;
+}
+
+.metaRightSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.metaWeightBadge {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    background: var(--bp-white);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid #e5e7eb;
+    white-space: nowrap;
+}
+
+.metaLabelsRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
+}
+
+.metaLabelLeft {
+    text-align: left;
+}
+
+.metaLabelRight {
+    text-align: left;
+}
+
+.metaInputsRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.metaInputGroup {
+    display: flex;
+    align-items: center;
+}
+
+.metaInput {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s ease;
+    background: var(--bp-white);
+    color: #1f2937;
+}
+
+.metaInput:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+.metaDescriptionRow {
+    margin-top: 4px;
+}
+
+.metaDescription {
+    font-size: 11px;
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.indicatorField {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.fieldLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ---- Observations Section ---- */
+.observationsSection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.textarea {
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 13.5px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 100px;
+    transition: all 0.2s ease;
+}
+
+.textarea:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+.charCount {
+    font-size: 12px;
+    color: #9ca3af;
+    text-align: right;
+}
+
+/* ---- Actions Buttons Container ---- */
+.stepsActions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+/* ---- Action Plan (Step 3) ---- */
+.actionPlanContainer {
+    margin-bottom: 24px;
+}
+
+.actionPlanTable {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.emptyState {
+    text-align: center;
+    padding: 48px 24px;
+    color: #9ca3af;
+    background: #f9fafb;
+    border-radius: 8px;
+}
+
+.emptyState p {
+    margin: 0;
+    font-size: 14px;
+}
+
+.deleteBtn {
+    background: none;
+    border: none;
+    color: var(--bp-red-danger);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.deleteBtn:hover {
+    background: rgba(163, 34, 13, 0.1);
+    color: var(--bp-red-danger);
+}
+
+.addActionBtn {
+    margin-top: 16px;
+}
+
+.btnWhite {
+    background: var(--bp-white);
+    color: var(--bp-blue-expert);
+    align-items: center;
+    padding: 10px;
+    border: var(--bp-blue-expert) 1px solid;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+
+
+.btnYellow {
+    background: var(--bp-yellow-soft);
+    color: var(--bp-blue-expert);
+    align-items: center;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+
+.btnYellow:disabled {
+    background: var(--bp-white);
+    color: var(--bp-blue-expert);
+    align-items: center;
+    padding: 10px;
+    border: var(--bp-blue-expert) 1px solid;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.btnYellow:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(228, 210, 55, 0.41);
+}
+
+
+/* ---- Modal Content ---- */
+.modalContent {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.modalFooter {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+/* ---- Approval Summary (Step 4) ---- */
+.approvalSummary {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.summarySection {
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.summaryTitle {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--bp-grey-light);
+    margin: 0 0 12px 0;
+    text-align: center;
+}
+
+.indicatorsReview {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.indicatorReview {
+    padding: 12px;
+}
+
+.reviewItem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.reviewLabel {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+}
+
+.reviewValue {
+    font-size: 13px;
+    color: #6b7280;
+}
+
+
+
+
+.finalScoreBox {
+    background: var(--bp-blue-expert);
+    color: var(--bp-white);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+}
+
+.scoreLabel {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.scoreValue {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--bp-yellow-soft);
+}
+
+.observationsText {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #4b5563;
+    margin: 0;
+}
+
+.actionPlanReview {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.actionReview {
+    background: var(--bp-white);
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 13px;
+    color: #4b5563;
+}
+
+.actionReview p {
+    margin: 6px 0;
+}
+
+.actionReview strong {
+    color: var(--bp-blue-expert);
+}
+
+/* ---- Collaborator Approval Card ---- */
+.collaboratorApprovalCard {
+    background: var(--bp-white);
+    border: var(--bp-cyan-digital) 2px solid;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    color: var(--bp-blue-expert);
+}
+
+.collaboratorApprovalLeft {
+    flex-shrink: 0;
+}
+
+.approvalAvatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    background: var(--bp-cyan-digital);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 20px;
+    color: var(--bp-blue-expert);
+}
+
+.collaboratorApprovalContent {
+    flex: 1;
+}
+
+.approvalCollaboratorName {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+    color: var(--bp-blue-expert);
+}
+
+.approvalCollaboratorInfo {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0.95;
+}
+
+.infoItem {
+    white-space: nowrap;
+}
+
+.infoDot {
+    opacity: 0.6;
+}
+
+.collaboratorApprovalDate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.dateLabel {
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.dateValue {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+/* ---- Approval Info Box ---- */
+.approvalInfoBox {
+    background: var(--bp-blue-expert);
+    color: var(--bp-white);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 28px;
+}
+
+.approvalInfoHeader {
+    margin-bottom: 12px;
+}
+
+.approvalInfoTitle {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+}
+
+.approvalInfoText {
+    font-size: 13.5px;
+    line-height: 1.6;
+    margin: 0 0 16px 0;
+    opacity: 0.95;
+}
+
+.approvalInfoMeta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    padding-top: 16px;
+    color: var(--bp-white)
+}
+
+.metaRow {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.metaLabel {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.8;
+    color: var(--bp-white)
+}
+
+.metaValue {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-white)
+}
+
+.metaValueStatus {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-yellow-soft);
+}
+
+/* ---- Approval Summary Section ---- */
+.approvalSummarySection {
+    margin-bottom: 24px;
+}
+
+.summaryStatsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.summaryStatItem {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.statLabel {
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.statValue {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+}
+
+.statValueStatus {
+    font-size: 14px;
+    font-weight: 600;
+    color: #f59e0b;
+}
+
+/* ---- Indicators Review Section ---- */
+.indicatorsReviewSection {
+    margin-bottom: 24px;
+}
+
+.reviewSubtitle {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+    margin: 0 0 12px 0;
+}
+
+.indicatorsReviewTable {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.indicatorReviewRow {
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.reviewRowNumber {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bp-cyan-digital);
+    color: var(--bp-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.reviewRowContent {
+    flex: 1;
+}
+
+.reviewRowLabel {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+    margin-bottom: 6px;
+}
+
+.reviewRowValues {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.reviewBadge {
+    display: inline-block;
+    background: var(--bp-white);
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: #4b5563;
+}
+
+/* ---- Final Score Box Large ---- */
+.finalScoreBoxLarge {
+    background: var(--bp-blue-expert);
+    color: var(--bp-white);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    flex-direction: column;
+}
+
+.divScoreVisualization {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+}
+
+
+.scoreVisualization {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.indicatorResult {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    margin: 15px;
+}
+
+.scorePercentage {
+    font-size: 13px;
+    opacity: 0.9;
+}
+
+.scoreFinalDisplay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    background-color: rgb(70, 96, 134);
+    width: fit-content;
+    border-radius: 10px;
+    padding: 5px;
+}
+
+.scoreFinalLabel {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.scoreFinalValue {
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--bp-yellow-soft);
+}
+
+/* ---- Observations Review Box ---- */
+.observationsReviewBox {
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 24px;
+}
+
+.observationsReviewTitle {
+    font-size: 13px;
+    font-weight: 700;
+    color: #92400e;
+    margin: 0 0 6px 0;
+}
+
+.observationsReviewText {
+    font-size: 13px;
+    color: #78350f;
+    margin: 0;
+    line-height: 1.5;
+}
+
+
+/* ---- Team Groups (Step 1) ---- */
+.teamGroupsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.teamGroupCard {
+    background: var(--bp-white);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.teamHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bp-blue-expert);
+    color: var(--bp-white);
+    padding: 16px;
+    gap: 16px;
+}
+
+.teamHeaderLeft {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.teamName {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--bp-white);
+}
+
+.teamDetails {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+    margin-top: 6px;
+}
+
+.teamDetail {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.teamDetail strong {
+    opacity: 0.9;
+}
+
+.teamHeaderRight {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
+.selectTeamCheckbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.selectTeamCheckbox input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--bp-yellow-soft);
+}
+
+.selectTeamCheckbox label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--bp-white);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.teamCounter {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(0, 0, 0, 0.2);
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.teamCollaboratorsList {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+}
+
+.teamCollaboratorsList .collaboratorRow {
+    margin-bottom: 0;
+    display: grid;
+    grid-template-columns: 40px 80px 150px 120px 100px 100px 150px 100px;
+    gap: 12px;
+    padding: 12px;
+    align-items: center;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.teamCollaboratorsList .collaboratorRow:last-child {
+    border-bottom: none;
+}
+
+/* Encabezado de columnas */
+.collaboratorsColumnHeader {
+    display: grid;
+    grid-template-columns: 40px 80px 150px 120px 100px 100px 150px 100px;
+    gap: 12px;
+    padding: 12px;
+    background: #f9fafb;
+    border-bottom: 2px solid #d1d5db;
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    align-items: center;
+}
+
+/* Estilos de columnas */
+.columnCheckbox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+}
+
+.columnCheckbox input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+.columnCode {
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.columnName {
+    font-weight: 600;
+}
+
+.columnPuesto {
+    font-size: 13px;
+}
+
+.columnArea {
+    font-size: 13px;
+}
+
+.columnUbicacion {
+    font-size: 13px;
+}
+
+.columnIndicadores {
+    text-align: center;
+    font-size: 13px;
+}
+
+.columnEstado {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.filterGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.searchWrapper {
+    margin-bottom: 16px;
+}
+
+.searchInputWrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.searchInputWrapper svg {
+    position: absolute;
+    left: 12px;
+    color: #9ca3af;
+}
+
+.searchInput {
+    padding: 10px 12px 10px 36px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 13.5px;
+    width: 100%;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.searchInput:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+.filterActions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.selectionInfo {
+    padding: 12px 16px;
+    background: var(--bp-grey-light);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+}
+
+.infoLabel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ---- Collaborators Header ---- */
+.collaboratorsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.collaboratorsTitle {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+    margin: 0;
+}
+
+.selectAllCheckbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.selectAllCheckbox input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+.selectAllCheckbox label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+    cursor: pointer;
+}
+
+/* ---- Collaborators List ---- */
+.collaboratorsList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.collaboratorRow {
+    display: grid;
+    grid-template-columns: 40px 80px 150px 120px 100px 100px 150px 100px;
+    gap: 12px;
+    padding: 12px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.collaboratorRow:hover {
+    background: #f3f4f6;
+    border-color: var(--bp-cyan-digital);
+}
+
+.collaboratorRow.selected {
+    background: #ecf5ff;
+    border-color: var(--bp-cyan-digital);
+}
+
+.metaBadge {
+    display: inline-block;
+    background: var(--bp-white);
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+}
+
+/* ---- Instruction Text ---- */
+.instructionText {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #ecf5ff;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid var(--bp-blue-expert);
+    border-radius: 6px;
+    margin-bottom: 24px;
+    font-size: 13.5px;
+    color: var(--bp-blue-expert);
+}
+
+.instructionText svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.instructionTextApproval {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    border-left: 4px solid #0F6E56;
+    border-radius: 6px;
+    margin-bottom: 24px;
+    font-size: 13.5px;
+    color: #166534;
+}
+
+.instructionTextApproval svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: #0F6E56;
+}
+
+/* ---- Paso 4: Indicadores Review Mejorado ---- */
+.indicatorsReviewTableImproved {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.indicatorReviewRowImproved {
+    display: flex;
+    flex-direction: column;
+    padding: 5px 15px;
+    margin: 10px;
+}
+
+.indicatorReviewRowImproved:last-child {
+    border-bottom: none;
+}
+
+.indicatorReviewRowImproved:hover {
+    background: #f3f4f6;
+}
+
+.reviewRowLeftImproved {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.reviewCheckImproved {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.reviewContentImproved {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex: 1;
+}
+
+.reviewRowNameImproved {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+}
+
+.reviewRowMetaImproved {
+    display: flex;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--bp-blue-expert);
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.reviewBadgeImproved {
+    display: inline;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-size: 11px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.reviewBadgeImproved::after {
+    content: " • ";
+    color: #d1d5db;
+}
+
+.reviewBadgeImproved:last-child::after {
+    content: "";
+}
+
+.reviewRightImproved {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.weightPercentageImproved {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--bp-blue-expert);
+}
+
+/* ---- Peso Total Mejorado ---- */
+.totalWeightBoxImproved {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    margin-top: 16px;
+}
+
+.totalWeightLabelImproved {
+    font-size: 13px;
+    font-weight: 600;
+    color: #166534;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.totalWeightValueImproved {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.totalWeightPercentage {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0F6E56;
+}
+
+/* ---- Indicators Header ---- */
+.indicatorsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* ---- Indicator Card (Step 2) ---- */
+.indicatorCard.selected {
+    background: #ecf5ff;
+    border-color: var(--bp-cyan-digital);
+}
+
+.indicatorCheckbox {
+    display: flex;
+    align-items: center;
+    width: 24px;
+    flex-shrink: 0;
+}
+
+.indicatorCheckbox input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+.indicatorDetails {
+    flex: 1;
+    min-width: 0;
+}
+
+.indicatorMeta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.unit {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.indicatorWeight {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 100px;
+    flex-shrink: 0;
+}
+
+.weightInput {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    text-align: center;
+    width: 100%;
+}
+
+.weightInput:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+/* ---- Weight Summary ---- */
+.weightSummary {
+    margin-top: 24px;
+    padding: 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+}
+
+.weightInfo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.weightLabel {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.weightDisplay {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.weightValue {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--bp-blue-expert);
+}
+
+.weightWarning {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    color: #92400e;
+    font-size: 13px;
+}
+
+.weightWarning svg {
+    flex-shrink: 0;
+    color: #f59e0b;
+}
+
+/* ---- Indicator Badges ---- */
+.indicatorBadges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.weightBadge {
+    display: inline-block;
+    background: var(--bp-cyan-digital);
+    color: var(--bp-white);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* ---- Summary Grid ---- */
+.summaryGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.summaryItem {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.summaryLabel {
+    font-size: 11px;
+    font-weight: 700;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.summaryValue {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+}
+
+/* ---- Summary Section ---- */
+.summarySection {
+    margin-bottom: 24px;
+    padding: 0;
+}
+
+.summaryTitle {
+    font-size: 14px;
+    font-weight: 700;
+    color: #6b7280;
+    margin: 0 0 12px 0;
+}
+
+.summaryCollaborator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.summaryName {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+}
+
+.summaryPosition {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 4px;
+}
+
+/* ---- Indicators Review Table ---- */
+.indicatorsReviewTable {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.indicatorReviewRow {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 6px;
+}
+
+.reviewRowCheck {
+    display: flex;
+    align-items: center;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.reviewRowContent {
+    flex: 1;
+    min-width: 0;
+}
+
+.reviewRowName {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+    margin-bottom: 6px;
+}
+
+.reviewRowMeta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.reviewRowWeight {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.weightPercentage {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--bp-blue-expert);
+}
+
+/* ---- Total Weight Box ---- */
+.totalWeightBox {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: var(--bp-blue-expert);
+    color: var(--bp-white);
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.totalWeightLabel {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.totalWeightValue {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.totalWeightValue span {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--bp-yellow-soft);
+}
+
+/* =========================================================
+   Estilos para Historial de Coaching
+   ========================================================= */
+
+/* ---- Tarjetas de Estadísticas ---- */
+.statsContainer {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.statCard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--bp-white);
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    text-align: center;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.statCard:hover {
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 2px 8px rgba(5, 192, 207, 0.1);
+}
+
+.statNumber {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--bp-blue-expert);
+    line-height: 1;
+}
+
+.statLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ---- Filtros ---- */
+.filtersContainer {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+.searchFilter {
+    flex: 1;
+    min-width: 250px;
+}
+
+.searchInput {
+    width: 100%;
+    height: 40px;
+    padding: 10px 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--bp-white);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.searchInput:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+.searchInput::placeholder {
+    color: #9ca3af;
+}
+
+.selectFiltersWrapper {
+    display: flex;
+    gap: 12px;
+}
+
+.selectFilter {
+    height: 40px;
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--bp-white);
+    color: var(--bp-blue-expert);
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    min-width: 150px;
+}
+
+.selectFilter:hover {
+    border-color: var(--bp-cyan-digital);
+}
+
+.selectFilter:focus {
+    outline: none;
+    border-color: var(--bp-cyan-digital);
+    box-shadow: 0 0 0 3px rgba(5, 192, 207, 0.1);
+}
+
+/* ---- Tabla de Coaching ---- */
+.coachingHistoryTable {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.coachingRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: var(--bp-white);
+    transition: background-color 0.2s ease;
+    gap: 16px;
+    margin-bottom: 5px;
+}
+
+.coachingRow:hover {
+    background: #f9fafb;
+}
+
+.coachingRowLeft {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.coachingAvatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.labelDate {
+    margin: 10px;
+    font-size: 12px;
+    color: var(--bp-blue-sync)
+}
+
+.avatarInitial {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--bp-blue-digital);
+    color: var(--bp-blue-expert);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+.coachingInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.collaboratorName {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--bp-blue-expert);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.collaboratorCode {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.coachingRowCenter {
+    display: flex;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 120px;
+}
+
+.coachingRowRight {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* ---- Modal Content ---- */
+.modalContent {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.modalSection {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.modalSectionTitle {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin: 0;
+    text-align: center;
+}
+
+.modalGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.modalField {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.modalField label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #6b7280;
+    letter-spacing: 0.05em;
+}
+
+.modalField p {
+    font-size: 14px;
+    color: var(--bp-blue-expert);
+    font-weight: 600;
+    margin: 0;
+}
+
+/* ---- Indicadores Lista ---- */
+.indicatorsList {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.indicatorItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.indicatorDetail {
+    display: inline-flex;
+    align-items: center;
+}
+
+.indicatorName {
+    display: inline-flex;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--bp-blue-expert);
+}
+
+.indicatorResult {
+    display: inline-flex;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+/* ---- Aprobaciones ---- */
+.approvalsBox {
+    padding: 16px;
+    background: var(--bp-blue-expert);
+    color: var(--bp-white);
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    border-left: 4px solid var(--bp-blue-expert);
+}
+
+.approvalsTitle {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin: 0 0 12px 0;
+}
+
+.approvalsList {
+    display: flex;
+
+    gap: 10px;
+}
+
+.approvalItem {
+    color: var(--bp-white);
+    display: block;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.approvalItem:last-child {
+    border-bottom: none;
+}
+
+.approvalRole {
+    color: var(--bp-white);
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 80px;
+}
+
+.approvalInfo {
+    color: var(--bp-white);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+
+.approvalDate {
+    font-size: 11px;
+    font-weight: normal;
+}
+
+.noApprovalsText {
+    font-size: 13px;
+    font-style: italic;
+    margin: 0;
+}
+
+/* ---- Modal Footer ---- */
+.modalFooter {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* ---- Responsive Design ---- */
+@media (max-width: 768px) {
+    .progressBar {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .progressStep {
+        width: 100%;
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 12px;
+    }
+
+    .progressCircle {
+        width: 40px;
+        height: 40px;
+        font-size: 13px;
+    }
+
+    .stepLabel {
+        text-align: left;
+    }
+
+    .filterGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .searchGroup {
+        grid-template-columns: 1fr;
+    }
+
+    .collaboratorMeta {
+        grid-template-columns: 1fr;
+    }
+
+    .indicatorGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .summaryGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .stepsActions {
+        justify-content: space-between;
+        flex-direction: column;
+    }
+
+    .card {
+        padding: 16px;
+    }
+
+    .dateGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .card {
+        padding: 12px;
+    }
+
+    .stepTitle {
+        font-size: 18px;
+    }
+
+    .filterGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .collaboratorRow {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .collaboratorInfo {
+        text-align: left;
+    }
+
+    .collaboratorMeta {
+        justify-content: center;
+    }
+
+    .indicatorCard {
+        flex-direction: column;
+    }
+
+    .summaryGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .stepsActions {
+        flex-direction: column;
+    }
+
+
+
+    .indicatorGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .stepsActions {
+        flex-direction: column;
+    }
+
+    .stepsActions button {
+        width: 100%;
+    }
+}
+
+/* ---- Utilities ---- */
+.hidden {
+    display: none !important;
+}
+
+.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+
+.instructionText {
+    padding: 12px 24px;
+    background: rgb(222, 245, 249);
+    border-bottom: 1px solid #e6ebf1;
+    font-size: 13px;
+    color: var(--bp-blue-expert);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.instructionText strong {
+    color: var(--bp-blue-expert);
+    font-weight: 600;
+}
+
+
+
+.warningText {
+    padding: 12px 24px;
+    background: #FFF3CD;
+    font-size: 13px;
+    color: var(--bp-blue-expert);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.warningText strong {
+    color: var(--bp-blue-expert);
+    font-weight: 600;
+}
+
+.clearAllBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: 1px solid gray;
+    border-radius: 8px;
+    background: transparent;
+    color: #6b7a8f;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin: 0px 0px 0px 10px;
+}
+
+.clearAllBtn:hover {
+    color: var(--bp-blue-expert);
+}
+
+/* Toast / Notificación */
+.toastContainer {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 400px;
+}
+
+.toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideIn 0.3s ease;
+    word-break: break-word;
+}
+
+.toast.success {
+    background: #0F6E56;
+    color: white;
+    border: 1px solid rgba(15, 110, 86, 0.3);
+}
+
+.toast.error {
+    background: #A32D2D;
+    color: white;
+    border: 1px solid rgba(163, 45, 45, 0.3);
+}
+
+.toast.info {
+    background: #0C5ABA;
+    color: white;
+    border: 1px solid rgba(12, 90, 186, 0.3);
+}
+
+.toastIcon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toastMessage {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.toastClose {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: currentColor;
+    cursor: pointer;
+    padding: 0;
+    opacity: 0.8;
+    transition: opacity 0.15s ease;
+}
+
+.toastClose:hover {
+    opacity: 1;
+}
+
+
+
+
+sacame una duda ... esto todavia no tiene integracion con el api cierto?
+
