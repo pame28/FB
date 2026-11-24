@@ -1,15 +1,84 @@
-USE [BandejaTC_Procesador];
+USE [BandejaVASA]
 GO
-BEGIN TRAN;
-
-ALTER TABLE dbo.RELACIONES_TC ALTER COLUMN RELA_IDEN CHAR(19) NULL;
-ALTER TABLE dbo.RELACIONES_TC ALTER COLUMN RELA_NCTA CHAR(16) NULL;
-
--- Verificación
-SELECT c.name, ty.name AS tipo, c.max_length, c.is_nullable
-FROM sys.columns c
-JOIN sys.types ty ON ty.user_type_id = c.user_type_id
-WHERE c.object_id = OBJECT_ID('dbo.RELACIONES_TC');
-
-COMMIT;   -- si algo se ve mal, ejecuta ROLLBACK en lugar de COMMIT
+CREATE VIEW dbo.uvw_CobranzasRelacionesTC_v2
+AS
+WITH Base AS
+(   -- Mismos filtros que uvw_SaldosVasa, solo categoría 0 y solo las columnas necesarias
+    SELECT a.Cif, a.NoCuenta, a.NoCuentaClaro, a.NumeroTarjeta, a.EstadoTarjeta, t.NoDocumento
+    FROM MaestroSaldos a WITH (NOLOCK)
+    INNER JOIN ETarjetas t WITH (NOLOCK) ON a.NumeroTarjeta = t.NumeroTarjeta
+    WHERE t.EstadoHabilitar IN ('','I','*','R','U','A','B','E','D','H','G','K','J')
+      AND a.CategoriaTarjeta = '0'
+      AND a.EstadoTarjeta IN (20,22,25,29)
+),
+Marcada AS
+(
+    SELECT b.*,
+           MAX(CASE WHEN b.EstadoTarjeta = 20 THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) AS Tiene20,
+           MAX(CASE WHEN b.EstadoTarjeta = 25 THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta) AS Tiene25,
+           MAX(b.NumeroTarjeta) OVER (PARTITION BY b.NoCuenta, b.EstadoTarjeta)          AS MaxTarjeta
+    FROM Base b
+),
+Saldos AS
+(   -- Replica la prioridad de uvw_SaldosVasa: Normal(20) > NoRenovar(22) / Problema(25) > Cerrada(29)
+    SELECT DISTINCT Cif, NoCuentaClaro, NoDocumento
+    FROM Marcada
+    WHERE (EstadoTarjeta = 20 AND NumeroTarjeta = MaxTarjeta)
+       OR (EstadoTarjeta = 22 AND Tiene20 = 0)
+       OR (EstadoTarjeta = 25 AND Tiene20 = 0 AND NumeroTarjeta = MaxTarjeta)
+       OR (EstadoTarjeta = 29 AND Tiene20 = 0 AND Tiene25 = 0 AND NumeroTarjeta = MaxTarjeta)
+),
+DocTitular AS
+(
+    SELECT NoCuentaClaro, MAX(NoDocumento) AS NoDocumento
+    FROM Saldos
+    GROUP BY NoCuentaClaro
+),
+Titulares AS
+(
+    SELECT Cif AS RELA_CIF, NoDocumento AS RELA_IDEN, 'TDC' AS RELA_TIPO,
+           NoCuentaClaro AS RELA_NCTA, 'SOW' AS RELA_TIPR
+    FROM Saldos
+),
+Avales AS
+(   -- Fiador 1 y 2 en una sola lectura
+    SELECT x.Cedula AS RELA_CIF, x.Cedula AS RELA_IDEN, 'TDC' AS RELA_TIPO,
+           f.NoCuentaClaro AS RELA_NCTA, 'IND' AS RELA_TIPR
+    FROM uvw_NombreFiadores f
+    INNER JOIN DocTitular d ON d.NoCuentaClaro = f.NoCuentaClaro
+    CROSS APPLY (VALUES (f.NumCedulaFiador1), (f.NumCedulaFiador2)) x(Cedula)
+    WHERE LEN(LTRIM(RTRIM(x.Cedula))) > 0
+      AND (d.NoDocumento IS NULL OR x.Cedula <> d.NoDocumento)
+),
+Empresariales AS
+(   -- Directo a tablas base en lugar de uvw_CobranzasCuentas (mismos filtros y conversiones)
+    SELECT CONVERT(CHAR(19), CAST(Usu.NoClienteUnico AS NVARCHAR(15))) AS RELA_CIF,
+           CONVERT(CHAR(19), CAST(Usu.RTN AS NVARCHAR(20)))            AS RELA_IDEN,
+           'TDC' AS RELA_TIPO,
+           CONVERT(CHAR(16), CAST(Usu.NoCuentaClaro AS NVARCHAR(10)))  AS RELA_NCTA,
+           'SOW' AS RELA_TIPR
+    FROM EUsuarios Usu WITH (NOLOCK)
+    INNER JOIN EPosicionDiaria Pos WITH (NOLOCK) ON Usu.NoUsuario = Pos.NoUsuario
+    WHERE Pos.NumeroTarjeta = '0000000000000000'
+      AND Pos.ModeloLiquidacion != '900'
+      AND EXISTS (SELECT 1 FROM uvw_CuentasPagos Cc
+                  WHERE Cc.NoCuenta = Usu.NoUsuario AND Cc.TipoTarjeta = 'E')
+      AND EXISTS (SELECT 1 FROM Parametros)   -- la vista original hace cross join con Parametros
+      AND LEN(CAST(Usu.NoClienteUnico AS NVARCHAR(15))) > 0
+),
+Resultado AS
+(
+    SELECT RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR FROM Titulares
+    UNION ALL
+    SELECT RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR FROM Avales
+    UNION ALL
+    SELECT RELA_CIF, RELA_IDEN, RELA_TIPO, RELA_NCTA, RELA_TIPR FROM Empresariales
+)
+SELECT DISTINCT
+       CAST(ISNULL(RELA_CIF,  '') AS CHAR(19))   AS RELA_CIF,
+       CAST(ISNULL(RELA_IDEN, '') AS CHAR(19))   AS RELA_IDEN,
+       CAST(ISNULL(RELA_TIPO, '') AS VARCHAR(3)) AS RELA_TIPO,
+       CAST(ISNULL(RELA_NCTA, '') AS CHAR(16))   AS RELA_NCTA,
+       CAST(ISNULL(RELA_TIPR, '') AS VARCHAR(3)) AS RELA_TIPR
+FROM Resultado;
 GO
