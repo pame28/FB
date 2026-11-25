@@ -1,5 +1,7 @@
-SELECT s.Id, s.MemberUserId, s.TeamId, tl.LeaderUserId, u.FullName AS Lider
-FROM CoachingSessions s
-LEFT JOIN TeamsLeaders tl ON tl.TeamId = s.TeamId
-LEFT JOIN Users u ON u.Id = tl.LeaderUserId
-WHERE s.Id = 5;
+var config = {
+    // apiUrl: "aHR0cHM6Ly9mZWVkYmFja2NvbGFib3JhZG9yZXNkZS5iYW5wYWlzLmhuL2FwaS8=",
+    apiUrl: "aHR0cHM6Ly9hcGlmZWVkYmFja2NvbGFib3JhZG9yZXNkZS5iYW5wYWlzLmhuLw==",
+    //apiUrl: "aHR0cHM6Ly9sb2NhbGhvc3Q6NzI3Ni8=",
+    rsaModulus: "...",
+    rsaExponent: "AQAB"
+}
