@@ -1,5 +1,8 @@
-                                disabled={!isApproved(selectedCoachingModal) || downloadingId !== null}
-                                onClick={async () => {
-                                    await handleDownloadPDF(selectedCoachingModal);
-                                    setShowDetailModal(false);
-                                }}
+          stack: [
+            { text: description, fontSize: 7.5, color: GREY },
+            // Espacio para la firma
+            { canvas: [{ type: "line", x1: 0, y1: 0, x2: (contentW - 16) / 2 - 24, y2: 0, lineWidth: 1, lineColor: config.primaryColor }], margin: [0, 34, 0, 0] },
+            approval
+              ? { text: `${approval.name}  |  ${approval.date}`, fontSize: 9, bold: true, color: config.primaryColor, margin: [0, 5, 0, 0] }
+              : { text: "Pendiente de aprobación", fontSize: 9, italics: true, color: "#A3ADBB", margin: [0, 5, 0, 0] },
+          ],
