@@ -1,157 +1,3 @@
-using ApiCoaching.Models;
-using System.Text.Json.Serialization;
-
-namespace ApiCoaching.Dtos.Certifications
-{
-    public class FormatIndicatorDto
-    {
-        public string Id { get; set; } = null!;
-        public string Name { get; set; } = null!;
-        public string Type { get; set; } = "CE/NCE";
-        public bool Na { get; set; }
-    }
-
-    public class FormatCriterionDto
-    {
-        public string Id { get; set; } = null!;
-        public string Name { get; set; } = null!;
-        public int Weight { get; set; }
-        public string? Description { get; set; }
-        public List<string> Columns { get; set; } = [];
-        public List<FormatIndicatorDto> Indicators { get; set; } = [];
-        public string? Formula { get; set; }
-
-        // ratio | ce | last; si no se indica se deduce de los tipos de indicador
-        public string? Calc { get; set; }
-    }
-
-    public class SaveCertificationFormatRequestDto
-    {
-        public string Name { get; set; } = null!;
-        public int TeamId { get; set; }
-        public List<FormatCriterionDto> Criteria { get; set; } = [];
-        public string FinalFormula { get; set; } = null!;
-        public decimal MinScore { get; set; }
-    }
-
-    public class CertificationFormatDto
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = null!;
-        public int AreaId { get; set; }
-        public string Area { get; set; } = null!;
-        public int TeamId { get; set; }
-        public string Team { get; set; } = null!;
-        public string? CreatedBy { get; set; }
-        public DateTime Date { get; set; }
-        public string Status { get; set; } = null!;
-        public decimal MinScore { get; set; }
-        public string FinalFormula { get; set; } = null!;
-        public List<FormatCriterionDto> Criteria { get; set; } = [];
-    }
-
-    public class CertifierDto
-    {
-        public string Id { get; set; } = null!;
-        public string? Code { get; set; }
-        public string Name { get; set; } = null!;
-        public string? Position { get; set; }
-        public int? AreaId { get; set; }
-        public string? Area { get; set; }
-        public int Applied { get; set; }
-        public string Status { get; set; } = null!;
-        public List<int> TeamIds { get; set; } = [];
-    }
-
-    public class CertifierTeamDto
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = null!;
-        public int AreaId { get; set; }
-        public string Area { get; set; } = null!;
-        public string? Leader { get; set; }
-        public int Members { get; set; }
-        public int Certifiers { get; set; }
-    }
-
-    public class DesignateCertifierRequestDto
-    {
-        public string UserId { get; set; } = null!;
-        public List<int> TeamIds { get; set; } = [];
-    }
-
-    public class AssignedTeamLeaderDto
-    {
-        public string Id { get; set; } = null!;
-        public string Name { get; set; } = null!;
-        public string? Role { get; set; }
-        public string? Code { get; set; }
-    }
-
-    public class AssignedTeamDto
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = null!;
-        public int AreaId { get; set; }
-        public string Area { get; set; } = null!;
-        public int Members { get; set; }
-        public List<AssignedTeamLeaderDto> Leaders { get; set; } = [];
-        public CertificationFormatDto? Format { get; set; }
-    }
-
-    // Respuestas por criterio -> indicador -> columna (o "__obs" para observaciones)
-    public class ApplyCertificationRequestDto
-    {
-        public int TeamId { get; set; }
-        public string LeaderUserId { get; set; } = null!;
-        public DateTime Date { get; set; }
-        public Dictionary<string, Dictionary<string, Dictionary<string, string>>> Answers { get; set; } = [];
-        public string? Suggestions { get; set; }
-    }
-
-    public class CertificationBreakdownRowDto
-    {
-        public string Name { get; set; } = null!;
-        public int Weight { get; set; }
-        public decimal? Note { get; set; }
-        public decimal Points { get; set; }
-    }
-
-    public class CertificationBreakdownDto
-    {
-        public List<CertificationBreakdownRowDto> Criteria { get; set; } = [];
-        public decimal Total { get; set; }
-        public decimal MinScore { get; set; }
-    }
-
-    public class CertificationDto
-    {
-        public long Id { get; set; }
-        public int TeamId { get; set; }
-        public string TeamName { get; set; } = null!;
-        public int AreaId { get; set; }
-        public string Area { get; set; } = null!;
-        public string LeaderId { get; set; } = null!;
-        public string LeaderName { get; set; } = null!;
-        public string CertifierId { get; set; } = null!;
-        public string Certifier { get; set; } = null!;
-        public string FormatName { get; set; } = null!;
-        public decimal MinScore { get; set; }
-        public DateTime Date { get; set; }
-        [JsonConverter(typeof(JsonStringEnumConverter<CertificationStatus>))]
-        public CertificationStatus Status { get; set; }
-        public decimal? Score { get; set; }
-    }
-}
-
-
-
-
-
-
-
-
-
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -228,6 +74,10 @@ namespace ApiCoaching.Models
 
         public string AnswersJson { get; set; } = null!;
 
+        // Copia de los criterios del formato al momento de aplicar.
+        // El formato puede editarse o borrarse después; la certificación conserva su estructura.
+        public string? CriteriaJson { get; set; }
+
         // Desglose por criterio calculado al aplicar, para no depender de ediciones posteriores del formato
         public string? BreakdownJson { get; set; }
 
@@ -249,6 +99,371 @@ namespace ApiCoaching.Models
         Rejected = 2
     }
 }
+
+
+
+
+
+
+
+
+
+
+using ApiCoaching.Models;
+using System.Text.Json.Serialization;
+
+namespace ApiCoaching.Dtos.Certifications
+{
+    /// <summary>
+    /// GET /api/certifications/{id}/export
+    /// Todo lo que necesita el PDF de una certificación: datos generales, criterios con
+    /// sus respuestas, notas por columna y por criterio, puntaje final y aprobación.
+    /// </summary>
+    public class CertificationExportDto
+    {
+        public long Id { get; set; }
+
+        [JsonConverter(typeof(JsonStringEnumConverter<CertificationStatus>))]
+        public CertificationStatus Status { get; set; }
+        public string StatusName { get; set; } = null!;
+
+        public string TeamName { get; set; } = null!;
+        public string? Area { get; set; }
+        public string LeaderName { get; set; } = null!;
+        public string? LeaderCode { get; set; }
+        public string? LeaderPosition { get; set; }
+        public string CertifierName { get; set; } = null!;
+        public string FormatName { get; set; } = null!;
+
+        public DateOnly Date { get; set; }           // fecha de aplicación (sin hora)
+        public decimal MinScore { get; set; }
+        public decimal Score { get; set; }           // nota final guardada al aplicar
+        public bool Passes { get; set; }
+        public string? Suggestions { get; set; }
+
+        public DateTime RegisteredAt { get; set; }   // cuando el certificador la registró
+        public string? ResolvedByName { get; set; }
+        public DateTime? ResolvedAt { get; set; }
+
+        public List<CertificationExportCriterionDto> Criteria { get; set; } = [];
+    }
+
+    public class CertificationExportCriterionDto
+    {
+        public string Id { get; set; } = null!;
+        public string Name { get; set; } = null!;
+        public int Weight { get; set; }
+        public string? Description { get; set; }
+        public string Calc { get; set; } = null!;              // ratio | ce | last
+        public List<string> Columns { get; set; } = [];         // columnas de evaluación (sin "Observaciones")
+        public List<CertificationExportIndicatorDto> Indicators { get; set; } = [];
+        public List<CertificationColumnNoteDto> ColumnNotes { get; set; } = [];
+        public decimal? Note { get; set; }                      // nota del criterio (0-100)
+        public decimal Points { get; set; }                     // nota × peso / 100
+    }
+
+    public class CertificationExportIndicatorDto
+    {
+        public string Id { get; set; } = null!;
+        public string Name { get; set; } = null!;
+        public string Type { get; set; } = null!;
+        public Dictionary<string, string?> Values { get; set; } = [];   // columna → valor registrado
+        public string? Observation { get; set; }
+    }
+
+    public class CertificationColumnNoteDto
+    {
+        public string Column { get; set; } = null!;
+        public decimal? Value { get; set; }
+        public bool IsNa { get; set; }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+using ApiCoaching.Dtos.Certifications;
+using System.Globalization;
+
+namespace ApiCoaching.Services
+{
+    public static class CertificationScoreCalculator
+    {
+        private const string ObservationsColumn = "observaciones";
+
+        public static IEnumerable<string> EvaluationColumns(FormatCriterionDto criterion) =>
+            criterion.Columns.Where(c => !string.Equals(c.Trim(), ObservationsColumn, StringComparison.OrdinalIgnoreCase));
+
+        public static string ResolveCalc(FormatCriterionDto criterion)
+        {
+            if (criterion.Calc is "ratio" or "ce" or "last")
+            {
+                return criterion.Calc;
+            }
+
+            if (criterion.Indicators.Count > 0 && criterion.Indicators.All(i => i.Type == "CE/NCE"))
+            {
+                return "ce";
+            }
+
+            return criterion.Indicators.Count >= 2 &&
+                   criterion.Indicators[0].Type != "CE/NCE" && criterion.Indicators[1].Type != "CE/NCE" &&
+                   criterion.Indicators[0].Type != "%" && criterion.Indicators[1].Type != "%"
+                ? "ratio"
+                : "last";
+        }
+
+        public static bool HasRating(
+            FormatCriterionDto criterion,
+            Dictionary<string, Dictionary<string, string>>? answers) =>
+            answers is not null && criterion.Indicators.Any(ind =>
+                answers.TryGetValue(ind.Id, out var cells) &&
+                EvaluationColumns(criterion).Any(col => cells.TryGetValue(col, out var v) && !string.IsNullOrWhiteSpace(v)));
+
+        // Nota de cada columna de evaluación: número (0-100), NA, o null si no hay datos
+        public static List<CertificationColumnNoteDto> ColumnNotes(
+            FormatCriterionDto criterion,
+            Dictionary<string, Dictionary<string, string>>? answers)
+        {
+            answers ??= [];
+            string? Cell(FormatIndicatorDto ind, string col) =>
+                answers.TryGetValue(ind.Id, out var cells) && cells.TryGetValue(col, out var v) ? v?.Trim() : null;
+
+            var result = new List<CertificationColumnNoteDto>();
+            var columns = EvaluationColumns(criterion).ToList();
+
+            switch (ResolveCalc(criterion))
+            {
+                case "ratio" when criterion.Indicators.Count >= 2:
+                    foreach (var col in columns)
+                    {
+                        var p = Cell(criterion.Indicators[0], col);
+                        var r = Cell(criterion.Indicators[1], col);
+                        if (IsNa(p) || IsNa(r))
+                        {
+                            result.Add(new CertificationColumnNoteDto { Column = col, IsNa = true });
+                            continue;
+                        }
+
+                        decimal? value = TryNum(p, out var pv) && pv > 0 && TryNum(r, out var rv)
+                            ? Math.Min(100m, Round(rv / pv * 100m))
+                            : null;
+                        result.Add(new CertificationColumnNoteDto { Column = col, Value = value });
+                    }
+                    break;
+
+                case "ce":
+                    foreach (var col in columns)
+                    {
+                        var values = criterion.Indicators.Select(i => Cell(i, col)).ToList();
+                        var ce = values.Count(v => string.Equals(v, "CE", StringComparison.OrdinalIgnoreCase));
+                        var nce = values.Count(v => string.Equals(v, "NCE", StringComparison.OrdinalIgnoreCase));
+                        result.Add(ce + nce > 0
+                            ? new CertificationColumnNoteDto { Column = col, Value = Round((decimal)ce / (ce + nce) * 100m) }
+                            : new CertificationColumnNoteDto { Column = col, IsNa = values.Any(IsNa) });
+                    }
+                    break;
+
+                default:
+                    var last = columns.LastOrDefault();
+                    if (last is null) break;
+                    var nums = criterion.Indicators
+                        .Select(i => TryNum(Cell(i, last), out var v) ? (decimal?)v : null)
+                        .Where(v => v.HasValue)
+                        .Select(v => v!.Value)
+                        .ToList();
+                    result.Add(new CertificationColumnNoteDto
+                    {
+                        Column = last,
+                        Value = nums.Count > 0 ? Math.Min(100m, Round(nums.Average())) : null
+                    });
+                    break;
+            }
+
+            return result;
+        }
+
+        // Nota del criterio en 0-100 = promedio de las notas numéricas de sus columnas; null si no hay datos o todo es NA
+        public static decimal? CriterionScore(
+            FormatCriterionDto criterion,
+            Dictionary<string, Dictionary<string, string>>? answers)
+        {
+            var notes = ColumnNotes(criterion, answers)
+                .Where(n => n.Value.HasValue)
+                .Select(n => n.Value!.Value)
+                .ToList();
+
+            return notes.Count > 0 ? Round(notes.Average()) : null;
+        }
+
+        // Nota final = suma de (nota del criterio * peso / 100)
+        public static List<CertificationBreakdownRowDto> Breakdown(
+            IEnumerable<FormatCriterionDto> criteria,
+            Dictionary<string, Dictionary<string, Dictionary<string, string>>> answers) =>
+            [.. criteria.Select(c =>
+            {
+                answers.TryGetValue(c.Id, out var criterionAnswers);
+                var note = CriterionScore(c, criterionAnswers);
+                return new CertificationBreakdownRowDto
+                {
+                    Name = c.Name,
+                    Weight = c.Weight,
+                    Note = note,
+                    Points = Round((note ?? 0m) * c.Weight / 100m)
+                };
+            })];
+
+        public static decimal FinalScore(
+            IEnumerable<FormatCriterionDto> criteria,
+            Dictionary<string, Dictionary<string, Dictionary<string, string>>> answers) =>
+            Round(Breakdown(criteria, answers).Sum(r => r.Points));
+
+        private static bool IsNa(string? value) => string.Equals(value, "NA", StringComparison.OrdinalIgnoreCase);
+
+        private static bool TryNum(string? value, out decimal number) =>
+            decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out number);
+
+        private static decimal Round(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+using ApiCoaching.Dtos.Certifications;
+using ApiCoaching.Models;
+
+namespace ApiCoaching.Repositories.Interfaces
+{
+    public enum CertificationOperationStatus
+    {
+        Done,
+        NotFound,
+        Invalid,
+        Forbidden
+    }
+
+    public sealed record CertificationOperationResult(
+        CertificationOperationStatus Status, string? Message = null, long? Id = null);
+
+    public interface ICertificationsRepository
+    {
+        Task<List<CertificationFormatDto>> GetFormatsAsync();
+
+        Task<CertificationOperationResult> SaveFormatAsync(int? id, SaveCertificationFormatRequestDto request, string currentUserId);
+
+        Task<CertificationOperationResult> DeleteFormatAsync(int id, string currentUserId);
+
+        Task<List<CertifierDto>> GetCertifiersAsync(int? areaId, string? search);
+
+        Task<List<CertifierTeamDto>> GetTeamsByAreaAsync(int areaId);
+
+        Task<List<CertifierDto>> GetCertifierCandidatesAsync(int areaId, string? search);
+
+        Task<CertificationOperationResult> DesignateCertifierAsync(string userId, List<int> teamIds, string currentUserId);
+
+        Task<CertificationOperationResult> RemoveCertifierAsync(string userId, string currentUserId);
+
+        Task<List<AssignedTeamDto>> GetAssignedTeamsAsync(string certifierUserId);
+
+        Task<CertificationOperationResult> ApplyAsync(ApplyCertificationRequestDto request, string certifierUserId);
+
+        Task<List<CertificationDto>> GetCertificationsAsync(
+            string? assignedToCertifierId, int? areaId, int? teamId, string? certifierId,
+            CertificationStatus? status, string? search);
+
+        Task<CertificationOperationResult> ResolveAsync(long id, bool approve, string currentUserId);
+
+        Task<CertificationBreakdownDto?> GetBreakdownAsync(long id);
+
+        Task<CertificationExportDto?> GetExportAsync(long id);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+using ApiCoaching.Dtos.Certifications;
+using ApiCoaching.Models;
+
+namespace ApiCoaching.Repositories.Interfaces
+{
+    public enum CertificationOperationStatus
+    {
+        Done,
+        NotFound,
+        Invalid,
+        Forbidden
+    }
+
+    public sealed record CertificationOperationResult(
+        CertificationOperationStatus Status, string? Message = null, long? Id = null);
+
+    public interface ICertificationsRepository
+    {
+        Task<List<CertificationFormatDto>> GetFormatsAsync();
+
+        Task<CertificationOperationResult> SaveFormatAsync(int? id, SaveCertificationFormatRequestDto request, string currentUserId);
+
+        Task<CertificationOperationResult> DeleteFormatAsync(int id, string currentUserId);
+
+        Task<List<CertifierDto>> GetCertifiersAsync(int? areaId, string? search);
+
+        Task<List<CertifierTeamDto>> GetTeamsByAreaAsync(int areaId);
+
+        Task<List<CertifierDto>> GetCertifierCandidatesAsync(int areaId, string? search);
+
+        Task<CertificationOperationResult> DesignateCertifierAsync(string userId, List<int> teamIds, string currentUserId);
+
+        Task<CertificationOperationResult> RemoveCertifierAsync(string userId, string currentUserId);
+
+        Task<List<AssignedTeamDto>> GetAssignedTeamsAsync(string certifierUserId);
+
+        Task<CertificationOperationResult> ApplyAsync(ApplyCertificationRequestDto request, string certifierUserId);
+
+        Task<List<CertificationDto>> GetCertificationsAsync(
+            string? assignedToCertifierId, int? areaId, int? teamId, string? certifierId,
+            CertificationStatus? status, string? search);
+
+        Task<CertificationOperationResult> ResolveAsync(long id, bool approve, string currentUserId);
+
+        Task<CertificationBreakdownDto?> GetBreakdownAsync(long id);
+
+        Task<CertificationExportDto?> GetExportAsync(long id);
+    }
+}
+
+
+
+
 
 
 
@@ -381,7 +596,7 @@ namespace ApiCoaching.Repositories
                 }
             }
 
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             CertificationFormat format;
 
             if (id.HasValue)
@@ -594,7 +809,7 @@ namespace ApiCoaching.Repositories
                 .Select(c => c.TeamId)
                 .ToListAsync();
 
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             var added = ids.Except(existing).ToList();
             foreach (var teamId in added)
             {
@@ -713,7 +928,7 @@ namespace ApiCoaching.Repositories
                 return Fail(CertificationOperationStatus.Invalid, $"Registra al menos una calificaci\u00f3n en el criterio \"{missing.Name}\".");
             }
 
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             var certification = new Certification
             {
                 TeamId = request.TeamId,
@@ -728,6 +943,7 @@ namespace ApiCoaching.Repositories
                 BreakdownJson = JsonSerializer.Serialize(CertificationScoreCalculator.Breakdown(criteria, request.Answers), JsonOptions),
                 Suggestions = request.Suggestions?.Trim(),
                 AnswersJson = JsonSerializer.Serialize(request.Answers, JsonOptions),
+                CriteriaJson = format.CriteriaJson,
                 CreatedAt = now,
                 CreatedBy = certifierUserId
             };
@@ -817,6 +1033,123 @@ namespace ApiCoaching.Repositories
             };
         }
 
+        /* ===================== Exportar (PDF) ===================== */
+
+        public async Task<CertificationExportDto?> GetExportAsync(long id)
+        {
+            var row = await _dbContext.Certifications
+                .AsNoTracking()
+                .Where(c => c.Id == id)
+                .Select(c => new
+                {
+                    c.Id,
+                    c.Status,
+                    c.CertificationDate,
+                    c.MinScore,
+                    c.Score,
+                    c.Suggestions,
+                    c.AnswersJson,
+                    c.FormatName,
+                    c.CreatedAt,
+                    c.ResolvedAt,
+                    // Copia guardada al aplicar; las certificaciones anteriores a la copia usan el formato
+                    CriteriaJson = c.CriteriaJson ?? (c.Format == null ? null : c.Format.CriteriaJson),
+                    TeamName = c.Team.Name,
+                    Area = c.Team.CompanyArea.Name,
+                    LeaderName = c.Leader.FullName ?? c.Leader.FirstName + " " + c.Leader.LastName,
+                    LeaderCode = c.Leader.EmployeeCode,
+                    LeaderPosition = c.Leader.CompanyPosition == null ? null : c.Leader.CompanyPosition.Name,
+                    CertifierName = c.Certifier.FullName ?? c.Certifier.FirstName + " " + c.Certifier.LastName,
+                    ResolvedByName = _dbContext.Users
+                        .Where(u => u.Id == c.ResolvedBy)
+                        .Select(u => u.FullName ?? u.FirstName + " " + u.LastName)
+                        .FirstOrDefault()
+                })
+                .FirstOrDefaultAsync();
+
+            if (row is null)
+            {
+                return null;
+            }
+
+            var criteria = string.IsNullOrWhiteSpace(row.CriteriaJson)
+                ? new List<FormatCriterionDto>()
+                : JsonSerializer.Deserialize<List<FormatCriterionDto>>(row.CriteriaJson, JsonOptions)
+                    ?? new List<FormatCriterionDto>();
+
+            var answers = JsonSerializer.Deserialize<
+                Dictionary<string, Dictionary<string, Dictionary<string, string>>>>(row.AnswersJson, JsonOptions)
+                ?? new Dictionary<string, Dictionary<string, Dictionary<string, string>>>();
+
+            return new CertificationExportDto
+            {
+                Id = row.Id,
+                Status = row.Status,
+                StatusName = row.Status switch
+                {
+                    CertificationStatus.Pending => "Pendiente aprobación",
+                    CertificationStatus.Approved => "Aprobado",
+                    _ => "No aprobado"
+                },
+                TeamName = row.TeamName,
+                Area = row.Area,
+                LeaderName = row.LeaderName,
+                LeaderCode = row.LeaderCode,
+                LeaderPosition = row.LeaderPosition,
+                CertifierName = row.CertifierName,
+                FormatName = row.FormatName,
+                Date = DateOnly.FromDateTime(row.CertificationDate),
+                MinScore = row.MinScore,
+                Score = row.Score,
+                Passes = row.Score >= row.MinScore,
+                Suggestions = row.Suggestions,
+                RegisteredAt = row.CreatedAt,
+                ResolvedByName = row.ResolvedByName,
+                ResolvedAt = row.ResolvedAt,
+                Criteria = [.. criteria.Select(c => MapExportCriterion(c, answers.GetValueOrDefault(c.Id)))]
+            };
+        }
+
+        private static CertificationExportCriterionDto MapExportCriterion(
+            FormatCriterionDto criterion,
+            Dictionary<string, Dictionary<string, string>>? answers)
+        {
+            answers ??= new Dictionary<string, Dictionary<string, string>>();
+            var columns = CertificationScoreCalculator.EvaluationColumns(criterion).ToList();
+            var note = CertificationScoreCalculator.CriterionScore(criterion, answers);
+
+            return new CertificationExportCriterionDto
+            {
+                Id = criterion.Id,
+                Name = criterion.Name,
+                Weight = criterion.Weight,
+                Description = criterion.Description,
+                Calc = CertificationScoreCalculator.ResolveCalc(criterion),
+                Columns = columns,
+                Indicators = [.. criterion.Indicators.Select(indicator =>
+                {
+                    var cells = answers.GetValueOrDefault(indicator.Id) ?? new Dictionary<string, string>();
+                    var values = new Dictionary<string, string?>();
+                    foreach (var column in columns)
+                    {
+                        values[column] = cells.GetValueOrDefault(column);
+                    }
+
+                    return new CertificationExportIndicatorDto
+                    {
+                        Id = indicator.Id,
+                        Name = indicator.Name,
+                        Type = indicator.Type,
+                        Values = values,
+                        Observation = cells.GetValueOrDefault("__obs")
+                    };
+                })],
+                ColumnNotes = CertificationScoreCalculator.ColumnNotes(criterion, answers),
+                Note = note,
+                Points = decimal.Round((note ?? 0m) * criterion.Weight / 100m, 2, MidpointRounding.AwayFromZero)
+            };
+        }
+
         public async Task<CertificationOperationResult> ResolveAsync(long id, bool approve, string currentUserId)
         {
             var certification = await _dbContext.Certifications.FirstOrDefaultAsync(c => c.Id == id);
@@ -830,7 +1163,7 @@ namespace ApiCoaching.Repositories
                 return Fail(CertificationOperationStatus.Invalid, "Solo se puede aprobar o rechazar una certificaci\u00f3n pendiente de aprobaci\u00f3n.");
             }
 
-            var now = DateTime.Now;
+            var now = DateTime.UtcNow;
             certification.Status = approve ? CertificationStatus.Approved : CertificationStatus.Rejected;
             certification.ResolvedAt = now;
             certification.ResolvedBy = currentUserId;
@@ -858,188 +1191,6 @@ namespace ApiCoaching.Repositories
 
 
 
-
-
-using ApiCoaching.Dtos.Certifications;
-using ApiCoaching.Models;
-
-namespace ApiCoaching.Repositories.Interfaces
-{
-    public enum CertificationOperationStatus
-    {
-        Done,
-        NotFound,
-        Invalid,
-        Forbidden
-    }
-
-    public sealed record CertificationOperationResult(
-        CertificationOperationStatus Status, string? Message = null, long? Id = null);
-
-    public interface ICertificationsRepository
-    {
-        Task<List<CertificationFormatDto>> GetFormatsAsync();
-
-        Task<CertificationOperationResult> SaveFormatAsync(int? id, SaveCertificationFormatRequestDto request, string currentUserId);
-
-        Task<CertificationOperationResult> DeleteFormatAsync(int id, string currentUserId);
-
-        Task<List<CertifierDto>> GetCertifiersAsync(int? areaId, string? search);
-
-        Task<List<CertifierTeamDto>> GetTeamsByAreaAsync(int areaId);
-
-        Task<List<CertifierDto>> GetCertifierCandidatesAsync(int areaId, string? search);
-
-        Task<CertificationOperationResult> DesignateCertifierAsync(string userId, List<int> teamIds, string currentUserId);
-
-        Task<CertificationOperationResult> RemoveCertifierAsync(string userId, string currentUserId);
-
-        Task<List<AssignedTeamDto>> GetAssignedTeamsAsync(string certifierUserId);
-
-        Task<CertificationOperationResult> ApplyAsync(ApplyCertificationRequestDto request, string certifierUserId);
-
-        Task<List<CertificationDto>> GetCertificationsAsync(
-            string? assignedToCertifierId, int? areaId, int? teamId, string? certifierId,
-            CertificationStatus? status, string? search);
-
-        Task<CertificationOperationResult> ResolveAsync(long id, bool approve, string currentUserId);
-
-        Task<CertificationBreakdownDto?> GetBreakdownAsync(long id);
-    }
-}
-
-
-
-
-
-
-
-using ApiCoaching.Dtos.Certifications;
-using System.Globalization;
-
-namespace ApiCoaching.Services
-{
-    public static class CertificationScoreCalculator
-    {
-        private const string ObservationsColumn = "observaciones";
-
-        public static IEnumerable<string> EvaluationColumns(FormatCriterionDto criterion) =>
-            criterion.Columns.Where(c => !string.Equals(c.Trim(), ObservationsColumn, StringComparison.OrdinalIgnoreCase));
-
-        public static string ResolveCalc(FormatCriterionDto criterion)
-        {
-            if (criterion.Calc is "ratio" or "ce" or "last")
-            {
-                return criterion.Calc;
-            }
-
-            if (criterion.Indicators.Count > 0 && criterion.Indicators.All(i => i.Type == "CE/NCE"))
-            {
-                return "ce";
-            }
-
-            return criterion.Indicators.Count >= 2 &&
-                   criterion.Indicators[0].Type != "CE/NCE" && criterion.Indicators[1].Type != "CE/NCE" &&
-                   criterion.Indicators[0].Type != "%" && criterion.Indicators[1].Type != "%"
-                ? "ratio"
-                : "last";
-        }
-
-        public static bool HasRating(
-            FormatCriterionDto criterion,
-            Dictionary<string, Dictionary<string, string>>? answers) =>
-            answers is not null && criterion.Indicators.Any(ind =>
-                answers.TryGetValue(ind.Id, out var cells) &&
-                EvaluationColumns(criterion).Any(col => cells.TryGetValue(col, out var v) && !string.IsNullOrWhiteSpace(v)));
-
-        // Nota del criterio en 0-100; null si no hay datos o todas las celdas son NA
-        public static decimal? CriterionScore(
-            FormatCriterionDto criterion,
-            Dictionary<string, Dictionary<string, string>>? answers)
-        {
-            answers ??= [];
-            string? Cell(FormatIndicatorDto ind, string col) =>
-                answers.TryGetValue(ind.Id, out var cells) && cells.TryGetValue(col, out var v) ? v?.Trim() : null;
-
-            var notes = new List<decimal>();
-            var columns = EvaluationColumns(criterion).ToList();
-
-            switch (ResolveCalc(criterion))
-            {
-                case "ratio" when criterion.Indicators.Count >= 2:
-                    foreach (var col in columns)
-                    {
-                        var p = Cell(criterion.Indicators[0], col);
-                        var r = Cell(criterion.Indicators[1], col);
-                        if (IsNa(p) || IsNa(r)) continue;
-                        if (TryNum(p, out var pv) && pv > 0 && TryNum(r, out var rv))
-                        {
-                            notes.Add(Math.Min(100m, Round(rv / pv * 100m)));
-                        }
-                    }
-                    break;
-
-                case "ce":
-                    foreach (var col in columns)
-                    {
-                        var values = criterion.Indicators.Select(i => Cell(i, col)).ToList();
-                        var ce = values.Count(v => string.Equals(v, "CE", StringComparison.OrdinalIgnoreCase));
-                        var nce = values.Count(v => string.Equals(v, "NCE", StringComparison.OrdinalIgnoreCase));
-                        if (ce + nce > 0)
-                        {
-                            notes.Add(Round((decimal)ce / (ce + nce) * 100m));
-                        }
-                    }
-                    break;
-
-                default:
-                    var last = columns.LastOrDefault();
-                    if (last is null) break;
-                    var nums = criterion.Indicators
-                        .Select(i => TryNum(Cell(i, last), out var v) ? (decimal?)v : null)
-                        .Where(v => v.HasValue)
-                        .Select(v => v!.Value)
-                        .ToList();
-                    if (nums.Count > 0)
-                    {
-                        notes.Add(Math.Min(100m, Round(nums.Average())));
-                    }
-                    break;
-            }
-
-            return notes.Count > 0 ? Round(notes.Average()) : null;
-        }
-
-        // Nota final = suma de (nota del criterio * peso / 100)
-        public static List<CertificationBreakdownRowDto> Breakdown(
-            IEnumerable<FormatCriterionDto> criteria,
-            Dictionary<string, Dictionary<string, Dictionary<string, string>>> answers) =>
-            [.. criteria.Select(c =>
-            {
-                answers.TryGetValue(c.Id, out var criterionAnswers);
-                var note = CriterionScore(c, criterionAnswers);
-                return new CertificationBreakdownRowDto
-                {
-                    Name = c.Name,
-                    Weight = c.Weight,
-                    Note = note,
-                    Points = Round((note ?? 0m) * c.Weight / 100m)
-                };
-            })];
-
-        public static decimal FinalScore(
-            IEnumerable<FormatCriterionDto> criteria,
-            Dictionary<string, Dictionary<string, Dictionary<string, string>>> answers) =>
-            Round(Breakdown(criteria, answers).Sum(r => r.Points));
-
-        private static bool IsNa(string? value) => string.Equals(value, "NA", StringComparison.OrdinalIgnoreCase);
-
-        private static bool TryNum(string? value, out decimal number) =>
-            decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out number);
-
-        private static decimal Round(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
-    }
-}
 
 
 
@@ -1148,6 +1299,12 @@ namespace ApiCoaching.Endpoints
                 .WithName("GetCertificationBreakdown")
                 .WithSummary("Obtiene el desglose del puntaje final por criterio de una certificación.")
                 .Produces<ResponseObject<CertificationBreakdownDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound);
+
+            group.MapGet("{id:long}/export", GetExport)
+                .WithName("ExportCertification")
+                .WithSummary("Obtiene la información completa de una certificación para generar su PDF: criterios, respuestas, notas por columna y por criterio, puntaje final y aprobación.")
+                .Produces<ResponseObject<CertificationExportDto>>(StatusCodes.Status200OK)
                 .Produces<ResponseObjectError>(StatusCodes.Status404NotFound);
 
             group.MapPost("{id:long}/approve", (long id, ICertificationsRepository repository, ClaimsPrincipal user, ILoggerFactory loggerFactory) =>
@@ -1265,6 +1422,12 @@ namespace ApiCoaching.Endpoints
                     ? Ok(breakdown)
                     : Error(404, "No se encontró la certificación."));
 
+        private static Task<IResult> GetExport(long id, ICertificationsRepository repository, ILoggerFactory loggerFactory) =>
+            Execute(loggerFactory, "ExportCertificationError", async () =>
+                await repository.GetExportAsync(id) is { } data
+                    ? Ok(data)
+                    : Error(404, "No se encontró la certificación."));
+
         private static Task<IResult> Resolve(
             long id, bool approve, ICertificationsRepository repository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
             WithUser(claimsPrincipal, loggerFactory, "ResolveCertificationError", async userId =>
@@ -1328,115 +1491,282 @@ namespace ApiCoaching.Endpoints
 
 
 
-import { useEffect, useState } from "react";
-import { profileService } from "../../../api/profileService";
 
-export const STATUS = {
-    pending: "Pendiente aprobación",
-    approved: "Aprobado",
-    rejected: "No aprobado",
+
+
+
+
+
+
+// =====================================================================
+// AppDbContext.cs — 3 cambios
+// =====================================================================
+
+// (A) Arriba del archivo, junto a los demás using:
+
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+
+
+// (B) Dentro de OnModelCreating, ANTES del bloque de UspGetAS400Queries.
+//     Primero busca (Ctrl+F) "HasOne(x => x.Format)":
+//       - Si NO existe → pega este bloque.
+//       - Si YA existe → solo asegúrate de que termine en .OnDelete(DeleteBehavior.SetNull)
+//     Así, al borrar un formato, las certificaciones quedan con FormatId = null
+//     (conservan su copia de criterios) en lugar de que SQL rechace el borrado.
+
+            modelBuilder.Entity<Certification>()
+                .HasOne(x => x.Format)
+                .WithMany()
+                .HasForeignKey(x => x.FormatId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+
+// (C) AL FINAL de OnModelCreating (después del bloque de UspGetAS400Queries):
+
+            // Coaching y Certificación guardan fechas en UTC. Al leerlas se marcan como UTC
+            // para que el JSON salga con "Z" y el navegador las muestre en hora local.
+            // Las fechas sin hora (vigencias, compromisos, fecha de certificación) no se tocan.
+            var utc = new ValueConverter<DateTime, DateTime>(
+                v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+            var utcNullable = new ValueConverter<DateTime?, DateTime?>(
+                v => v, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+            string[] dateOnly = ["ValidFrom", "ValidTo", "CommitmentDate", "CertificationDate"];
+
+            foreach (var type in new[]
+            {
+                typeof(CoachingSession), typeof(TeamMemberIndicatorAssignment),
+                typeof(CoachingActionPlan), typeof(CoachingAction),
+                typeof(CertificationFormat), typeof(TeamCertifier), typeof(Certification)
+            })
+            {
+                foreach (var property in modelBuilder.Entity(type).Metadata.GetProperties()
+                             .Where(p => !dateOnly.Contains(p.Name)))
+                {
+                    if (property.ClrType == typeof(DateTime)) property.SetValueConverter(utc);
+                    else if (property.ClrType == typeof(DateTime?)) property.SetValueConverter(utcNullable);
+                }
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// =====================================================================
+// Coaching — 2 ajustes para que todo quede en UTC
+// =====================================================================
+
+// (A) Endpoints/CoachingEndpoints.cs → CreateIndicatorAssignments
+//     Hay DOS líneas "CreatedAt = DateTime.Now," (la de la sesión y la de la asignación).
+//     Cámbialas ambas por:
+
+                            CreatedAt = DateTime.UtcNow,
+
+//     Si en CoachingRepository.cs aparece algún DateTime.Now, cámbialo también a DateTime.UtcNow.
+//     NO cambies los "OperationDate = DateTime.Now" de la bitácora (ModelLog): los usa toda la app.
+
+
+// (B) Repositories/CoachingRepository.cs → GetSessionExportAsync (el export de coaching)
+//     El helper AsUtc ya no hace falta, porque AppDbContext marca las fechas como UTC.
+//     Reemplaza estas 3 expresiones:
+
+//         CoachingDate = AsUtc(session.SubmittedAt),
+//     por:
+                CoachingDate = session.SubmittedAt,
+
+//         ... At = AsUtc(session.SubmittedAt)!.Value }
+//     por:
+                ... At = session.SubmittedAt.Value }
+
+//         ... At = AsUtc(session.ReviewedAt)!.Value }
+//     por:
+                ... At = session.ReviewedAt.Value }
+
+//     Y borra el método completo:
+//         private static DateTime? AsUtc(DateTime? value) => ...
+//     (con su comentario /// <summary> de arriba).
+
+
+
+
+
+
+
+
+
+
+
+// =====================================================================
+// MIGRACIÓN
+// 1) En la consola (carpeta del proyecto):
+//
+//      dotnet ef migrations add CertificationCriteriaSnapshotAndUtcDates
+//
+// 2) Abre el archivo que se generó en Migrations. Debe tener un AddColumn de
+//    "CriteriaJson" en "Certifications" (y quizá cambios de FK por el SetNull; está bien).
+//
+// 3) En Up(), DEBAJO de todo lo generado, pega:
+// =====================================================================
+
+            // Copia de la estructura para las certificaciones que ya existen
+            migrationBuilder.Sql(@"
+                UPDATE c SET c.CriteriaJson = f.CriteriaJson
+                FROM Certifications c
+                INNER JOIN CertificationFormats f ON f.Id = c.FormatId
+                WHERE c.CriteriaJson IS NULL;");
+
+            // Fechas que se guardaron en hora de Honduras (UTC-6) → UTC.
+            // (SubmittedAt, ReviewedAt, AcceptedAt y EvaluatedAt ya estaban en UTC: no se tocan)
+            migrationBuilder.Sql(@"
+                UPDATE CoachingSessions SET CreatedAt = DATEADD(HOUR, 6, CreatedAt);
+                UPDATE TeamMembersIndicatorsAssignments SET CreatedAt = DATEADD(HOUR, 6, CreatedAt);
+                UPDATE CertificationFormats SET CreatedAt = DATEADD(HOUR, 6, CreatedAt),
+                                                LastModifiedAt = DATEADD(HOUR, 6, LastModifiedAt);
+                UPDATE TeamCertifiers SET DesignatedAt = DATEADD(HOUR, 6, DesignatedAt);
+                UPDATE Certifications SET CreatedAt = DATEADD(HOUR, 6, CreatedAt),
+                                          LastModifiedAt = DATEADD(HOUR, 6, LastModifiedAt),
+                                          ResolvedAt = DATEADD(HOUR, 6, ResolvedAt);");
+
+
+// =====================================================================
+// 4) En Down(), ARRIBA de todo lo generado (antes del DropColumn), pega:
+// =====================================================================
+
+            migrationBuilder.Sql(@"
+                UPDATE CoachingSessions SET CreatedAt = DATEADD(HOUR, -6, CreatedAt);
+                UPDATE TeamMembersIndicatorsAssignments SET CreatedAt = DATEADD(HOUR, -6, CreatedAt);
+                UPDATE CertificationFormats SET CreatedAt = DATEADD(HOUR, -6, CreatedAt),
+                                                LastModifiedAt = DATEADD(HOUR, -6, LastModifiedAt);
+                UPDATE TeamCertifiers SET DesignatedAt = DATEADD(HOUR, -6, DesignatedAt);
+                UPDATE Certifications SET CreatedAt = DATEADD(HOUR, -6, CreatedAt),
+                                          LastModifiedAt = DATEADD(HOUR, -6, LastModifiedAt),
+                                          ResolvedAt = DATEADD(HOUR, -6, ResolvedAt);");
+
+
+// =====================================================================
+// 5) Aplica:   dotnet ef database update
+// =====================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+import { apiFeedbackAuthorized } from "./APIS";
+import { endpointsAPI } from "./endpointApi";
+
+const base = endpointsAPI.certifications;
+
+const params = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== "" && v !== null && v !== undefined));
+
+export const certificationService = {
+  /* Formatos */
+  formats: async () => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/formats`);
+    return data.data ?? [];
+  },
+
+  // body: { name, teamId, criteria, finalFormula, minScore }
+  createFormat: async (body) => {
+    const { data } = await apiFeedbackAuthorized.post(`${base}/formats`, body);
+    return data.data;
+  },
+
+  updateFormat: async (id, body) => {
+    const { data } = await apiFeedbackAuthorized.put(`${base}/formats/${id}`, body);
+    return data.data;
+  },
+
+  removeFormat: async (id) => {
+    const { data } = await apiFeedbackAuthorized.delete(`${base}/formats/${id}`);
+    return data.data;
+  },
+
+  /* Gestión de certificadores */
+  certifiers: async ({ areaId, search } = {}) => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/certifiers`, { params: params({ areaId, search }) });
+    return data.data ?? [];
+  },
+
+  teamsByArea: async (areaId) => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/certifiers/teams`, { params: { areaId } });
+    return data.data ?? [];
+  },
+
+  candidates: async (areaId, search) => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/certifiers/candidates`, { params: params({ areaId, search }) });
+    return data.data ?? [];
+  },
+
+  designate: async (userId, teamIds) => {
+    const { data } = await apiFeedbackAuthorized.post(`${base}/certifiers`, { userId, teamIds });
+    return data.data;
+  },
+
+  removeCertifier: async (userId) => {
+    const { data } = await apiFeedbackAuthorized.delete(`${base}/certifiers/${userId}`);
+    return data.data;
+  },
+
+  /* Aplicar certificación */
+  myTeams: async () => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/my-teams`);
+    return data.data ?? [];
+  },
+
+  // body: { teamId, leaderUserId, date, answers, suggestions }
+  apply: async (body) => {
+    const { data } = await apiFeedbackAuthorized.post(base, body);
+    return data.data;
+  },
+
+  /* Historiales */
+  mine: async () => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/mine`);
+    return data.data ?? [];
+  },
+
+  all: async ({ areaId, teamId, certifierId, status, search } = {}) => {
+    const { data } = await apiFeedbackAuthorized.get(base, { params: params({ areaId, teamId, certifierId, status, search }) });
+    return data.data ?? [];
+  },
+
+  breakdown: async (id) => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/${id}/breakdown`);
+    return data.data;
+  },
+
+  // Datos completos para el PDF (criterios, respuestas, notas y aprobación)
+  exportData: async (id) => {
+    const { data } = await apiFeedbackAuthorized.get(`${base}/${id}/export`);
+    return data.data;
+  },
+
+  approve: async (id) => {
+    const { data } = await apiFeedbackAuthorized.post(`${base}/${id}/approve`);
+    return data.data;
+  },
+
+  reject: async (id) => {
+    const { data } = await apiFeedbackAuthorized.post(`${base}/${id}/reject`);
+    return data.data;
+  },
 };
 
-const API_STATUS = { Pending: STATUS.pending, Approved: STATUS.approved, Rejected: STATUS.rejected };
-
-// Adapta una certificación de la API a la forma que usan las pantallas
-export const mapCertification = (c) => ({ ...c, date: c.date.slice(0, 10), status: API_STATUS[c.status] ?? STATUS.rejected });
-
-let mePromise = null;
-
-// Usuario en sesión (id y nombre); se consulta una sola vez
-export const useCurrentUser = () => {
-    const [me, setMe] = useState(null);
-    useEffect(() => {
-        mePromise ??= profileService
-            .get()
-            .then((u) => ({ id: u.id, name: u.fullName?.trim() || `${u.firstName} ${u.lastName}` }))
-            .catch(() => {
-                mePromise = null;
-                return null;
-            });
-        mePromise.then(setMe);
-    }, []);
-    return me;
-};
-
-const isObservations = (col) => col.trim().toLowerCase() === "observaciones";
-
-// Mismo criterio que el backend: ratio = realizados/programados, ce = CE/(CE+NCE), last = promedio de la última columna
-const resolveCalc = (criterion) => {
-    if (criterion.calc === "ratio" || criterion.calc === "ce" || criterion.calc === "last") return criterion.calc;
-    const types = criterion.indicators.map((i) => i.type);
-    if (types.length > 0 && types.every((t) => t === "CE/NCE")) return "ce";
-    const numeric = (t) => t !== "CE/NCE" && t !== "%";
-    return types.length >= 2 && numeric(types[0]) && numeric(types[1]) ? "ratio" : "last";
-};
-
-// Formato de la API listo para el formulario de aplicación (sin la columna de observaciones)
-export const toApplyFormat = (format) => ({
-    id: format.id,
-    name: format.name,
-    minScore: Number(format.minScore),
-    criteria: format.criteria.map((c) => ({
-        ...c,
-        calc: resolveCalc(c),
-        columns: c.columns.filter((col) => !isObservations(col)),
-        noteLabel: `Nota: ${c.name}`,
-    })),
-});
-
-/* ---------------- Cálculo de notas ---------------- */
-const round2 = (n) => Number(n.toFixed(2));
-const num = (v) => {
-    const n = parseFloat(v);
-    return Number.isNaN(n) ? null : n;
-};
-const avg = (list) => (list.length ? round2(list.reduce((a, b) => a + b, 0) / list.length) : null);
-const isFilled = (v) => v !== undefined && v !== null && String(v).trim() !== "";
-
-// answers: { [indicatorId]: { [column]: valor, __obs: texto } }
-// Devuelve notas por columna ("NA" | número | null) y la nota del criterio (número | null)
-export const computeCriterion = (criterion, answers = {}) => {
-    const cell = (ind, col) => answers[ind.id]?.[col];
-    const colNotes = {};
-
-    if (criterion.calc === "ratio") {
-        const [prog, real] = criterion.indicators;
-        criterion.columns.forEach((col) => {
-            const p = cell(prog, col);
-            const r = cell(real, col);
-            if (p === "NA" || r === "NA") colNotes[col] = "NA";
-            else if (num(p) > 0 && num(r) !== null) colNotes[col] = Math.min(100, round2((num(r) / num(p)) * 100));
-            else colNotes[col] = null;
-        });
-    } else if (criterion.calc === "ce") {
-        criterion.columns.forEach((col) => {
-            const values = criterion.indicators.map((ind) => cell(ind, col));
-            const ce = values.filter((v) => v === "CE").length;
-            const nce = values.filter((v) => v === "NCE").length;
-            if (ce + nce > 0) colNotes[col] = round2((ce / (ce + nce)) * 100);
-            else colNotes[col] = values.some((v) => v === "NA") ? "NA" : null;
-        });
-    } else {
-        const last = criterion.columns[criterion.columns.length - 1];
-        const values = criterion.indicators.map((ind) => num(cell(ind, last))).filter((v) => v !== null);
-        colNotes[last] = values.length ? Math.min(100, avg(values)) : null;
-    }
-
-    const numeric = Object.values(colNotes).filter((v) => typeof v === "number");
-    return { colNotes, nota: avg(numeric) };
-};
-
-export const hasRating = (criterion, answers = {}) =>
-    criterion.indicators.some((ind) => criterion.columns.some((col) => isFilled(answers[ind.id]?.[col])));
-
-// Nota Final = Σ (Nota_Criterio × Peso / 100)
-export const computeFinal = (format, answersByCriterion) => {
-    const rows = format.criteria.map((c) => {
-        const { colNotes, nota } = computeCriterion(c, answersByCriterion[c.id]);
-        return { criterion: c, colNotes, nota, points: round2(((nota ?? 0) * c.weight) / 100) };
-    });
-    return { rows, total: round2(rows.reduce((s, r) => s + r.points, 0)) };
-};
 
 
 
@@ -1445,66 +1775,11 @@ export const computeFinal = (format, answersByCriterion) => {
 
 
 
-import { useState } from "react";
-import { useToast } from "../../../shared/components";
-import { useAuthStore } from "../../../hooks/useAuthStore";
-import { displayName } from "../../../helpers/format";
-import { exportPdf, exportReport } from "../../../shared/reports";
-import { buildCertificationPdf, certificationFileName, certificationHistoryReport } from "./certificationReport";
-import {STATUS} from "./certificationStore";
-/**
- * Descargas de la épica Certificación, compartidas por las 3 pantallas.
- * busy: "pdf-<id>" | "excel" | null  (para deshabilitar botones mientras se genera)
- */
-export const useCertificationReports = () => {
-  const toast = useToast();
-  const { user } = useAuthStore();
-  const [busy, setBusy] = useState(null);
-  const generatedBy = displayName(user);
-
-  /** PDF de una certificación (solo aprobadas) */
-  const downloadPdf = async (cert) => {
-    if (cert.status !== STATUS.approved) {
-      toast.error("El PDF solo está disponible para certificaciones aprobadas");
-      return;
-    }
-    const fileName = certificationFileName(cert);
-    setBusy(`pdf-${cert.id}`);
-    try {
-      await exportPdf(buildCertificationPdf(cert, { generatedBy }), fileName);
-      toast.success("PDF generado", fileName);
-    } catch (err) {
-      console.error(err);
-      toast.error("No se pudo generar el PDF", "Intenta de nuevo en unos momentos.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  /** Excel del historial filtrado */
-  const exportHistory = async ({ title, rows, filters, hideArea }) => {
-    setBusy("excel");
-    try {
-      await exportReport("excel", certificationHistoryReport({ title, rows, filters, hideArea, generatedBy }));
-      toast.success("Excel generado", `Se exportaron ${rows.length} certificaciones.`);
-    } catch (err) {
-      console.error(err);
-      toast.error("No se pudo generar el Excel", "Intenta de nuevo en unos momentos.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return { downloadPdf, exportHistory, busy };
-};
 
 
 
 
-
-
-
-import { STATUS, computeFinal } from "./certificationStore";
+import { STATUS } from "./certificationStore";
 
 /* =========================================================
    Reportes de Certificación
@@ -1585,6 +1860,45 @@ export const historyFilters = ({ area, team, certifier, status, search }) =>
     search?.trim() && { label: "Líder", value: search.trim() },
   ].filter(Boolean);
 
+/**
+ * Respuesta de GET /api/certifications/{id}/export → datos que usa buildCertificationPdf().
+ * El backend ya calcula las notas (por columna, por criterio y final); aquí solo se acomodan.
+ */
+export const fromExport = (d) => {
+  const criteria = (d.criteria ?? []).map((c) => ({ ...c, noteLabel: `Nota: ${c.name}` }));
+
+  return {
+    id: d.id,
+    teamName: d.teamName,
+    area: d.area,
+    leaderName: d.leaderName,
+    certifier: d.certifierName,
+    formatName: d.formatName,
+    date: d.date,
+    minScore: d.minScore,
+    suggestions: d.suggestions,
+    registeredAt: d.registeredAt,
+    resolvedBy: d.resolvedByName,
+    resolvedAt: d.resolvedAt,
+    criteria,
+    rows: criteria.map((c) => ({
+      criterion: c,
+      colNotes: Object.fromEntries((c.columnNotes ?? []).map((n) => [n.column, n.isNa ? "NA" : n.value])),
+      nota: c.note,
+      points: c.points,
+    })),
+    // { [criterioId]: { [indicadorId]: { [columna]: valor, __obs } } }
+    answers: Object.fromEntries(
+      criteria.map((c) => [
+        c.id,
+        Object.fromEntries(c.indicators.map((i) => [i.id, { ...i.values, __obs: i.observation ?? "" }])),
+      ])
+    ),
+    total: Number(d.score ?? 0),
+    passes: Boolean(d.passes),
+  };
+};
+
 /* =========================================================
    2) PDF DE UNA CERTIFICACIÓN (estructura del anexo)
    ========================================================= */
@@ -1645,9 +1959,7 @@ const titleBar = (config, text, margin = [0, 12, 0, 0]) => ({
  * @param {object} options  { generatedBy }
  */
 export const buildCertificationPdf = (cert, { generatedBy } = {}) => (config, { generatedAt }) => {
-  const criteria = cert.criteria ?? [];
-  const { rows, total } = computeFinal({ criteria }, cert.answers ?? {});
-  const passes = total >= (cert.minScore ?? 0);
+  const { criteria = [], rows = [], total = 0, passes = false } = cert;
   const fileName = certificationFileName(cert);
   const brand = config.brandName ?? config.system ?? "eCoaching";
   const pageW = config.pageSize === "A4" ? 595.28 : 612;
@@ -1890,110 +2202,67 @@ export const buildCertificationPdf = (cert, { generatedBy } = {}) => (config, { 
 
 
 
-import { apiFeedbackAuthorized } from "./APIS";
-import { endpointsAPI } from "./endpointApi";
 
-const base = endpointsAPI.certifications;
 
-const params = (obj) => Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== "" && v !== null && v !== undefined));
 
-export const certificationService = {
-  /* Formatos */
-  formats: async () => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/formats`);
-    return data.data ?? [];
-  },
 
-  // body: { name, teamId, criteria, finalFormula, minScore }
-  createFormat: async (body) => {
-    const { data } = await apiFeedbackAuthorized.post(`${base}/formats`, body);
-    return data.data;
-  },
 
-  updateFormat: async (id, body) => {
-    const { data } = await apiFeedbackAuthorized.put(`${base}/formats/${id}`, body);
-    return data.data;
-  },
 
-  removeFormat: async (id) => {
-    const { data } = await apiFeedbackAuthorized.delete(`${base}/formats/${id}`);
-    return data.data;
-  },
 
-  /* Gestión de certificadores */
-  certifiers: async ({ areaId, search } = {}) => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/certifiers`, { params: params({ areaId, search }) });
-    return data.data ?? [];
-  },
 
-  teamsByArea: async (areaId) => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/certifiers/teams`, { params: { areaId } });
-    return data.data ?? [];
-  },
+import { useState } from "react";
+import { useToast } from "../../../shared/components";
+import { useAuthStore } from "../../../hooks/useAuthStore";
+import { displayName } from "../../../helpers/format";
+import { exportPdf, exportReport } from "../../../shared/reports";
+import { certificationService } from "../../../api/certificationService";
+import { buildCertificationPdf, certificationFileName, certificationHistoryReport, fromExport } from "./certificationReport";
+import { STATUS } from "./certificationStore";
 
-  candidates: async (areaId, search) => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/certifiers/candidates`, { params: params({ areaId, search }) });
-    return data.data ?? [];
-  },
+/**
+ * Descargas de la épica Certificación, compartidas por las 3 pantallas.
+ * busy: "pdf-<id>" | "excel" | null  (para deshabilitar botones mientras se genera)
+ */
+export const useCertificationReports = () => {
+  const toast = useToast();
+  const { user } = useAuthStore();
+  const [busy, setBusy] = useState(null);
+  const generatedBy = displayName(user);
 
-  designate: async (userId, teamIds) => {
-    const { data } = await apiFeedbackAuthorized.post(`${base}/certifiers`, { userId, teamIds });
-    return data.data;
-  },
+  /** PDF de una certificación (solo aprobadas). Los datos completos vienen de /export */
+  const downloadPdf = async (cert) => {
+    if (cert.status !== STATUS.approved) {
+      toast.error("El PDF solo está disponible para certificaciones aprobadas");
+      return;
+    }
+    const fileName = certificationFileName(cert);
+    setBusy(`pdf-${cert.id}`);
+    try {
+      const data = fromExport(await certificationService.exportData(cert.id));
+      await exportPdf(buildCertificationPdf(data, { generatedBy }), fileName);
+      toast.success("PDF generado", fileName);
+    } catch (err) {
+      console.error(err);
+      toast.error("No se pudo generar el PDF", "Intenta de nuevo en unos momentos.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
-  removeCertifier: async (userId) => {
-    const { data } = await apiFeedbackAuthorized.delete(`${base}/certifiers/${userId}`);
-    return data.data;
-  },
+  /** Excel del historial filtrado (filas que ya están en pantalla) */
+  const exportHistory = async ({ title, rows, filters, hideArea }) => {
+    setBusy("excel");
+    try {
+      await exportReport("excel", certificationHistoryReport({ title, rows, filters, hideArea, generatedBy }));
+      toast.success("Excel generado", `Se exportaron ${rows.length} certificaciones.`);
+    } catch (err) {
+      console.error(err);
+      toast.error("No se pudo generar el Excel", "Intenta de nuevo en unos momentos.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
-  /* Aplicar certificación */
-  myTeams: async () => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/my-teams`);
-    return data.data ?? [];
-  },
-
-  // body: { teamId, leaderUserId, date, answers, suggestions }
-  apply: async (body) => {
-    const { data } = await apiFeedbackAuthorized.post(base, body);
-    return data.data;
-  },
-
-  /* Historiales */
-  mine: async () => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/mine`);
-    return data.data ?? [];
-  },
-
-  all: async ({ areaId, teamId, certifierId, status, search } = {}) => {
-    const { data } = await apiFeedbackAuthorized.get(base, { params: params({ areaId, teamId, certifierId, status, search }) });
-    return data.data ?? [];
-  },
-
-  breakdown: async (id) => {
-    const { data } = await apiFeedbackAuthorized.get(`${base}/${id}/breakdown`);
-    return data.data;
-  },
-
-  approve: async (id) => {
-    const { data } = await apiFeedbackAuthorized.post(`${base}/${id}/approve`);
-    return data.data;
-  },
-
-  reject: async (id) => {
-    const { data } = await apiFeedbackAuthorized.post(`${base}/${id}/reject`);
-    return data.data;
-  },
+  return { downloadPdf, exportHistory, busy };
 };
-
-
-
-
-
-
-
-
-
-
-
-
 
