@@ -1,8 +1,33 @@
-            ? { image: config.logoOnDark.dataUrl, fit: [150, 50], fillColor: config.primaryColor, margin: [8, 8, 16, 8] }
+  /* ---------- Encabezado ---------- */
+  // pdfmake no centra verticalmente dentro de una celda: se calcula el margen
+  // superior del título a partir del alto real del logo.
+  const LOGO_BOX = [150, 50]; // tamaño máximo del logo (ancho, alto)
+  const PAD = 8; // margen arriba y abajo de la banda
+  const TITLE_LINE = 18; // alto aproximado de una línea de título a 15 pt
+  const logo = config.logoOnDark;
+  const logoH = logo?.width
+    ? Math.min(LOGO_BOX[1], (LOGO_BOX[0] * logo.height) / logo.width)
+    : 20;
+  const bannerH = logoH + PAD * 2;
+  const titleTop = Math.max(PAD, (bannerH - TITLE_LINE) / 2);
 
-
-
-
-
-
-      { canvas: [{ type: "line", x1: 0, y1: 6, x2: 240, y2: 6, lineWidth: 1.5, lineColor: config.primaryColor }] },
+  const header = [
+    {
+      table: {
+        widths: ["*", "auto"],
+        body: [[
+          {
+            text: `Formato Certificación "${cert.teamName}"`,
+            fontSize: 15, bold: true, color: "#FFFFFF",
+            fillColor: config.primaryColor,
+            margin: [16, titleTop, 8, Math.max(PAD, bannerH - titleTop - TITLE_LINE)],
+          },
+          logo
+            ? { image: logo.dataUrl, fit: LOGO_BOX, fillColor: config.primaryColor, margin: [8, PAD, 16, PAD] }
+            : { text: brand, bold: true, fontSize: 16, color: config.accentColor, fillColor: config.primaryColor, margin: [8, titleTop, 16, PAD] },
+        ]],
+      },
+      layout: noLines,
+    },
+    { canvas: [{ type: "rect", x: 0, y: 0, w: pageW - M * 2, h: 3, color: config.accentColor }] },
+  ];
