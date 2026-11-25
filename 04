@@ -1,139 +1,620 @@
-import { apiFeedbackAuthorized } from "./APIS";
-import { endpointsAPI } from "./endpointApi";
+/* =========================================================
+   PDF "Formato de Coaching" (Épica Coach - HU2)
+   Estructura del anexo "Tipo de reporte PDF (Épica Coach)".
+   Cuando exista el endpoint de detalle, solo hay que ajustar
+   toCoachingReportData() con los nombres de campos de la API.
+   ========================================================= */
 
+const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
-export const USER_STATUS = { INACTIVO: 0, ACTIVO: 1 };
+// Mismo catálogo que usa CollaboratorCoachingPage (measurementType)
+const MEASURE_TYPES = { 1: "Cumplimiento", 2: "Comportamiento", 3: "Conocimiento" };
 
-// Todas las opciones de estado.
-// ⚠️ Confirmar con backend los valores 2, 3 y 4 (solo 0 y 1 están confirmados).
-export const USER_STATUS_OPTIONS = [
-  { value: 1, label: "Activo" },
-  { value: 2, label: "De vacaciones" },
-  { value: 3, label: "Maternidad" },
-  { value: 4, label: "Incapacitado(a)" },
-  { value: 0, label: "Inactivo" },
-];
+const pad = (n) => String(n).padStart(2, "0");
+const round2 = (n) => Number(Number(n).toFixed(2));
 
-// "De Vacaciones" / "incapacitado" → valor numérico
-const normalizeStatus = (text = "") => text.toLowerCase().replace("(a)", "").trim();
-export const statusValueFromLabel = (label) =>
-  USER_STATUS_OPTIONS.find((o) => normalizeStatus(o.label) === normalizeStatus(label))?.value ?? "";
-export const statusLabelFromValue = (value) =>
-  USER_STATUS_OPTIONS.find((o) => o.value === Number(value))?.label ?? "";
+// "2025-04-15" → "15/04/2025" (sin desfase de zona horaria)
+const dmy = (iso) => {
+  if (!iso) return "—";
+  const [y, m, d] = String(iso).slice(0, 10).split("-");
+  return d ? `${d}/${m}/${y}` : String(iso);
+};
 
-// Campos que acepta el filtro. null = ese filtro no se aplica.
-const FILTER_FIELDS = [
-  "search",
-  "status",
-  "employeeBranchUbication",
-  "companyPositionId",
-  "companyLocationId",
-  "companyAreaId",
-  "companyBranchId",
-  "roleId",
-  "pageNumber",
-  "pageSize",
-];
+// "2025-04" o "2025-04-15" → "Abril 2025"
+const periodLabel = (value) => {
+  if (!value) return "—";
+  const [y, m] = String(value).split("-");
+  return MONTHS[Number(m) - 1] ? `${MONTHS[Number(m) - 1]} ${y}` : String(value);
+};
 
-const toFilterRequest = (filters = {}) =>
-  Object.fromEntries(
-    FILTER_FIELDS.map((field) => {
-      const value = filters[field];
-      return [field, value === "" || value === undefined ? null : value];
-    })
+const dateTime = (d) => {
+  const h = d.getHours();
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(h % 12 || 12)}:${pad(d.getMinutes())} ${h < 12 ? "a. m." : "p. m."}`;
+};
+
+const slug = (text) =>
+  String(text ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+/* ---------- Datos: proceso de coaching → reporte ---------- */
+
+/** Normaliza el proceso (mock hoy, API mañana) al formato que usa el PDF */
+export const toCoachingReportData = (c) => {
+  const indicators = (c.indicators ?? []).map((ind) => {
+    const achievement = ind.achievement ?? null; // % de resultado calculado
+    const weight = Number(ind.weight ?? 0);
+    return {
+      name: ind.name,
+      type: ind.type ?? "Sin tipo",
+      weight,
+      goal: ind.goal ?? "—",
+      value: ind.value ?? ind.result ?? "—", // valor registrado
+      achievement,
+      passed: Boolean(ind.passed),
+      points: achievement == null ? 0 : round2((achievement * weight) / 100),
+    };
+  });
+
+  const coachApproval = c.approvals?.find((a) => a.role === "Coach") ?? null;
+  const collaboratorApproval = c.approvals?.find((a) => a.role === "Colaborador") ?? null;
+
+  return {
+    collaboratorName: c.collaboratorName,
+    collaboratorCode: c.collaboratorCode,
+    position: c.position,
+    area: c.area,
+    ubication: c.ubication ?? c.location,
+    coachName: c.coachName,
+    date: dmy(c.date),
+    period: periodLabel(c.period ?? c.date),
+    status: c.status,
+    approvedAt: c.approvedAt ?? collaboratorApproval?.date ?? null,
+    indicators,
+    total: round2(indicators.reduce((sum, i) => sum + i.points, 0)),
+    actions: (c.actions ?? []).map((a) => ({
+      opportunity: a.opportunity,
+      action: a.action,
+      measurementType: MEASURE_TYPES[a.measurementType] ?? a.measurementType ?? "—",
+      commitDate: dmy(a.commitDate),
+    })),
+    coachApproval,
+    collaboratorApproval,
+  };
+};
+
+/** Coaching_[NombreColaborador]_[Periodo].pdf */
+export const coachingFileName = (c) =>
+  `Coaching_${slug(c.collaboratorName)}_${slug(periodLabel(c.period ?? c.date))}.pdf`;
+
+/* ---------- PDF ---------- */
+
+const GREY = "#6B7A8F";
+const LIGHT = "#F4F8FD";
+const LINE = "#E1E8F0";
+const TEXT = "#22303F";
+const SUB = "#1F4E79";
+const BAR = "#2D5A88";
+const M = 34;
+
+const noLines = {
+  hLineWidth: () => 0, vLineWidth: () => 0,
+  paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0,
+};
+
+const gridLines = {
+  hLineWidth: () => 0.6, vLineWidth: () => 0.6,
+  hLineColor: () => LINE, vLineColor: () => LINE,
+  paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 5, paddingBottom: () => 5,
+};
+
+const pill = (text, tone) => ({ text: ` ${text} `, bold: true, fontSize: 7.5, color: tone.fg, background: tone.bg });
+const GREEN = { bg: "#DCFCE7", fg: "#166534" };
+const RED = { bg: "#FEE2E2", fg: "#991B1B" };
+const AMBER = { bg: "#FFF4D6", fg: "#8A5A00" };
+
+const sectionBar = (config, title, right) => ({
+  margin: [0, 14, 0, 0],
+  table: {
+    widths: ["*", "auto"],
+    body: [[
+      { text: title.toUpperCase(), bold: true, fontSize: 9.5, color: "#FFFFFF", fillColor: config.primaryColor, margin: [10, 6, 4, 6] },
+      { text: right ?? "", fontSize: 8, color: config.digitalColor ?? "#7FE3EC", fillColor: config.primaryColor, margin: [4, 7, 10, 6] },
+    ]],
+  },
+  layout: noLines,
+});
+
+const head = (text, align = "left") => ({ text, bold: true, fontSize: 7.5, color: "#FFFFFF", fillColor: SUB, alignment: align });
+
+/**
+ * Devuelve la función que exportPdf() usa para armar el documento.
+ * @param {object} coaching  Proceso de coaching (ver toCoachingReportData)
+ * @param {object} options   { generatedBy }
+ */
+export const buildCoachingFormatPdf = (coaching, { generatedBy } = {}) => (config, { generatedAt }) => {
+  const r = toCoachingReportData(coaching);
+  const fileName = coachingFileName(coaching);
+  const brand = config.brandName ?? "eCoaching";
+  const pageW = config.pageSize === "A4" ? 595.28 : 612;
+  const contentW = pageW - M * 2;
+
+  /* ---------- Encabezado (mismo cálculo de centrado que Certificación) ---------- */
+  const LOGO_BOX = [150, 50];
+  const PAD = 8;
+  const LINE_H = 18;
+  const logo = config.logoOnDark;
+  const logoH = logo?.width ? Math.min(LOGO_BOX[1], (LOGO_BOX[0] * logo.height) / logo.width) : 20;
+  const bannerH = logoH + PAD * 2;
+  const top = Math.max(PAD, (bannerH - LINE_H) / 2);
+  const bottom = Math.max(PAD, bannerH - top - LINE_H);
+
+  const content = [
+    {
+      table: {
+        widths: ["auto", "*", "auto"],
+        body: [[
+          { text: brand, fontSize: 16, bold: true, color: config.accentColor, fillColor: config.primaryColor, margin: [16, top, 8, bottom] },
+          { text: "Formato de Coaching", fontSize: 15, bold: true, color: "#FFFFFF", alignment: "center", fillColor: config.primaryColor, margin: [8, top, 8, bottom] },
+          logo
+            ? { image: logo.dataUrl, fit: LOGO_BOX, fillColor: config.primaryColor, margin: [8, PAD, 16, PAD] }
+            : { text: config.organization ?? "", bold: true, fontSize: 12, color: "#FFFFFF", fillColor: config.primaryColor, margin: [8, top, 16, bottom] },
+        ]],
+      },
+      layout: noLines,
+    },
+    { canvas: [{ type: "rect", x: 0, y: 0, w: contentW, h: 3, color: config.accentColor }] },
+  ];
+
+  /* ---------- Datos generales ---------- */
+  const approved = String(r.status).toLowerCase() === "aprobado";
+  const left = [
+    ["Colaborador", r.collaboratorName],
+    ["Código", r.collaboratorCode],
+    ["Puesto", r.position],
+    ["Área / Unidad", r.area],
+    ["Ubicación", r.ubication],
+  ];
+  const right = [
+    ["Coach", r.coachName],
+    ["Fecha del coaching", r.date],
+    ["Período evaluado", r.period],
+    ["Estado", r.status, approved ? GREEN : AMBER],
+    ["Fecha de aprobación", r.approvedAt],
+  ];
+  const labelCell = (t) => ({ text: t, color: GREY, fontSize: 8, fillColor: LIGHT });
+  const valueCell = (v, tone) => (tone ? pill(v, tone) : { text: v || "—", color: v ? TEXT : "#A3ADBB", fontSize: 8.5 });
+
+  content.push({
+    margin: [0, 12, 0, 0],
+    table: {
+      widths: [88, "*", 96, "*"],
+      body: left.map(([l1, v1], i) => {
+        const [l2, v2, tone] = right[i];
+        return [labelCell(l1), valueCell(v1), labelCell(l2), valueCell(v2, tone)];
+      }),
+    },
+    layout: gridLines,
+  });
+
+  /* ---------- Indicadores agrupados por tipo ---------- */
+  const groups = [];
+  r.indicators.forEach((ind) => {
+    let g = groups.find((x) => x.type === ind.type);
+    if (!g) groups.push((g = { type: ind.type, items: [] }));
+    g.items.push(ind);
+  });
+
+  let number = 0; // numeración continua de indicadores en todo el documento
+  groups.forEach((g, gi) => {
+    content.push(sectionBar(config, `${gi + 1}. ${g.type}`, "Categoría de indicadores"));
+    content.push({
+      table: {
+        headerRows: 1,
+        dontBreakRows: true,
+        widths: [16, "*", 54, 34, 54, 60, 50, 50],
+        body: [
+          [head("#", "center"), head("Indicador"), head("Tipo", "center"), head("Peso", "center"), head("Meta", "center"),
+            head("Valor registrado", "center"), head("Resultado", "center"), head("Cumple", "center")],
+          ...g.items.map((ind, i) => {
+            number += 1;
+            const fill = i % 2 === 1 ? "#F8FAFC" : null;
+            return [
+              { text: String(number), color: GREY, alignment: "center", fillColor: fill },
+              { text: ind.name, bold: true, color: config.primaryColor, fillColor: fill },
+              { text: ind.type, fontSize: 7.5, alignment: "center", fillColor: fill },
+              { text: `${ind.weight}%`, alignment: "center", fillColor: fill },
+              { text: String(ind.goal), alignment: "center", fillColor: fill },
+              { text: String(ind.value), alignment: "center", fillColor: fill },
+              { text: ind.achievement == null ? "—" : `${ind.achievement}%`, bold: true, alignment: "center", fillColor: fill },
+              { ...pill(ind.passed ? "Sí" : "No", ind.passed ? GREEN : RED), alignment: "center", fillColor: fill },
+            ];
+          }),
+        ],
+      },
+      layout: gridLines,
+    });
+  });
+
+  // Puntaje final ponderado (al final de la sección de indicadores)
+  content.push({
+    table: {
+      widths: ["*", "auto", 70],
+      body: [[
+        { text: "PUNTAJE FINAL PONDERADO", bold: true, fontSize: 8, color: "#FFFFFF", fillColor: BAR, margin: [6, 6, 6, 6] },
+        { text: "Σ (Resultado × Peso)", fontSize: 8, color: "#BFE9EE", fillColor: BAR, margin: [6, 6, 6, 6] },
+        { text: `${r.total}%`, bold: true, fontSize: 10, color: "#FFFFFF", alignment: "center", fillColor: BAR, margin: [6, 5, 6, 5] },
+      ]],
+    },
+    layout: noLines,
+  });
+
+  let section = groups.length;
+
+  /* ---------- Plan de acción ---------- */
+  section += 1;
+  content.push(sectionBar(config, `${section}. Plan de acción`));
+  content.push(
+    r.actions.length
+      ? {
+          table: {
+            headerRows: 1,
+            dontBreakRows: true,
+            widths: [16, "*", "*", 74, 62],
+            body: [
+              [head("#", "center"), head("Oportunidad de mejora"), head("Acción a realizar"), head("Tipo de medición", "center"), head("Fecha compromiso", "center")],
+              ...r.actions.map((a, i) => {
+                const fill = i % 2 === 1 ? "#F8FAFC" : null;
+                return [
+                  { text: String(i + 1), color: GREY, alignment: "center", fillColor: fill },
+                  { text: a.opportunity || "—", fillColor: fill, lineHeight: 1.2 },
+                  { text: a.action || "—", fillColor: fill, lineHeight: 1.2 },
+                  { text: a.measurementType, alignment: "center", fillColor: fill },
+                  { text: a.commitDate, alignment: "center", fillColor: fill },
+                ];
+              }),
+            ],
+          },
+          layout: gridLines,
+        }
+      : { text: "No hay acciones registradas.", italics: true, color: GREY, margin: [10, 8, 0, 0] }
   );
 
-export const coachService = {
-  loggedUserTeams: async () => {
-    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.loggedUserTeams);
-    return data.data;
-  },
+  /* ---------- Nota general ---------- */
+  section += 1;
+  content.push(sectionBar(config, `${section}. Nota general del coaching`));
+  const PER_ROW = 3;
+  const chunks = [];
+  const ordered = groups.flatMap((g) => g.items); // mismo orden (y número) que en las tablas
+  for (let i = 0; i < ordered.length; i += PER_ROW) chunks.push(ordered.slice(i, i + PER_ROW));
+  if (!chunks.length) chunks.push([]);
 
+  const breakdownCell = (ind, idx) =>
+    ind
+      ? {
+          fillColor: BAR,
+          alignment: "center",
+          margin: [2, 5, 2, 5],
+          stack: [
+            { text: `Indicador ${idx + 1} · ${ind.weight}%`, fontSize: 7, color: "#BFE9EE" },
+            { text: `${ind.achievement ?? 0}% × ${ind.weight}% = ${ind.points} pts`, fontSize: 7.5, bold: true, color: "#FFFFFF", margin: [0, 2, 0, 0] },
+          ],
+        }
+      : { text: "", fillColor: BAR };
 
-  loggedUserTeamsMembers: async (area, team, position) => {
-    const { data } = await apiFeedbackAuthorized.get(`${endpointsAPI.loggedUserTeamMembers}?companyAreaId=${area}&teamId=${team}&companyPositionId=${position}`);
-    console.log(data, area, team, position);
-    return data.data;
-  },
+  content.push({
+    unbreakable: true,
+    table: {
+      widths: [86, ...Array(PER_ROW).fill("*"), 86],
+      body: chunks.map((chunk, ci) => [
+        ci === 0
+          ? { text: "Desglose por indicador", bold: true, fontSize: 8, color: "#FFFFFF", fillColor: BAR, rowSpan: chunks.length, margin: [6, 8, 6, 8] }
+          : {},
+        ...Array.from({ length: PER_ROW }, (_, k) => breakdownCell(chunk[k], ci * PER_ROW + k)),
+        ci === 0
+          ? {
+              rowSpan: chunks.length,
+              fillColor: config.primaryColor,
+              alignment: "center",
+              margin: [2, 5, 2, 5],
+              stack: [
+                { text: "NOTA GENERAL", fontSize: 8, bold: true, color: config.accentColor },
+                { text: `${r.total}%`, fontSize: 15, bold: true, color: config.accentColor, margin: [0, 2, 0, 0] },
+              ],
+            }
+          : {},
+      ]),
+    },
+    layout: { ...noLines, vLineWidth: (i, node) => (i === 0 || i === node.table.widths.length ? 0 : 1), hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0 : 1), vLineColor: () => SUB, hLineColor: () => SUB },
+  });
 
+  /* ---------- Aprobaciones ---------- */
+  section += 1;
+  content.push(sectionBar(config, `${section}. Aprobaciones`));
 
-  indicatorsFilter: async (user) => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.users, user);
-    return data.data;
-  },
+  const approvalBox = (title, description, approval) => ({
+    table: {
+      widths: ["*"],
+      body: [
+        [{ text: title, bold: true, fontSize: 8.5, color: config.primaryColor, alignment: "center", fillColor: "#EAF0F7", margin: [0, 4, 0, 4] }],
+        [{
+          alignment: "center",
+          margin: [8, 6, 8, 6],
+          stack: [
+            { text: description, fontSize: 7.5, color: GREY },
+            approval
+              ? { text: `${approval.name}  |  ${approval.date}`, fontSize: 9, bold: true, color: config.primaryColor, margin: [0, 18, 0, 4] }
+              : { text: "Pendiente de aprobación", fontSize: 9, italics: true, color: "#A3ADBB", margin: [0, 18, 0, 4] },
+            { canvas: [{ type: "line", x1: 0, y1: 0, x2: (contentW - 16) / 2 - 24, y2: 0, lineWidth: 1, lineColor: config.primaryColor }] },
+            { text: "Nombre  |  Fecha y hora", fontSize: 7, color: "#A3ADBB", margin: [0, 3, 0, 0] },
+          ],
+        }],
+      ],
+    },
+    layout: { hLineWidth: () => 0.6, vLineWidth: () => 0.6, hLineColor: () => LINE, vLineColor: () => LINE, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
+  });
 
-  update: async (id, user) => {
-    const { data } = await apiFeedbackAuthorized.put(`${endpointsAPI.users}/${id}`, { id, ...user });
-    return data.data;
-  },
+  content.push({
+    margin: [0, 10, 0, 0],
+    unbreakable: true,
+    columns: [
+      { width: "*", ...approvalBox("Aprobación del Coach", "El coach certifica que el registro es correcto y completo", r.coachApproval) },
+      { width: 16, text: "" },
+      { width: "*", ...approvalBox("Aprobación del Colaborador", "El colaborador confirma haber recibido y aceptado el coaching", r.collaboratorApproval) },
+    ],
+  });
 
-  remove: async (id) => {
-    await apiFeedbackAuthorized.delete(`${endpointsAPI.users}/${id}`);
-  },
+  /* ---------- Pie de página ---------- */
+  const footer = (currentPage, pageCount) => ({
+    margin: [M, 8, M, 0],
+    stack: [
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: contentW, y2: 0, lineWidth: 0.6, lineColor: LINE }] },
+      {
+        margin: [0, 5, 0, 0],
+        columns: [
+          {
+            width: "*",
+            fontSize: 6.5,
+            color: "#A3ADBB",
+            text: `${brand}${config.organization ? ` ${config.organization}` : ""}  |  ${fileName}  |  Documento generado automáticamente`
+              + `${generatedBy ? `  ·  Generado por ${generatedBy}` : ""}  ·  ${dateTime(generatedAt)}`,
+          },
+          { width: 60, text: `Página ${currentPage} de ${pageCount}`, alignment: "right", fontSize: 7, color: GREY },
+        ],
+      },
+    ],
+  });
 
-  // pageNumber y pageSize en null → exporta todo lo filtrado
-  exportExcel: (filters) =>
-    apiFeedbackAuthorized.post(endpointsAPI.usersExportExcel, toFilterRequest(filters), { responseType: "blob" }),
-
-  exportPdf: (filters) =>
-    apiFeedbackAuthorized.post(endpointsAPI.usersExportPdf, toFilterRequest(filters), { responseType: "blob" }),
-
-  syncAs400: async () => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.usersSyncAs400);
-    return data;
-  },
-
-  // GET /api/users?status=&isLeader=  (los parámetros vacíos no se envían)
-  list: async ({ status, isLeader } = {}) => {
-    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.users, { params: { status, isLeader } });
-    return data.data ?? [];
-  },
-
-  // Activa o quita el rol de líder
-  setLeader: async (id, isLeader) => {
-    const { data } = await apiFeedbackAuthorized.put(`${endpointsAPI.users}/${id}/leader`, { isLeader });
-    return data.data;
-  },
- 
-  // GET /api/logged-user/coaching/members/ongoing-assignments?name=&employeeCode=
-  // Respuesta viene agrupada por equipo; se aplana para la tabla de colaboradores
-  ongoingAssignments: async ({ name, employeeCode } = {}) => {
-    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.coachingOngoingAssignments, {
-      params: { name: name || null, employeeCode: employeeCode || null },
-    });
-    const teams = data.data ?? [];
-    return teams.flatMap((t) => t.members.map((m) => ({ ...m, teamId: t.teamId, teamName: t.teamName })));
-  },
-
-  // POST /api/logged-user/coaching/members/indicators
-  memberIndicators: async (memberUserId) => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.coachingMemberIndicators, { memberUserId });
-    return data.data ?? [];
-  },
-
-  // POST /api/coaching/calculate - solo previsualiza, no persiste
-  calculate: async ({ achievedValue, targetValue, minimumValue, maximumValue, rule, formula }) => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.coachingCalculate, {
-      achievedValue, targetValue, minimumValue, maximumValue, rule, formula,
-    });
-    return data.data.achievementPercentage;
-  },
-
-  // POST /api/coaching/sessions/{sessionId}/results
-  saveSessionResults: async (sessionId, { results, actions }) => {
-    const { data } = await apiFeedbackAuthorized.post(
-      `${endpointsAPI.coachingSessions}/${sessionId}/results`,
-      { results, actionPlan: { actions } }
-    );
-    return data.data;
-  },
-
-  // POST /api/coaching/assignments - body: { teams: [{ teamId, members: [{ memberUserId, indicators: [{ indicatorId, weight, targetValue, targetUnitId, validFrom, validTo }] }] }] }
-  createAssignments: async (teams) => {
-    const { data } = await apiFeedbackAuthorized.post(endpointsAPI.coachAssignment, { teams });
-    return data.data;
-  },
+  return {
+    pageSize: config.pageSize ?? "LETTER",
+    pageOrientation: "portrait",
+    pageMargins: [M, 28, M, 44],
+    info: { title: fileName.replace(/\.pdf$/, ""), author: config.organization, creator: brand },
+    footer,
+    content,
+    defaultStyle: { fontSize: 8.5, color: TEXT },
+  };
 };
 
 
-Aun no hay otros endpoints para coaching
+
+
+
+
+
+
+
+
+
+
+
+// Mock Data - En una aplicación real esto vendría de una API
+// result = valor registrado (lo muestra el modal) · achievement = % de resultado calculado
+const MOCK_COACHING_HISTORY = [
+    {
+        id: 1,
+        collaboratorName: "Jorge Flores",
+        collaboratorCode: "EMP-0031",
+        coachName: "Ana Rodríguez",
+        date: "2025-04-15",
+        period: "2025-04",
+        status: STATUS.approved,
+        position: "Cajero",
+        area: "HN - Agencias",
+        location: "La Ceiba",
+        ubication: "Ventanilla",
+        indicators: [
+            { name: "Tiempo promedio de atención", type: "Operativo", weight: 30, goal: "≤ 4 min", result: "3.2 min", achievement: 100, passed: true },
+            { name: "Calidad de servicio", type: "Cualitativo", weight: 40, goal: "≥ 85%", result: "92%", achievement: 100, passed: true },
+            { name: "Cumplimiento de procedimientos", type: "Operativo", weight: 30, goal: "100%", result: "88%", achievement: 88, passed: false },
+        ],
+        actions: [
+            {
+                opportunity: "Mejorar el cumplimiento de los procedimientos establecidos para el cierre de cajas.",
+                action: "Revisar el manual de procedimientos y asistir a la capacitación de cierre de mes programada.",
+                measurementType: 1,
+                commitDate: "2025-05-15",
+            },
+        ],
+        approvals: [
+            { role: "Coach", name: "Ana Rodríguez", date: "15/04/2025 14:32" },
+            { role: "Colaborador", name: "Jorge Flores", date: "16/04/2025 09:15" },
+        ],
+    },
+    {
+        id: 2,
+        collaboratorName: "Patricia Reyes",
+        collaboratorCode: "EMP-0044",
+        coachName: "Ana Rodríguez",
+        date: "2025-04-08",
+        period: "2025-04",
+        status: STATUS.pending,
+        position: "Asesora",
+        area: "HN - Agencias",
+        location: "Danlí",
+        ubication: "Lobby",
+        indicators: [
+            { name: "Resolución de conflictos", type: "Actitudinal", weight: 30, goal: "≥ 85%", result: "88%", achievement: 100, passed: true },
+            { name: "Comunicación efectiva", type: "Actitudinal", weight: 30, goal: "≥ 80%", result: "85%", achievement: 100, passed: true },
+            { name: "Cumplimiento de metas", type: "Ventas", weight: 40, goal: "100%", result: "78%", achievement: 78, passed: false },
+        ],
+        actions: [
+            {
+                opportunity: "Aumentar la colocación de productos para alcanzar la meta mensual.",
+                action: "Agendar seguimiento semanal de cartera con el coach y practicar el argumentario de venta.",
+                measurementType: 1,
+                commitDate: "2025-05-08",
+            },
+        ],
+        approvals: [{ role: "Coach", name: "Ana Rodríguez", date: "08/04/2025 11:05" }],
+    },
+    {
+        id: 3,
+        collaboratorName: "Miguel Torres",
+        collaboratorCode: "EMP-0058",
+        coachName: "Ana Rodríguez",
+        date: "2025-03-20",
+        period: "2025-03",
+        status: STATUS.approved,
+        position: "Cajero",
+        area: "HN - Agencias",
+        location: "La Lima",
+        ubication: "Ventanilla",
+        indicators: [
+            { name: "Productividad", type: "Numérico", weight: 40, goal: "≥ 90%", result: "97%", achievement: 100, passed: true },
+            { name: "Cumplimiento de metas", type: "Ventas", weight: 40, goal: "≥ 90%", result: "94%", achievement: 100, passed: true },
+            { name: "Liderazgo", type: "Actitudinal", weight: 20, goal: "≥ 85%", result: "91%", achievement: 100, passed: true },
+        ],
+        actions: [
+            {
+                opportunity: "Compartir buenas prácticas con el equipo de caja.",
+                action: "Presentar en la reunión mensual su método de organización de ventanilla.",
+                measurementType: 2,
+                commitDate: "2025-04-20",
+            },
+        ],
+        approvals: [
+            { role: "Coach", name: "Ana Rodríguez", date: "20/03/2025 10:20" },
+            { role: "Colaborador", name: "Miguel Torres", date: "21/03/2025 08:45" },
+        ],
+    },
+    {
+        id: 4,
+        collaboratorName: "Diana Cruz",
+        collaboratorCode: "EMP-0082",
+        coachName: "Ana Rodríguez",
+        date: "2025-03-05",
+        period: "2025-03",
+        status: STATUS.process,
+        position: "Asesora",
+        area: "HN - Agencias",
+        location: "SPS Central",
+        ubication: "Lobby",
+        indicators: [
+            { name: "Atención al cliente", type: "Cualitativo", weight: 35, goal: "≥ 85%", result: "86%", achievement: 100, passed: true },
+            { name: "Velocidad de respuesta", type: "Operativo", weight: 30, goal: "≥ 85%", result: "90%", achievement: 100, passed: true },
+            { name: "Calidad de servicio", type: "Cualitativo", weight: 35, goal: "≥ 85%", result: "79%", achievement: 92.94, passed: false },
+        ],
+        actions: [],
+        approvals: [],
+    },
+];
+
+
+
+
+
+
+
+
+import { useAuthStore } from "../../../hooks/useAuthStore";
+import { displayName } from "../../../helpers/format";
+import { exportPdf } from "../../../shared/reports";
+import { buildCoachingFormatPdf, coachingFileName } from "./coachingFormatReport";
+
+
+
+
+
+
+
+
+
+
+    const { user } = useAuthStore();
+    const [downloadingId, setDownloadingId] = useState(null);
+
+
+
+
+
+
+
+
+
+
+    const handleDownloadPDF = async (coaching) => {
+        if (coaching.status !== STATUS.approved) {
+            toast.error("El PDF solo está disponible para procesos aprobados");
+            return;
+        }
+        const fileName = coachingFileName(coaching);
+        setDownloadingId(coaching.id);
+        try {
+            await exportPdf(
+                buildCoachingFormatPdf(coaching, { generatedBy: displayName(user) || coaching.coachName }),
+                fileName
+            );
+            toast.success("PDF generado", fileName);
+        } catch (err) {
+            console.error(err);
+            toast.error("No se pudo generar el PDF", "Intenta de nuevo en unos momentos.");
+        } finally {
+            setDownloadingId(null);
+        }
+    };
+
+
+
+
+
+
+
+
+
+
+                                        <button
+                                            type="button"
+                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm}`}
+                                            disabled={!isApproved(c) || downloadingId !== null}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDownloadPDF(c);
+                                            }}
+                                        >
+                                            <Download size={15} /> {downloadingId === c.id ? "Generando..." : "Descargar PDF"}
+                                        </button>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                disabled={!isApproved(selectedCoachingModal) || downloadingId !== null}
+                                onClick={async () => {
+                                    await handleDownloadPDF(selectedCoachingModal);
+                                    setShowDetailModal(false);
+                                }}
