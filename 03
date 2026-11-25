@@ -1,4 +1,61 @@
-                CollaboratorApproval = session.ReviewStatus == CoachingSessionReviewStatus.Approved
-                    && session.ReviewedAt is { } reviewedAt
-                    ? new CoachingExportApprovalDto { Name = names.GetValueOrDefault(session.MemberUserId), At = reviewedAt }
-                    : null,
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
+/* 1) Copia de la estructura del formato en cada certificación.
+      Las fechas se pasan a UTC SOLO la vez que se crea la columna,
+      así si el script se corre dos veces no se suman 6 horas de nuevo. */
+IF COL_LENGTH('dbo.Certifications', 'CriteriaJson') IS NULL
+BEGIN
+    ALTER TABLE dbo.Certifications ADD CriteriaJson NVARCHAR(MAX) NULL;
+
+    EXEC('
+        UPDATE c SET c.CriteriaJson = f.CriteriaJson
+        FROM dbo.Certifications c
+        INNER JOIN dbo.CertificationFormats f ON f.Id = c.FormatId
+        WHERE c.CriteriaJson IS NULL;
+
+        -- Fechas guardadas en hora de Honduras (UTC-6) → UTC
+        UPDATE dbo.CoachingSessions SET CreatedAt = DATEADD(HOUR, 6, CreatedAt);
+        UPDATE dbo.TeamMembersIndicatorsAssignments SET CreatedAt = DATEADD(HOUR, 6, CreatedAt);
+        UPDATE dbo.CertificationFormats SET CreatedAt = DATEADD(HOUR, 6, CreatedAt),
+                                            LastModifiedAt = DATEADD(HOUR, 6, LastModifiedAt);
+        UPDATE dbo.TeamCertifiers SET DesignatedAt = DATEADD(HOUR, 6, DesignatedAt);
+        UPDATE dbo.Certifications SET CreatedAt = DATEADD(HOUR, 6, CreatedAt),
+                                      LastModifiedAt = DATEADD(HOUR, 6, LastModifiedAt),
+                                      ResolvedAt = DATEADD(HOUR, 6, ResolvedAt);
+    ');
+END
+
+/* 2) Al borrar un formato, la certificación queda con FormatId = NULL (no se bloquea el borrado) */
+DECLARE @fk SYSNAME = (
+    SELECT name FROM sys.foreign_keys
+    WHERE parent_object_id = OBJECT_ID('dbo.Certifications')
+      AND referenced_object_id = OBJECT_ID('dbo.CertificationFormats'));
+
+IF @fk IS NOT NULL
+    EXEC('ALTER TABLE dbo.Certifications DROP CONSTRAINT ' + @fk);
+
+ALTER TABLE dbo.Certifications
+    ADD CONSTRAINT FK_Certifications_CertificationFormats_FormatId
+    FOREIGN KEY (FormatId) REFERENCES dbo.CertificationFormats(Id) ON DELETE SET NULL;
+
+COMMIT;
+
+
+
+
+
+
+
+
+
+
+
+
+
+SELECT TOP 5 Id, FormatId, LEFT(CriteriaJson, 80) AS Criterios, CreatedAt, ResolvedAt
+FROM dbo.Certifications ORDER BY Id DESC;
+
+SELECT name, delete_referential_action_desc
+FROM sys.foreign_keys
+WHERE parent_object_id = OBJECT_ID('dbo.Certifications');
