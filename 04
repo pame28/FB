@@ -1,8 +1,1569 @@
-          stack: [
-            { text: description, fontSize: 7.5, color: GREY },
-            // Espacio para la firma
-            { canvas: [{ type: "line", x1: 0, y1: 0, x2: (contentW - 16) / 2 - 24, y2: 0, lineWidth: 1, lineColor: config.primaryColor }], margin: [0, 34, 0, 0] },
-            approval
-              ? { text: `${approval.name}  |  ${approval.date}`, fontSize: 9, bold: true, color: config.primaryColor, margin: [0, 5, 0, 0] }
-              : { text: "Pendiente de aprobación", fontSize: 9, italics: true, color: "#A3ADBB", margin: [0, 5, 0, 0] },
-          ],
+using ApiCoaching.Constants;
+using ApiCoaching.Dtos;
+using ApiCoaching.Dtos.Coaching;
+using ApiCoaching.Dtos.Services;
+using ApiCoaching.Models;
+using ApiCoaching.Repositories.Interfaces;
+using ApiCoaching.Services;
+using FluentValidation;
+using System.Security.Claims;
+
+namespace ApiCoaching.Endpoints
+{
+    public static class CoachingEndpoints
+    {
+        public static void MapCoachingEndpoints(this IEndpointRouteBuilder app)
+        {
+            var coachingGroup = app.MapGroup("/api/coaching")
+                .WithTags("Coaching");
+
+            coachingGroup.MapPost("calculate", CalculateCoachingAchievement)
+                .WithName("CalculateCoachingAchievement")
+                .WithSummary("Calcula el porcentaje alcanzado mediante una fórmula dinámica, sin guardar datos.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<CoachingAchievementDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapPost("assignments", CreateIndicatorAssignments)
+                .WithName("CreateIndicatorAssignments")
+                .WithSummary("Asigna múltiples indicadores a múltiples miembros de múltiples equipos.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<List<long>>>(StatusCodes.Status201Created)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapPost("sessions/{sessionId:long}/results", SaveCoachingResults)
+                .WithName("SaveCoachingResults")
+                .WithSummary("Guarda los resultados de una sesión y su plan de acción, calculando el porcentaje alcanzado.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<CoachingResultsDto>>(StatusCodes.Status201Created)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+        }
+
+        private static async Task<IResult> CreateIndicatorAssignments(
+            CreateIndicatorAssignmentsRequestDto request,
+            IValidator<CreateIndicatorAssignmentsRequestDto> validator,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status401Unauthorized,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var validationResult = await validator.ValidateAsync(request);
+                if (!validationResult.IsValid)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = GenericErrors.RequestValidationErrorMessage,
+                        Errors = validationResult.Errors
+                            .ToDictionary(x => x.PropertyName, x => x.ErrorMessage)
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var assignments = request.Teams
+                    .SelectMany(team => team.Members.SelectMany(member =>
+                    {
+                        var session = new CoachingSession
+                        {
+                            TeamId = team.TeamId,
+                            MemberUserId = member.MemberUserId,
+                            CreatedAt = DateTime.Now,
+                            CreatedBy = currentUserId
+                        };
+
+                        return member.Indicators.Select(indicator => new TeamMemberIndicatorAssignment
+                        {
+                            Session = session,
+                            Weight = indicator.Weight,
+                            TeamId = team.TeamId,
+                            MemberUserId = member.MemberUserId,
+                            IndicatorId = indicator.IndicatorId,
+                            TargetValue = indicator.TargetValue,
+                            TargetUnitId = indicator.TargetUnitId,
+                            ValidFrom = indicator.ValidFrom,
+                            ValidTo = indicator.ValidTo,
+                            CreatedAt = DateTime.Now,
+                            CreatedBy = currentUserId
+                        });
+                    }))
+                    .ToList();
+
+                var result = await repository.CreateIndicatorAssignmentsAsync(assignments);
+
+                if (!result.Success)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = result.ErrorMessage!
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                return Results.Created("/api/coaching/assignments", new ResponseObject<List<long>>
+                {
+                    Code = StatusCodes.Status201Created,
+                    Message = "Asignaciones creadas correctamente.",
+                    Data = [.. result.Assignments.Select(x => x.Id)]
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "CreateIndicatorAssignmentsError");
+
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = StatusCodes.Status500InternalServerError,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        private static async Task<IResult> SaveCoachingResults(
+            long sessionId,
+            SaveCoachingResultsRequestDto request,
+            IValidator<SaveCoachingResultsRequestDto> validator,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status401Unauthorized,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                if (sessionId <= 0)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = "El identificador de la sesión debe ser mayor que cero."
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var validationResult = await validator.ValidateAsync(request);
+                if (!validationResult.IsValid)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = GenericErrors.RequestValidationErrorMessage,
+                        Errors = validationResult.Errors
+                            .GroupBy(error => error.PropertyName)
+                            .ToDictionary(group => group.Key,
+                                group => string.Join(" ", group.Select(error => error.ErrorMessage).Distinct()))
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var result = await repository.SaveCoachingResultsAsync(sessionId, request, currentUserId);
+                if (result.Status != SaveCoachingResultsStatus.Saved)
+                {
+                    var statusCode = result.Status switch
+                    {
+                        SaveCoachingResultsStatus.NotFound => StatusCodes.Status404NotFound,
+                        SaveCoachingResultsStatus.AlreadyEvaluated => StatusCodes.Status409Conflict,
+                        _ => StatusCodes.Status400BadRequest
+                    };
+
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = statusCode,
+                        Message = result.ErrorMessage!,
+                        Errors = result.Errors
+                    }, statusCode: statusCode);
+                }
+
+                return Results.Created($"/api/coaching/sessions/{sessionId}/results", new ResponseObject<CoachingResultsDto>
+                {
+                    Code = StatusCodes.Status201Created,
+                    Message = "Resultados del coaching y plan de acción guardados correctamente.",
+                    Data = result.Data
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "SaveCoachingResultsError");
+
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = StatusCodes.Status500InternalServerError,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        private static async Task<IResult> CalculateCoachingAchievement(
+            CalculateCoachingAchievementRequestDto request,
+            IValidator<CalculateCoachingAchievementRequestDto> validator,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(GetCurrentUserId(claimsPrincipal)))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status401Unauthorized,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var validationResult = await validator.ValidateAsync(request);
+                if (!validationResult.IsValid)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = GenericErrors.RequestValidationErrorMessage,
+                        Errors = validationResult.Errors
+                            .GroupBy(error => error.PropertyName)
+                            .ToDictionary(group => group.Key,
+                                group => string.Join(" ", group.Select(error => error.ErrorMessage).Distinct()))
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                if (!CoachingAchievementCalculator.TryCalculate(
+                    request.AchievedValue!.Value,
+                    request.TargetValue!.Value,
+                    request.MinimumValue,
+                    request.MaximumValue,
+                    request.Rule,
+                    request.Formula,
+                    out var percentage,
+                    out var errorMessage))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = errorMessage!
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                return Results.Ok(new ResponseObject<CoachingAchievementDto>
+                {
+                    Code = StatusCodes.Status200OK,
+                    Message = "Porcentaje alcanzado calculado correctamente.",
+                    Data = new CoachingAchievementDto { AchievementPercentage = percentage }
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "CalculateCoachingAchievementError");
+
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = StatusCodes.Status500InternalServerError,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
+        }
+
+        private static string? GetCurrentUserId(ClaimsPrincipal claimsPrincipal)
+        {
+            return claimsPrincipal.FindFirstValue("userId")
+                ?? claimsPrincipal.FindFirstValue(ClaimTypes.NameIdentifier);
+        }
+    }
+}
+
+
+
+
+using ApiCoaching.Models;
+
+namespace ApiCoaching.Services
+{
+    public static class CoachingAchievementCalculator
+    {
+        public static bool TryCalculate(
+            decimal achievedValue,
+            decimal targetValue,
+            decimal minimumValue,
+            decimal maximumValue,
+            Rule rule,
+            string? formula,
+            out decimal percentage,
+            out string? errorMessage)
+        {
+            percentage = 0m;
+            errorMessage = null;
+
+            if (!Enum.IsDefined(rule))
+            {
+                errorMessage = "La regla del indicador no es válida.";
+                return false;
+            }
+
+            if (rule == Rule.InRangeIsBetter && minimumValue > maximumValue)
+            {
+                errorMessage = "El valor mínimo del indicador no puede superar el valor máximo.";
+                return false;
+            }
+
+            if (!IndicatorFormulaEvaluator.TryEvaluate(formula, achievedValue, targetValue,
+                minimumValue, maximumValue, out var calculated, out errorMessage))
+            {
+                return false;
+            }
+
+            calculated = decimal.Round(calculated, 2, MidpointRounding.AwayFromZero);
+            if (calculated < -9_999_999.99m || calculated > 9_999_999.99m)
+            {
+                errorMessage = "El porcentaje alcanzado excede la precisión permitida de siete dígitos enteros y dos decimales.";
+                return false;
+            }
+
+            percentage = calculated;
+            return true;
+        }
+    }
+}
+
+
+
+
+
+
+using ApiCoaching.Data;
+using ApiCoaching.Dtos.Coaching;
+using ApiCoaching.Models;
+using ApiCoaching.Repositories.Interfaces;
+using ApiCoaching.Services;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+
+namespace ApiCoaching.Repositories
+{
+    public class CoachingRepository(AppDbContext appDbContext) : ICoachingRepository
+    {
+        private readonly AppDbContext _dbContext = appDbContext;
+
+        public async Task<Team?> GetTeamMembersByLeaderIdAsync(string userLeaderId)
+        {
+            return await _dbContext.Teams
+                .Where(x => x.Leaders.Any(leader => leader.LeaderUserId == userLeaderId))
+                .Include(x => x.Members)
+                    .ThenInclude(x => x.User)
+                        .ThenInclude(x => x.CompanyArea)
+                .Include(x => x.Members)
+                    .ThenInclude(x => x.User)
+                        .ThenInclude(x => x.CompanyLocation)
+                .Include(x => x.Members)
+                    .ThenInclude(x => x.User)
+                        .ThenInclude(x => x.CompanyPosition)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<List<MemberIndicatorAssignmentDto>> GetMemberIndicatorsAsync(string leaderUserId, string memberUserId)
+        {
+            var acceptedAssignments = _dbContext.TeamMembersIndicatorsAssignments
+                .AsNoTracking()
+                .Where(assignment => assignment.MemberUserId == memberUserId &&
+                    assignment.Session.AcceptanceStatus == CoachingSessionAcceptanceStatus.Accepted &&
+                    assignment.EvaluatedAt == null &&
+                    assignment.TeamMember.Team.Leaders.Any(leader => leader.LeaderUserId == leaderUserId));
+
+            return await acceptedAssignments
+                .Where(assignment => assignment.CoachingSessionId == acceptedAssignments
+                    .OrderBy(firstAssignment => firstAssignment.Id)
+                    .Select(firstAssignment => firstAssignment.CoachingSessionId)
+                    .FirstOrDefault())
+                .OrderBy(assignment => assignment.TeamId)
+                .ThenBy(assignment => assignment.Indicator.Name)
+                .ThenBy(assignment => assignment.Id)
+                .Select(assignment => new MemberIndicatorAssignmentDto
+                {
+                    AssignmentId = assignment.Id,
+                    CoachingSessionId = assignment.CoachingSessionId,
+                    MemberUserId = assignment.MemberUserId,
+                    MemberFullName = string.IsNullOrWhiteSpace(assignment.TeamMember.User.FullName)
+                        ? assignment.TeamMember.User.FirstName + " " + assignment.TeamMember.User.LastName
+                        : assignment.TeamMember.User.FullName,
+                    TeamId = assignment.TeamId,
+                    TeamName = assignment.TeamMember.Team.Name,
+                    IndicatorId = assignment.IndicatorId,
+                    IndicatorName = assignment.Indicator.Name,
+                    MinimunValue = assignment.Indicator.MinimunValue,
+                    MaximunValue = assignment.Indicator.MaximunValue,
+                    Formula = assignment.Indicator.Formula,
+                    Weight = assignment.Weight,
+                    Type = assignment.Indicator.Type,
+                    Rule = assignment.Indicator.Rule,
+                    Status = assignment.Indicator.Status,
+                    TemplateId = assignment.Indicator.TemplateId,
+                    PeriodId = assignment.Indicator.PeriodId,
+                    TargetValue = assignment.TargetValue,
+                    TargetUnitId = assignment.TargetUnitId,
+                    TargetUnitName = assignment.TargetUnit.Name,
+                    ValidFrom = assignment.ValidFrom,
+                    ValidTo = assignment.ValidTo,
+                    AcceptanceStatus = assignment.Session.AcceptanceStatus,
+                    ReviewStatus = assignment.Session.ReviewStatus
+                })
+                .ToListAsync();
+        }
+
+        public async Task<CreateIndicatorAssignmentsResult> CreateIndicatorAssignmentsAsync(
+            IEnumerable<TeamMemberIndicatorAssignment> assignments)
+        {
+            var assignmentList = assignments.ToList();
+
+            var errorMessage = ValidateAssignments(assignmentList)
+                ?? await ValidateTeamsAsync(assignmentList)
+                ?? await ValidateMembersAsync(assignmentList)
+                ?? await ValidateIndicatorsAsync(assignmentList)
+                ?? await ValidateTargetUnitsAsync(assignmentList);
+
+            if (errorMessage is not null)
+            {
+                return new(false, errorMessage, []);
+            }
+
+            var sessions = assignmentList
+                .GroupBy(assignment => assignment.Session)
+                .Select(group =>
+                {
+                    var session = group.Key;
+                    session.IndicatorAssignments = group.ToList();
+                    return session;
+                })
+                .ToList();
+
+            await _dbContext.CoachingSessions.AddRangeAsync(sessions);
+            await _dbContext.SaveChangesAsync();
+
+            return new(true, null, assignmentList);
+        }
+
+        public async Task<SaveCoachingResultsResult> SaveCoachingResultsAsync(
+            long sessionId,
+            SaveCoachingResultsRequestDto request,
+            string leaderUserId)
+        {
+            var session = await _dbContext.CoachingSessions
+                .Include(x => x.IndicatorAssignments)
+                    .ThenInclude(x => x.Indicator)
+                .Include(x => x.ActionPlan)
+                .FirstOrDefaultAsync(x => x.Id == sessionId &&
+                    x.TeamMember.Team.Leaders.Any(leader => leader.LeaderUserId == leaderUserId));
+
+            if (session is null)
+            {
+                return new(SaveCoachingResultsStatus.NotFound,
+                    "La sesión de coaching no existe o no tienes acceso a ella.", null);
+            }
+
+            if (session.AcceptanceStatus != CoachingSessionAcceptanceStatus.Accepted)
+            {
+                return new(SaveCoachingResultsStatus.Invalid,
+                    "El colaborador debe aceptar el inicio de la sesión de coaching antes de registrar resultados.", null);
+            }
+
+            if (session.ReviewStatus != CoachingSessionReviewStatus.NotSubmitted ||
+                session.ActionPlan is not null || session.IndicatorAssignments.Any(x =>
+                x.EvaluatedAt.HasValue || x.AchievedValue.HasValue || x.AchievementPercentage.HasValue))
+            {
+                return new(SaveCoachingResultsStatus.AlreadyEvaluated,
+                    "La sesión de coaching ya tiene resultados o un plan de acción registrado.", null);
+            }
+
+            var assignments = session.IndicatorAssignments.ToDictionary(x => x.Id);
+            var requestedIds = request.Results.Select(x => x.AssignmentId).ToHashSet();
+            if (assignments.Count == 0 || requestedIds.Count != request.Results.Count ||
+                !requestedIds.SetEquals(assignments.Keys))
+            {
+                return new(SaveCoachingResultsStatus.Invalid,
+                    "Debes enviar exactamente una vez todas las asignaciones de la sesión, sin incluir asignaciones de otras sesiones.", null);
+            }
+
+            if (assignments.Values.Any(x => x.TeamId != session.TeamId ||
+                !string.Equals(x.MemberUserId, session.MemberUserId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return new(SaveCoachingResultsStatus.Invalid,
+                    "Las asignaciones no corresponden al equipo y colaborador de la sesión.", null);
+            }
+
+            var results = new List<IndicatorResultDto>();
+            var errors = new Dictionary<string, string>();
+            for (var index = 0; index < request.Results.Count; index++)
+            {
+                var input = request.Results[index];
+                if (!input.AchievedValue.HasValue)
+                {
+                    errors[$"Results[{index}].AchievedValue"] = "El resultado obtenido es obligatorio.";
+                    continue;
+                }
+
+                var assignment = assignments[input.AssignmentId];
+                var indicator = assignment.Indicator;
+                if (!CoachingAchievementCalculator.TryCalculate(
+                    input.AchievedValue.Value,
+                    assignment.TargetValue,
+                    indicator.MinimunValue,
+                    indicator.MaximunValue,
+                    indicator.Rule,
+                    indicator.Formula,
+                    out var percentage,
+                    out var calculationError))
+                {
+                    errors[$"Results[{index}].AchievedValue"] =
+                        $"Asignación {assignment.Id}: {calculationError}";
+                    continue;
+                }
+
+                results.Add(new IndicatorResultDto
+                {
+                    AssignmentId = assignment.Id,
+                    AchievedValue = input.AchievedValue.Value,
+                    AchievementPercentage = percentage
+                });
+            }
+
+            if (errors.Count > 0)
+            {
+                return new(SaveCoachingResultsStatus.Invalid,
+                    "No se pudieron calcular los porcentajes alcanzados.", null, errors);
+            }
+
+            var evaluatedAt = DateTime.UtcNow;
+            foreach (var result in results)
+            {
+                var assignment = assignments[result.AssignmentId];
+                assignment.AchievedValue = result.AchievedValue;
+                assignment.AchievementPercentage = result.AchievementPercentage;
+                assignment.EvaluatedAt = evaluatedAt;
+                assignment.LastModifiedAt = evaluatedAt;
+                assignment.LastModifiedBy = leaderUserId;
+            }
+
+            var plan = new CoachingActionPlan
+            {
+                CoachingSessionId = session.Id,
+                CreatedAt = evaluatedAt,
+                CreatedBy = leaderUserId,
+                Actions = request.ActionPlan.Actions.Select(action => new CoachingAction
+                {
+                    MeasurementType = action.MeasurementType,
+                    CommitmentDate = action.CommitmentDate,
+                    ImprovementOpportunity = action.ImprovementOpportunity.Trim(),
+                    ActionDescription = action.ActionDescription.Trim(),
+                    CreatedAt = evaluatedAt,
+                    CreatedBy = leaderUserId
+                }).ToList()
+            };
+
+            session.ActionPlan = plan;
+            session.SubmitForReview();
+            session.LastModifiedAt = evaluatedAt;
+            session.LastModifiedBy = leaderUserId;
+
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return new(SaveCoachingResultsStatus.AlreadyEvaluated,
+                    "El estado de la sesión cambió durante la operación. Actualiza los datos antes de continuar.", null);
+            }
+            catch (DbUpdateException exception) when (
+                exception.InnerException is SqlException { Number: 2601 or 2627 })
+            {
+                return new(SaveCoachingResultsStatus.AlreadyEvaluated,
+                    "Otra solicitud ya registró el plan de acción de esta sesión.", null);
+            }
+
+            return new(SaveCoachingResultsStatus.Saved, null, new CoachingResultsDto
+            {
+                CoachingSessionId = session.Id,
+                AcceptanceStatus = session.AcceptanceStatus,
+                ReviewStatus = session.ReviewStatus,
+                EvaluatedAt = evaluatedAt,
+                Results = results,
+                ActionPlan = new CoachingActionPlanDto
+                {
+                    Id = plan.Id,
+                    Actions = plan.Actions.Select(action => new CoachingActionDto
+                    {
+                        Id = action.Id,
+                        MeasurementType = action.MeasurementType,
+                        CommitmentDate = action.CommitmentDate,
+                        ImprovementOpportunity = action.ImprovementOpportunity,
+                        ActionDescription = action.ActionDescription
+                    }).ToList()
+                }
+            });
+        }
+
+        private static string? ValidateAssignments(List<TeamMemberIndicatorAssignment> assignments)
+        {
+            if (assignments.Count == 0)
+            {
+                return "Debes enviar al menos una asignación.";
+            }
+
+            if (assignments.Any(x => x.Session is null))
+            {
+                return "Todas las asignaciones deben pertenecer a una sesión de coaching.";
+            }
+
+            if (assignments.Any(x => x.CoachingSessionId != 0 || x.Session.Id != 0))
+            {
+                return "Esta operación solo permite crear sesiones nuevas de coaching.";
+            }
+
+            if (assignments.Any(x => x.Weight <= 0m || x.Weight > 100m
+                || decimal.Round(x.Weight, 2) != x.Weight))
+            {
+                return "Cada peso debe ser mayor que 0, menor o igual que 100 y tener como máximo dos decimales.";
+            }
+
+            foreach (var group in assignments.GroupBy(x => x.Session))
+            {
+                var errorMessage = ValidateSessionAssignments(group);
+                if (errorMessage is not null)
+                {
+                    return errorMessage;
+                }
+            }
+
+            return null;
+        }
+
+        private static string? ValidateSessionAssignments(IGrouping<CoachingSession, TeamMemberIndicatorAssignment> group)
+        {
+            var owner = group.Key;
+            if (group.Any(x => x.TeamId != owner.TeamId
+                || !string.Equals(x.MemberUserId, owner.MemberUserId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return "Todas las asignaciones deben pertenecer al equipo y usuario de la sesión.";
+            }
+
+            if (group.Select(x => x.IndicatorId).Distinct().Count() != group.Count())
+            {
+                return "Un indicador no puede repetirse dentro de la misma sesión.";
+            }
+
+            return group.Sum(x => x.Weight) != 100m
+                ? "Los pesos de cada sesión deben sumar exactamente 100 %."
+                : null;
+        }
+
+        private async Task<string?> ValidateTeamsAsync(List<TeamMemberIndicatorAssignment> assignments)
+        {
+            var teamIds = assignments.Select(x => x.TeamId).Distinct().ToList();
+            var existingTeamIds = await _dbContext.Teams
+                .Where(x => teamIds.Contains(x.Id))
+                .Select(x => x.Id)
+                .ToListAsync();
+
+            var missingTeamIds = teamIds.Except(existingTeamIds).ToList();
+            return missingTeamIds.Count > 0
+                ? $"Los siguientes equipos no existen: {string.Join(", ", missingTeamIds)}."
+                : null;
+        }
+
+        private async Task<string?> ValidateMembersAsync(List<TeamMemberIndicatorAssignment> assignments)
+        {
+            var teamIds = assignments.Select(x => x.TeamId).Distinct().ToList();
+            var memberUserIds = assignments
+                .Select(x => x.MemberUserId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var existingMembers = await _dbContext.TeamsMembers
+                .Where(x => teamIds.Contains(x.TeamId) && memberUserIds.Contains(x.MemberUserId))
+                .Select(x => new { x.TeamId, x.MemberUserId })
+                .ToListAsync();
+
+            var membersByTeam = existingMembers.ToLookup(x => x.TeamId);
+            var missingMembers = assignments
+                .Where(assignment => !membersByTeam[assignment.TeamId].Any(member =>
+                    string.Equals(member.MemberUserId, assignment.MemberUserId, StringComparison.OrdinalIgnoreCase)))
+                .Select(x => $"{x.TeamId}/{x.MemberUserId}")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return missingMembers.Count > 0
+                ? $"Los siguientes usuarios no pertenecen al equipo indicado (equipo/usuario): {string.Join(", ", missingMembers)}."
+                : null;
+        }
+
+        private async Task<string?> ValidateIndicatorsAsync(List<TeamMemberIndicatorAssignment> assignments)
+        {
+            var indicatorIds = assignments
+                .Select(x => x.IndicatorId)
+                .Distinct()
+                .ToList();
+
+            var existingIndicatorIds = await _dbContext.Indicators
+                .Where(x => indicatorIds.Contains(x.Id))
+                .Select(x => x.Id)
+                .ToListAsync();
+
+            var missingIndicatorIds = indicatorIds
+                .Except(existingIndicatorIds)
+                .ToList();
+
+            return missingIndicatorIds.Count > 0
+                ? $"Los siguientes indicadores no existen: {string.Join(", ", missingIndicatorIds)}."
+                : null;
+        }
+
+        private async Task<string?> ValidateTargetUnitsAsync(List<TeamMemberIndicatorAssignment> assignments)
+        {
+            var targetUnitIds = assignments
+                .Select(x => x.TargetUnitId)
+                .Distinct()
+                .ToList();
+
+            var activeUnitIds = await _dbContext.Units
+                .Where(x => targetUnitIds.Contains(x.Id) && x.Status)
+                .Select(x => x.Id)
+                .ToListAsync();
+
+            var invalidUnitIds = targetUnitIds.Except(activeUnitIds).ToList();
+            return invalidUnitIds.Count > 0
+                ? $"Las siguientes unidades no existen o están inactivas: {string.Join(", ", invalidUnitIds)}."
+                : null;
+        }
+
+    }
+}
+
+
+
+
+
+
+using ApiCoaching.Dtos.Coaching;
+using ApiCoaching.Models;
+
+namespace ApiCoaching.Repositories.Interfaces
+{
+    public interface ICoachingRepository
+    {
+        Task<Team?> GetTeamMembersByLeaderIdAsync(string userLeaderId);
+
+        Task<List<MemberIndicatorAssignmentDto>> GetMemberIndicatorsAsync(string leaderUserId, string memberUserId);
+
+        Task<CreateIndicatorAssignmentsResult> CreateIndicatorAssignmentsAsync(
+            IEnumerable<TeamMemberIndicatorAssignment> assignments);
+
+        Task<SaveCoachingResultsResult> SaveCoachingResultsAsync(
+            long sessionId,
+            SaveCoachingResultsRequestDto request,
+            string leaderUserId);
+    }
+
+    public sealed record CreateIndicatorAssignmentsResult(
+        bool Success,
+        string? ErrorMessage,
+        List<TeamMemberIndicatorAssignment> Assignments);
+
+    public enum SaveCoachingResultsStatus
+    {
+        Saved,
+        NotFound,
+        Invalid,
+        AlreadyEvaluated
+    }
+
+    public sealed record SaveCoachingResultsResult(
+        SaveCoachingResultsStatus Status,
+        string? ErrorMessage,
+        CoachingResultsDto? Data,
+        Dictionary<string, string>? Errors = null);
+}
+
+
+
+
+using ApiCoaching.Models;
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    public class CalculateCoachingAchievementRequestDto
+    {
+        public decimal? AchievedValue { get; set; }
+
+        public decimal? TargetValue { get; set; }
+
+        public decimal MinimumValue { get; set; }
+
+        public decimal MaximumValue { get; set; }
+
+        public Rule Rule { get; set; }
+
+        public string Formula { get; set; } = null!;
+    }
+
+    public class CoachingAchievementDto
+    {
+        public decimal AchievementPercentage { get; set; }
+    }
+}
+
+
+
+using ApiCoaching.Models;
+using System.Text.Json.Serialization;
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    public class CoachingResultsDto
+    {
+        public long CoachingSessionId { get; set; }
+
+        [JsonConverter(typeof(JsonStringEnumConverter<CoachingSessionAcceptanceStatus>))]
+        public CoachingSessionAcceptanceStatus AcceptanceStatus { get; set; }
+
+        [JsonConverter(typeof(JsonStringEnumConverter<CoachingSessionReviewStatus>))]
+        public CoachingSessionReviewStatus ReviewStatus { get; set; }
+
+        public DateTime EvaluatedAt { get; set; }
+
+        public List<IndicatorResultDto> Results { get; set; } = [];
+
+        public CoachingActionPlanDto ActionPlan { get; set; } = null!;
+    }
+
+    public class IndicatorResultDto
+    {
+        public long AssignmentId { get; set; }
+
+        public decimal AchievedValue { get; set; }
+
+        public decimal AchievementPercentage { get; set; }
+    }
+
+    public class CoachingActionPlanDto
+    {
+        public long Id { get; set; }
+
+        public List<CoachingActionDto> Actions { get; set; } = [];
+    }
+
+    public class CoachingActionDto
+    {
+        public long Id { get; set; }
+
+        public MeasurementType MeasurementType { get; set; }
+
+        public DateTime CommitmentDate { get; set; }
+
+        public string ImprovementOpportunity { get; set; } = null!;
+
+        public string ActionDescription { get; set; } = null!;
+    }
+}
+
+
+
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    public class CreateIndicatorAssignmentsRequestDto
+    {
+        public List<TeamIndicatorAssignmentsRequestDto> Teams { get; set; } = [];
+    }
+
+    public class TeamIndicatorAssignmentsRequestDto
+    {
+        public int TeamId { get; set; }
+
+        public List<TeamMemberIndicatorAssignmentsRequestDto> Members { get; set; } = [];
+    }
+
+    public class TeamMemberIndicatorAssignmentsRequestDto
+    {
+        public string MemberUserId { get; set; } = null!;
+
+        public List<IndicatorAssignmentRequestDto> Indicators { get; set; } = [];
+    }
+
+    public class IndicatorAssignmentRequestDto
+    {
+        public int IndicatorId { get; set; }
+
+        public decimal Weight { get; set; }
+
+        public decimal TargetValue { get; set; }
+        public int TargetUnitId { get; set; }
+
+        public DateTime ValidFrom { get; set; }
+        public DateTime ValidTo { get; set; }
+    }
+}
+
+
+
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    public class GetMemberIndicatorsRequestDto
+    {
+        public string MemberUserId { get; set; } = string.Empty;
+    }
+}
+
+
+
+
+
+using ApiCoaching.Models;
+using System.Globalization;
+using System.Text.Json.Serialization;
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    public class MemberIndicatorAssignmentDto
+    {
+        public long AssignmentId { get; set; }
+        public long CoachingSessionId { get; set; }
+        public string MemberUserId { get; set; } = null!;
+        public string MemberFullName { get; set; } = null!;
+        public int TeamId { get; set; }
+        public string TeamName { get; set; } = null!;
+        public int IndicatorId { get; set; }
+        public string IndicatorName { get; set; } = null!;
+        public decimal MinimunValue { get; set; }
+        public decimal MaximunValue { get; set; }
+        public string Formula { get; set; } = null!;
+        public decimal Weight { get; set; }
+        public IndicatorType Type { get; set; }
+        public string TypeName => Type switch
+        {
+            IndicatorType.Numeric => "Numérico",
+            IndicatorType.Qualitative => "Cualitativo",
+            IndicatorType.Operational => "Operacional",
+            IndicatorType.Attitudinal => "Actitudinal",
+            IndicatorType.Sales => "Ventas",
+            _ => "Desconocido"
+        };
+        public Rule Rule { get; set; }
+        public string RuleName => Rule.ToString();
+        public string RuleExpression => Rule switch
+        {
+            Rule.HigherIsBetter => string.Create(CultureInfo.InvariantCulture, $">= {TargetValue:0.############################}{TargetUnitName}"),
+            Rule.LowerIsBetter => string.Create(CultureInfo.InvariantCulture, $"<= {TargetValue:0.############################}{TargetUnitName}"),
+            Rule.InRangeIsBetter => string.Create(CultureInfo.InvariantCulture, $"{MinimunValue:0.############################} >= Real <= {MaximunValue:0.############################}"),
+            _ => "Desconocido"
+        };
+        public IndicatorStatus Status { get; set; }
+        public int TemplateId { get; set; }
+        public int PeriodId { get; set; }
+        public decimal TargetValue { get; set; }
+        public int TargetUnitId { get; set; }
+        public string TargetUnitName { get; set; } = null!;
+        public DateTime ValidFrom { get; set; }
+        public DateTime ValidTo { get; set; }
+        [JsonConverter(typeof(JsonStringEnumConverter<CoachingSessionAcceptanceStatus>))]
+        public CoachingSessionAcceptanceStatus AcceptanceStatus { get; set; }
+        [JsonConverter(typeof(JsonStringEnumConverter<CoachingSessionReviewStatus>))]
+        public CoachingSessionReviewStatus ReviewStatus { get; set; }
+    }
+}
+
+
+
+
+
+using ApiCoaching.Models;
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    public class SaveCoachingResultsRequestDto
+    {
+        public List<IndicatorResultRequestDto> Results { get; set; } = [];
+
+        public CoachingActionPlanRequestDto ActionPlan { get; set; } = null!;
+    }
+
+    public class IndicatorResultRequestDto
+    {
+        public long AssignmentId { get; set; }
+
+        public decimal? AchievedValue { get; set; }
+    }
+
+    public class CoachingActionPlanRequestDto
+    {
+        public List<CoachingActionRequestDto> Actions { get; set; } = [];
+    }
+
+    public class CoachingActionRequestDto
+    {
+        public MeasurementType MeasurementType { get; set; }
+
+        public DateTime CommitmentDate { get; set; }
+
+        public string ImprovementOpportunity { get; set; } = null!;
+
+        public string ActionDescription { get; set; } = null!;
+    }
+}
+
+
+
+
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    public class UserMemberDto
+    {
+        public string Id { get; set; } = null!;
+        public string EmployeeId { get; set; } = null!;
+        public string FullName { get; set; } = null!;
+        public int? CompanyPositionId { get; set; } 
+        public string CompanyPositionName { get; set; } = null!;
+        public int? CompanyAreaId { get; set; } 
+        public string CompanyAreaName { get; set; } = null!;
+        public int? CompanyLocationId { get; set; } 
+        public string CompanyLocationName { get; set; } = null!;
+        public string Status { get; set; } = null!;
+
+    }
+}
+
+
+
+
+using System.ComponentModel.DataAnnotations;
+
+namespace ApiCoaching.Models
+{
+    public class CoachingAction : BaseEntity
+    {
+        [Key]
+        public long Id { get; set; }
+
+        public long CoachingActionPlanId { get; set; }
+
+        [EnumDataType(typeof(MeasurementType))]
+        public MeasurementType MeasurementType { get; set; }
+
+        public DateTime CommitmentDate { get; set; }
+
+        [Required]
+        [MaxLength(2000)]
+        public string ImprovementOpportunity { get; set; } = null!;
+
+        [Required]
+        [MaxLength(2000)]
+        public string ActionDescription { get; set; } = null!;
+
+        public virtual CoachingActionPlan ActionPlan { get; set; } = null!;
+    }
+
+    public enum MeasurementType
+    {
+        Compliance = 1,
+        Behavior = 2,
+        Knowledge = 3
+    }
+}
+
+
+
+
+
+using System.ComponentModel.DataAnnotations;
+
+namespace ApiCoaching.Models
+{
+    public class CoachingActionPlan : BaseEntity
+    {
+        [Key]
+        public long Id { get; set; }
+
+        public long CoachingSessionId { get; set; }
+
+        public virtual CoachingSession Session { get; set; } = null!;
+
+        public virtual ICollection<CoachingAction> Actions { get; set; } = [];
+    }
+}
+
+
+
+
+using System.ComponentModel.DataAnnotations;
+
+namespace ApiCoaching.Models
+{
+    public class CoachingSession : BaseEntity
+    {
+        [Key]
+        public long Id { get; set; }
+
+        public int TeamId { get; set; }
+
+        [MaxLength(50)]
+        public string MemberUserId { get; set; } = null!;
+
+        public CoachingSessionAcceptanceStatus AcceptanceStatus { get; private set; } =
+            CoachingSessionAcceptanceStatus.Pending;
+
+        public DateTime? AcceptedAt { get; private set; }
+
+        public DateTime? AcceptanceRejectedAt { get; private set; }
+
+        [MaxLength(500)]
+        public string? AcceptanceRejectionReason { get; private set; }
+
+        public CoachingSessionReviewStatus ReviewStatus { get; private set; } =
+            CoachingSessionReviewStatus.NotSubmitted;
+
+        public DateTime? SubmittedAt { get; private set; }
+
+        public DateTime? ReviewedAt { get; private set; }
+
+        [MaxLength(50)]
+        public string? ReviewedBy { get; private set; }
+
+        [MaxLength(500)]
+        public string? ReviewRejectionReason { get; private set; }
+
+        public virtual TeamMember TeamMember { get; set; } = null!;
+
+        public virtual ICollection<TeamMemberIndicatorAssignment> IndicatorAssignments { get; set; } = [];
+
+        public virtual CoachingActionPlan? ActionPlan { get; set; }
+
+        public void Accept(string userId)
+        {
+            ValidateMember(userId);
+            ValidatePendingAcceptance();
+
+            AcceptanceStatus = CoachingSessionAcceptanceStatus.Accepted;
+            AcceptedAt = DateTime.UtcNow;
+            RecordDecision(userId, AcceptedAt.Value);
+        }
+
+        public void RejectAcceptance(string userId, string reason)
+        {
+            ValidateMember(userId);
+            ValidatePendingAcceptance();
+            var validatedReason = ValidateReason(reason);
+
+            AcceptanceStatus = CoachingSessionAcceptanceStatus.Rejected;
+            AcceptanceRejectedAt = DateTime.UtcNow;
+            AcceptanceRejectionReason = validatedReason;
+            RecordDecision(userId, AcceptanceRejectedAt.Value);
+        }
+
+        public void SubmitForReview()
+        {
+            if (AcceptanceStatus != CoachingSessionAcceptanceStatus.Accepted)
+            {
+                throw new InvalidOperationException("El colaborador debe aceptar el inicio del coaching antes de enviar la sesión a revisión.");
+            }
+
+            if (ReviewStatus != CoachingSessionReviewStatus.NotSubmitted)
+            {
+                throw new InvalidOperationException("La sesión ya fue enviada a revisión.");
+            }
+
+            if (IndicatorAssignments.Count == 0 || IndicatorAssignments.Any(assignment =>
+                !assignment.AchievedValue.HasValue || !assignment.AchievementPercentage.HasValue || !assignment.EvaluatedAt.HasValue))
+            {
+                throw new InvalidOperationException("Debes completar todos los resultados de la sesión antes de enviarla a revisión.");
+            }
+
+            if (ActionPlan is null || ActionPlan.Actions.Count == 0)
+            {
+                throw new InvalidOperationException("La sesión debe tener un plan con al menos una acción antes de enviarla a revisión.");
+            }
+
+            ReviewStatus = CoachingSessionReviewStatus.Pending;
+            SubmittedAt = DateTime.UtcNow;
+        }
+
+        public void ApproveReview(string userId)
+        {
+            ValidateMember(userId);
+            ValidatePendingReview();
+
+            ReviewStatus = CoachingSessionReviewStatus.Approved;
+            ReviewedAt = DateTime.UtcNow;
+            ReviewedBy = userId;
+            RecordDecision(userId, ReviewedAt.Value);
+        }
+
+        public void RejectReview(string userId, string reason)
+        {
+            ValidateMember(userId);
+            ValidatePendingReview();
+            var validatedReason = ValidateReason(reason);
+
+            ReviewStatus = CoachingSessionReviewStatus.Rejected;
+            ReviewedAt = DateTime.UtcNow;
+            ReviewedBy = userId;
+            ReviewRejectionReason = validatedReason;
+            RecordDecision(userId, ReviewedAt.Value);
+        }
+
+        private void ValidateMember(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(MemberUserId) ||
+                !string.Equals(MemberUserId, userId, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Solo el colaborador relacionado con la sesión puede aceptar, aprobar o rechazar el coaching.");
+            }
+        }
+
+        private void ValidatePendingAcceptance()
+        {
+            if (AcceptanceStatus != CoachingSessionAcceptanceStatus.Pending)
+            {
+                throw new InvalidOperationException("La aceptación del inicio del coaching ya fue respondida.");
+            }
+        }
+
+        private void ValidatePendingReview()
+        {
+            if (ReviewStatus != CoachingSessionReviewStatus.Pending)
+            {
+                throw new InvalidOperationException("Solo se puede aprobar o rechazar una sesión pendiente de revisión.");
+            }
+        }
+
+        private static string ValidateReason(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length > 500)
+            {
+                throw new ArgumentException("Debes indicar un motivo de rechazo de hasta 500 caracteres.", nameof(reason));
+            }
+
+            return reason.Trim();
+        }
+
+        private void RecordDecision(string userId, DateTime decidedAt)
+        {
+            LastModifiedAt = decidedAt;
+            LastModifiedBy = userId;
+        }
+    }
+
+    public enum CoachingSessionAcceptanceStatus
+    {
+        Pending = 0,
+        Accepted = 1,
+        Rejected = 2
+    }
+
+    public enum CoachingSessionReviewStatus
+    {
+        NotSubmitted = 0,
+        Pending = 1,
+        Approved = 2,
+        Rejected = 3
+    }
+}
+
+
+
+
+using ApiCoaching.Dtos.Coaching;
+using ApiCoaching.Services;
+using FluentValidation;
+
+namespace ApiCoaching.Validators.Coaching
+{
+    public class CalculateCoachingAchievementRequestDtoValidator : AbstractValidator<CalculateCoachingAchievementRequestDto>
+    {
+        public CalculateCoachingAchievementRequestDtoValidator()
+        {
+            RuleFor(x => x.AchievedValue)
+                .Cascade(CascadeMode.Stop)
+                .NotNull().WithMessage("El resultado obtenido es obligatorio.")
+                .PrecisionScale(18, 2, true)
+                .WithMessage("El resultado obtenido admite hasta 16 dígitos enteros y dos decimales.");
+
+            RuleFor(x => x.TargetValue)
+                .Cascade(CascadeMode.Stop)
+                .NotNull().WithMessage("La meta es obligatoria.")
+                .PrecisionScale(18, 2, true)
+                .WithMessage("La meta admite hasta 16 dígitos enteros y dos decimales.");
+
+            RuleFor(x => x.MinimumValue)
+                .PrecisionScale(18, 2, true)
+                .WithMessage("El mínimo admite hasta 16 dígitos enteros y dos decimales.");
+
+            RuleFor(x => x.MaximumValue)
+                .PrecisionScale(18, 2, true)
+                .WithMessage("El máximo admite hasta 16 dígitos enteros y dos decimales.");
+
+            RuleFor(x => x.Rule)
+                .IsInEnum().WithMessage("La regla del indicador no es válida.");
+
+            RuleFor(x => x.Formula)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty().WithMessage("La fórmula es obligatoria.")
+                .MaximumLength(200).WithMessage("La fórmula no puede superar 200 caracteres.")
+                .Custom((formula, context) =>
+                {
+                    if (!IndicatorFormulaEvaluator.TryValidate(formula, out var error))
+                    {
+                        context.AddFailure(error!);
+                    }
+                });
+        }
+    }
+}
+using ApiCoaching.Dtos.Coaching;
+using FluentValidation;
+
+namespace ApiCoaching.Validators.Coaching
+{
+    public class CreateIndicatorAssignmentsRequestDtoValidator
+        : AbstractValidator<CreateIndicatorAssignmentsRequestDto>
+    {
+        public CreateIndicatorAssignmentsRequestDtoValidator()
+        {
+            RuleFor(x => x.Teams)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty()
+                .WithMessage("Debes enviar al menos un equipo.")
+                .Must(teams => teams.Where(x => x != null).Select(x => x.TeamId).Distinct().Count()
+                    == teams.Count(x => x != null))
+                .WithMessage("La lista de equipos no puede contener duplicados.");
+
+            RuleForEach(x => x.Teams)
+                .NotNull().WithMessage("Cada equipo es obligatorio.")
+                .SetValidator(new TeamIndicatorAssignmentsRequestDtoValidator());
+        }
+    }
+
+    public class TeamIndicatorAssignmentsRequestDtoValidator
+        : AbstractValidator<TeamIndicatorAssignmentsRequestDto>
+    {
+        public TeamIndicatorAssignmentsRequestDtoValidator()
+        {
+            RuleFor(x => x.TeamId)
+                .GreaterThan(0)
+                .WithMessage("El equipo es obligatorio.");
+
+            RuleFor(x => x.Members)
+                .Cascade(CascadeMode.Stop)
+                .NotNull()
+                .WithMessage("La lista de miembros es obligatoria.")
+                .Must(members => members is { Count: > 0 })
+                .WithMessage("Debes enviar al menos un miembro.")
+                .Must(HaveUniqueMembers)
+                .WithMessage("La lista de miembros no puede contener duplicados.");
+
+            RuleForEach(x => x.Members)
+                .NotNull().WithMessage("Cada miembro es obligatorio.")
+                .SetValidator(new TeamMemberIndicatorAssignmentsRequestDtoValidator());
+        }
+
+        private static bool HaveUniqueMembers(
+            List<TeamMemberIndicatorAssignmentsRequestDto>? members)
+        {
+            return members is null || members.Count(x => x != null) == members
+                .Where(x => x != null)
+                .Select(x => x.MemberUserId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+        }
+    }
+
+    public class TeamMemberIndicatorAssignmentsRequestDtoValidator
+        : AbstractValidator<TeamMemberIndicatorAssignmentsRequestDto>
+    {
+        public TeamMemberIndicatorAssignmentsRequestDtoValidator()
+        {
+            RuleFor(x => x.MemberUserId)
+                .NotEmpty()
+                .WithMessage("El identificador del miembro es obligatorio.")
+                .MaximumLength(50)
+                .WithMessage("El identificador del miembro no puede superar 50 caracteres.");
+
+            RuleFor(x => x.Indicators)
+                .Cascade(CascadeMode.Stop)
+                .NotNull()
+                .WithMessage("La lista de indicadores es obligatoria.")
+                .Must(indicators => indicators is { Count: > 0 })
+                .WithMessage("Debes enviar al menos un indicador.")
+                .Must(HaveUniqueIndicators)
+                .WithMessage("Un miembro no puede recibir el mismo indicador más de una vez en la solicitud.")
+                .Must(HaveTotalWeight)
+                .WithMessage("Los pesos de los indicadores de cada miembro deben sumar exactamente 100 %.");
+
+            RuleForEach(x => x.Indicators)
+                .NotNull().WithMessage("Cada indicador es obligatorio.")
+                .SetValidator(new IndicatorAssignmentRequestDtoValidator());
+        }
+
+        private static bool HaveTotalWeight(List<IndicatorAssignmentRequestDto> indicators)
+        {
+            if (indicators.Any(x => x == null || x.Weight <= 0m || x.Weight > 100m))
+            {
+                return true;
+            }
+
+            return indicators.Sum(x => x.Weight) == 100m;
+        }
+
+        private static bool HaveUniqueIndicators(
+            List<IndicatorAssignmentRequestDto>? indicators)
+        {
+            return indicators is null || indicators.Count(x => x != null) == indicators
+                .Where(x => x != null)
+                .Select(x => x.IndicatorId)
+                .Distinct()
+                .Count();
+        }
+    }
+
+    public class IndicatorAssignmentRequestDtoValidator
+        : AbstractValidator<IndicatorAssignmentRequestDto>
+    {
+        public IndicatorAssignmentRequestDtoValidator()
+        {
+            RuleFor(x => x.IndicatorId)
+                .GreaterThan(0)
+                .WithMessage("El indicador es obligatorio.");
+
+            RuleFor(x => x.Weight)
+                .Cascade(CascadeMode.Stop)
+                .GreaterThan(0m)
+                .WithMessage("El peso debe ser mayor que 0 %.")
+                .LessThanOrEqualTo(100m)
+                .WithMessage("El peso no puede ser mayor que 100 %.")
+                .Must(weight => decimal.Round(weight, 2) == weight)
+                .WithMessage("El peso puede tener como máximo dos decimales.");
+
+            RuleFor(x => x.TargetUnitId)
+                .GreaterThan(0)
+                .WithMessage("La unidad de medida de la meta es obligatoria.");
+
+            RuleFor(x => x.ValidFrom)
+                .NotEmpty()
+                .WithMessage("La fecha de inicio de vigencia es obligatoria.");
+
+            RuleFor(x => x.ValidTo)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty()
+                .WithMessage("La fecha de fin de vigencia es obligatoria.")
+                .GreaterThanOrEqualTo(x => x.ValidFrom)
+                .WithMessage("La fecha de fin de vigencia no puede ser anterior a la fecha de inicio.");
+        }
+    }
+}
+
+
+using ApiCoaching.Dtos.Coaching;
+using FluentValidation;
+
+namespace ApiCoaching.Validators.Coaching
+{
+    public class SaveCoachingResultsRequestDtoValidator : AbstractValidator<SaveCoachingResultsRequestDto>
+    {
+        public SaveCoachingResultsRequestDtoValidator()
+        {
+            RuleFor(x => x.Results)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty().WithMessage("Debes enviar los resultados de la sesión.")
+                .Must(results => results.Where(x => x != null).Select(x => x.AssignmentId).Distinct().Count()
+                    == results.Count(x => x != null))
+                .WithMessage("Una asignación no puede repetirse en los resultados.");
+
+            RuleForEach(x => x.Results)
+                .NotNull().WithMessage("Cada resultado es obligatorio.")
+                .SetValidator(new IndicatorResultRequestDtoValidator());
+
+            RuleFor(x => x.ActionPlan)
+                .NotNull().WithMessage("El plan de acción es obligatorio.")
+                .SetValidator(new CoachingActionPlanRequestDtoValidator());
+        }
+    }
+
+    public class IndicatorResultRequestDtoValidator : AbstractValidator<IndicatorResultRequestDto>
+    {
+        public IndicatorResultRequestDtoValidator()
+        {
+            RuleFor(x => x.AssignmentId)
+                .GreaterThan(0).WithMessage("El identificador de la asignación debe ser mayor que cero.");
+
+            RuleFor(x => x.AchievedValue)
+                .Cascade(CascadeMode.Stop)
+                .NotNull().WithMessage("El resultado obtenido es obligatorio.")
+                .PrecisionScale(18, 2, true)
+                .WithMessage("El resultado obtenido admite hasta 16 dígitos enteros y dos decimales.");
+        }
+    }
+
+    public class CoachingActionPlanRequestDtoValidator : AbstractValidator<CoachingActionPlanRequestDto>
+    {
+        public CoachingActionPlanRequestDtoValidator()
+        {
+            RuleFor(x => x.Actions)
+                .NotEmpty().WithMessage("El plan debe contener al menos una acción.");
+
+            RuleForEach(x => x.Actions)
+                .NotNull().WithMessage("Cada acción es obligatoria.")
+                .SetValidator(new CoachingActionRequestDtoValidator());
+        }
+    }
+
+    public class CoachingActionRequestDtoValidator : AbstractValidator<CoachingActionRequestDto>
+    {
+        public CoachingActionRequestDtoValidator()
+        {
+            RuleFor(x => x.MeasurementType)
+                .IsInEnum().WithMessage("El tipo de medición no es válido.");
+
+            RuleFor(x => x.CommitmentDate)
+                .NotEmpty().WithMessage("La fecha de compromiso es obligatoria.");
+
+            RuleFor(x => x.ImprovementOpportunity)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty().WithMessage("La oportunidad de mejora es obligatoria.")
+                .MaximumLength(2000).WithMessage("La oportunidad de mejora no puede superar 2000 caracteres.");
+
+            RuleFor(x => x.ActionDescription)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty().WithMessage("La acción a realizar es obligatoria.")
+                .MaximumLength(2000).WithMessage("La acción a realizar no puede superar 2000 caracteres.");
+        }
+    }
+}
+
+
+
+
+Esto es todo lo que pude obtener de coaching, dime si necesitas ver algun otro archivo
