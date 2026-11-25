@@ -1,2 +1,3 @@
-import { toCoachingReportData, coachingFileName } from "./coachingExportData";
-export { coachingFileName };
+SELECT Id, UserName, FullName
+FROM Users
+WHERE Id = '07cda533-af24-444e-b155-7a54a5813a12';
