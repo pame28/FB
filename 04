@@ -1,530 +1,282 @@
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
-namespace ApiCoaching.Models
-{
-    public class TeamMemberIndicatorAssignment : BaseEntity
-    {
-        [Key]
-        public long Id { get; set; }
-
-        public long CoachingSessionId { get; set; }
-
-        [Column(TypeName = "decimal(5, 2)")]
-        public decimal Weight { get; set; }
-
-        public int TeamId { get; set; }
-
-        [MaxLength(50)]
-        public string MemberUserId { get; set; } = null!;
-
-        public int IndicatorId { get; set; }
-
-        [Column(TypeName = "decimal(18, 2)")]
-        public decimal TargetValue { get; set; }
-
-        [Column(TypeName = "decimal(18, 2)")]
-        public decimal? AchievedValue { get; set; }
-
-        [Column(TypeName = "decimal(9, 2)")]
-        public decimal? AchievementPercentage { get; set; }
-
-        public DateTime? EvaluatedAt { get; set; }
-
-        public int TargetUnitId { get; set; }
-
-        public DateTime ValidFrom { get; set; }
-
-        public DateTime ValidTo { get; set; }
-
-        public virtual CoachingSession Session { get; set; } = null!;
-
-        public virtual TeamMember TeamMember { get; set; } = null!;
-        public virtual Indicator Indicator { get; set; } = null!;
-
-        public virtual Unit TargetUnit { get; set; } = null!;
-    }
-}
-
-
-
-
-
-
-
-
-
-namespace ApiCoaching.Models
-{
-    public class TeamMember
-    {
-        public int TeamId { get; set; }
-        public virtual Team Team { get; set; } = null!;
-
-        public string MemberUserId { get; set; } = null!;
-        public virtual User User { get; set; } = null!;
-
-        public virtual ICollection<TeamMemberIndicatorAssignment>
-            IndicatorAssignments { get; set; } = [];
-    }
-}
-
-
-
-
-using System.ComponentModel.DataAnnotations;
-
-namespace ApiCoaching.Models
-{
-    public class Team
-    {
-        [Key]
-        public int Id { get; set; }
-
-        [MaxLength(80)]
-        public string Name { get; set; } = null!;
-
-        public int CompanyAreaId { get; set; }
-
-        public virtual CompanyArea CompanyArea { get; set; } = null!;
-        public virtual ICollection<TeamLeader> Leaders { get; set; } = [];
-
-        public virtual ICollection<TeamMember> Members { get; set; } = [];
-    }
-}
-
-
-
-namespace ApiCoaching.Models
-{
-    public class TeamLeader
-    {
-        public int TeamId { get; set; }
-        public virtual Team Team { get; set; } = null!;
-
-        public string LeaderUserId { get; set; } = null!;
-        public virtual User User { get; set; } = null!;
-    }
-}
-
-
-
-
-
-using System.ComponentModel.DataAnnotations;
-
-namespace ApiCoaching.Models
-{
-    public class User
-    {
-        [Key]
-        [MaxLength(50)]
-        public string Id { get; set; } = Guid.NewGuid().ToString();
-
-        [MaxLength(50)]
-        public string FirstName { get; set; } = null!;
-
-        [MaxLength(50)]
-        public string LastName { get; set; } = null!;
-
-        [MaxLength(100)]
-        public string? FullName { get; set; } = null!;
-
-        [MaxLength(50)]
-        public string UserName { get; set; } = null!;
-
-        [MaxLength(80)]
-        public string? Email { get; set; } = null!;
-
-        [MaxLength(20)]
-        public string? TellerCode { get; set; }
-
-        [MaxLength(15)]
-        public string? EmployeeCode { get; set; }
-
-        public UserBranchUbication? EmployeeBranchUbication { get; set; }
-
-        public UserStatus Status { get; set; }
-
-        public bool IsLeader { get; set; } = false;
-
-        public int? CompanyPositionId { get; set; }
-
-        public int? CompanyLocationId { get; set; }
-
-        public int? CompanyAreaId { get; set; }
-
-        public int? CompanyBranchId { get; set; }
-
-        public int? RoleId { get; set; }
-
-        public virtual CompanyPosition CompanyPosition { get; set; } = null!;
-
-        public virtual CompanyLocation CompanyLocation { get; set; } = null!;
-
-        public virtual CompanyArea CompanyArea { get; set; } = null!;
-
-        public virtual CompanyBranch CompanyBranch { get; set; } = null!;
-
-        public virtual Role Role { get; set; } = null!;
-
-        public virtual ICollection<ModelLog> ModelsLogs { get; set; } = [];
-        public virtual ICollection<TeamLeader> TeamsLeaders { get; set; } = [];
-        public virtual ICollection<TeamMember> TeamMembers { get; set; } = [];
-
-
-    }
-
-    public enum UserStatus
-    {
-        Inactivo = 0,
-        Activo = 1,
-        Vacaciones = 2,
-        Maternidad = 3,
-        Incapacidad = 4
-    }
-
-    public enum UserBranchUbication
-    {
-        Lobby = 0,
-        Ventanilla = 1
-    }
-
-
-}
-
-
-
-
-using System.ComponentModel.DataAnnotations;
-
-namespace ApiCoaching.Models
-{
-    public class Indicator : BaseEntity
-    {
-        [Key]
-        public int Id { get; set; }
-
-        [MaxLength(100)]
-        public string Name { get; set; } = null!;
-
-        public decimal MinimunValue { get; set; } 
-        public decimal MaximunValue { get; set; }
-
-        [MaxLength(200)]
-        public string Formula { get; set; } = null!;
-
-        public decimal Weight { get; set; }
-
-        public IndicatorType Type { get; set; }
-
-        public Rule Rule { get; set; }
-
-        public IndicatorStatus Status { get; set; }
-
-        public int TemplateId { get; set; }
-
-        public int PeriodId { get; set; }
-
-        public virtual Template Template { get; set; } = null!;
-        public virtual Period Period { get; set; } = null!;
-        
-
-        public virtual ICollection<IndicatorMarkerAssignment> MarkerAssignments { get; set; } = [];
-
-        public virtual ICollection<TeamMemberIndicatorAssignment>
-            TeamMemberAssignments { get; set; } = [];
-
-    }
-
-    public enum IndicatorType
-    {
-       
-        Numeric = 0,
-        Qualitative = 1,
-        Operational = 2,
-        Attitudinal = 3,
-        Sales = 4
-    }
-
-    public enum IndicatorStatus
-    {
-        Inactive = 0,
-        Active = 1
-    }
-
-    public enum Rule
-    {
-        HigherIsBetter = 0,
-        LowerIsBetter = 1,
-        InRangeIsBetter = 2,
-    }
-
-    
-}
-
-
-
-using System.ComponentModel.DataAnnotations;
-
-namespace ApiCoaching.Models
-{
-    public class Unit
-    {
-        [Key]
-        public int Id { get; set; }
-        [MaxLength(70)]
-        public string Name { get; set; } = null!;
-        public bool Status { get; set; }
-
-        public virtual ICollection<IndicatorMarkerAssignment> MarkerAssignments { get; set; } = [];
-
-
-    }
-}
-
-
-
-using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
-
-namespace ApiCoaching.Models
-{
-    public class BaseEntity
-    {
-
-        public DateTime CreatedAt { get; set; }
-
-        public DateTime? LastModifiedAt { get; set; }
-
-        [MaxLength(50)]
-        public string CreatedBy { get; set; } = null!;
-
-        [MaxLength(50)]
-        public string? LastModifiedBy { get; set; } = null!;
-    }
-}
-
-
-
-
+using ApiCoaching.Constants;
+using ApiCoaching.Dtos;
+using ApiCoaching.Dtos.Certifications;
 using ApiCoaching.Models;
-using ApiCoaching.Models.SpResults;
-using Microsoft.EntityFrameworkCore;
+using ApiCoaching.Repositories.Interfaces;
+using System.Security.Claims;
 
-namespace ApiCoaching.Data
+namespace ApiCoaching.Endpoints
 {
-    public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+    public static class CertificationsEndpoints
     {
-        public DbSet<User> Users { get; set; }
-        public DbSet<Team> Teams { get; set; }
-        public DbSet<TeamLeader> TeamsLeaders { get; set; }
-        public DbSet<TeamMember> TeamsMembers { get; set; }
-        public DbSet<CompanyPosition> CompanyPositions { get; set; }
-        public DbSet<CompanyLocation> CompanyLocations { get; set; }
-        public DbSet<CompanyArea> CompanyAreas { get; set; }
-        public DbSet<CompanyBranch> CompanyBranches { get; set; }
-        public DbSet<Permission> Permissions { get; set; }
-        public DbSet<Page> Pages { get; set; }
-        public DbSet<Role> Roles { get; set; }
-        public DbSet<Module> Modules { get; set; }
-        public DbSet<LoginLog> LoginLogs { get; set; }
-        public DbSet<ModelLog> ModelsLogs { get; set; }
-        public DbSet<Template> Templates { get; set; }
-        public DbSet<Marker> Markers { get; set; }
-        public DbSet<TemplateMarker> TemplatesMarkers { get; set; }
-        public DbSet<Verb> Verbs { get; set; }
-        public DbSet<Unit> Units { get; set; }
-        public DbSet<Indicator> Indicators { get; set; }
-        public DbSet<IndicatorMarkerAssignment> IndicatorsMarkerAssignments { get; set; }
-        public DbSet<TeamMemberIndicatorAssignment> TeamMembersIndicatorsAssignments { get; set; }
-        public DbSet<CoachingSession> CoachingSessions { get; set; }
-        public DbSet<CoachingActionPlan> CoachingActionsPlans { get; set; }
-        public DbSet<CoachingAction> CoachingActions { get; set; }
-        public DbSet<Period> Periods { get; set; }
-
-
-
-
-
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        public static void MapCertificationsEndpoints(this IEndpointRouteBuilder app)
         {
-            modelBuilder.Entity<Role>()
-                .HasMany(r => r.Permissions)
-                .WithMany(p => p.Roles)
-                .UsingEntity<Dictionary<string, object>>(
-                    "RolesPermissions",
-                    j => j.HasOne<Permission>()
-                          .WithMany()
-                          .HasForeignKey("PermissionId"),
-                    j => j.HasOne<Role>()
-                          .WithMany()
-                          .HasForeignKey("RoleId"),
-                    j =>
-                    {
-                        j.HasKey("RoleId", "PermissionId");
-                    });
+            var group = app.MapGroup("/api/certifications")
+                .WithTags("Certifications")
+                .RequireAuthorization();
 
-            modelBuilder.Entity<TemplateMarker>()
-                .HasKey(bc => new { bc.TemplateId, bc.Position });
+            // Formatos
+            group.MapGet("formats", GetFormats)
+                .WithName("GetCertificationFormats")
+                .WithSummary("Obtiene los formatos de certificaci\u00f3n con su estructura de criterios.")
+                .Produces<ResponseObject<List<CertificationFormatDto>>>(StatusCodes.Status200OK);
 
-            modelBuilder.Entity<TemplateMarker>()
-                .HasOne(bc => bc.Template)
-                .WithMany(b => b.TemplateMarkers)
-                .HasForeignKey(bc => bc.TemplateId);
+            group.MapPost("formats", CreateFormat)
+                .WithName("CreateCertificationFormat")
+                .WithSummary("Crea un formato y desactiva el formato activo anterior del equipo.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status201Created)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest);
 
-            modelBuilder.Entity<TemplateMarker>()
-                .HasOne(bc => bc.Marker)
-                .WithMany(c => c.TemplateMarkers)
-                .HasForeignKey(bc => bc.MarkerId);
+            group.MapPut("formats/{id:int}", UpdateFormat)
+                .WithName("UpdateCertificationFormat")
+                .WithSummary("Actualiza un formato; queda como el formato activo de su equipo.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound);
 
+            group.MapDelete("formats/{id:int}", DeleteFormat)
+                .WithName("DeleteCertificationFormat")
+                .WithSummary("Elimina un formato; las certificaciones ya aplicadas conservan su informaci\u00f3n.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound);
 
-            modelBuilder.Entity<IndicatorMarkerAssignment>()
-                .HasKey(x => new { x.IndicatorId, x.TemplateId, x.Position });
+            // Gesti\u00f3n de certificadores
+            group.MapGet("certifiers", GetCertifiers)
+                .WithName("GetCertifiers")
+                .WithSummary("Obtiene los certificadores designados con sus equipos; filtra por \u00e1rea y b\u00fasqueda por nombre o c\u00f3digo.")
+                .Produces<ResponseObject<List<CertifierDto>>>(StatusCodes.Status200OK);
 
-            modelBuilder.Entity<IndicatorMarkerAssignment>()
-                .HasOne(x => x.Indicator)
-                .WithMany(x => x.MarkerAssignments)
-                .HasForeignKey(x => x.IndicatorId);
+            group.MapGet("certifiers/teams", GetCertifierTeams)
+                .WithName("GetCertifierTeamsByArea")
+                .WithSummary("Obtiene los equipos de un \u00e1rea con su l\u00edder, miembros y cantidad de certificadores.")
+                .Produces<ResponseObject<List<CertifierTeamDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest);
 
-            modelBuilder.Entity<IndicatorMarkerAssignment>()
-                .HasOne(x => x.TemplateMarker)
-                .WithMany()
-                .HasForeignKey(x => new { x.TemplateId, x.Position })
-                .HasPrincipalKey(x => new { x.TemplateId, x.Position });
+            group.MapGet("certifiers/candidates", GetCertifierCandidates)
+                .WithName("GetCertifierCandidates")
+                .WithSummary("Obtiene los usuarios activos de un área que pueden designarse como certificadores; búsqueda por nombre o código.")
+                .Produces<ResponseObject<List<CertifierDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest);
 
-            modelBuilder.Entity<IndicatorMarkerAssignment>()
-                .HasOne(x => x.Verb)
-                .WithMany(x => x.MarkerAssignments)
-                .HasForeignKey(x => x.VerbId)
-                .OnDelete(DeleteBehavior.Restrict);
+            group.MapPost("certifiers", DesignateCertifier)
+                .WithName("DesignateCertifier")
+                .WithSummary("Designa a un usuario como certificador de equipos de su \u00e1rea.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound);
 
-            modelBuilder.Entity<IndicatorMarkerAssignment>()
-                .HasOne(x => x.Unit)
-                .WithMany(x => x.MarkerAssignments)
-                .HasForeignKey(x => x.UnitId)
-                .OnDelete(DeleteBehavior.Restrict);
+            group.MapDelete("certifiers/{userId}", RemoveCertifier)
+                .WithName("RemoveCertifier")
+                .WithSummary("Quita el rol de certificador; las certificaciones registradas no se afectan.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound);
 
-            modelBuilder.Entity<TeamLeader>(entity =>
-            {
-                entity.HasKey(x => new { x.TeamId, x.LeaderUserId });
+            // Aplicar certificaci\u00f3n
+            group.MapGet("my-teams", GetMyTeams)
+                .WithName("GetCertifierAssignedTeams")
+                .WithSummary("Obtiene los equipos asignados al certificador autenticado con sus l\u00edderes y formato activo.")
+                .Produces<ResponseObject<List<AssignedTeamDto>>>(StatusCodes.Status200OK);
 
-                entity.HasOne(x => x.Team)
-                    .WithMany(x => x.Leaders)
-                    .HasForeignKey(x => x.TeamId)
-                    .OnDelete(DeleteBehavior.Cascade);
+            group.MapPost(string.Empty, Apply)
+                .WithName("ApplyCertification")
+                .WithSummary("Aplica una certificaci\u00f3n a un l\u00edder; el puntaje se calcula en el servidor y queda pendiente de aprobaci\u00f3n.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status201Created)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status403Forbidden);
 
-                entity.HasOne(x => x.User)
-                    .WithMany(x => x.TeamsLeaders)
-                    .HasForeignKey(x => x.LeaderUserId)
-                    .OnDelete(DeleteBehavior.Restrict);
-            });
+            // Historiales
+            group.MapGet("mine", GetMine)
+                .WithName("GetAssignedTeamsCertifications")
+                .WithSummary("Historial de certificaciones de los equipos asignados al certificador, sin importar qui\u00e9n las aplic\u00f3.")
+                .Produces<ResponseObject<List<CertificationDto>>>(StatusCodes.Status200OK);
 
-            modelBuilder.Entity<TeamMember>(entity =>
-            {
-                entity.HasKey(x => new { x.TeamId, x.MemberUserId });
+            group.MapGet(string.Empty, GetAll)
+                .WithName("GetAllCertifications")
+                .WithSummary("Historial general de certificaciones de todos los equipos y \u00e1reas.")
+                .Produces<ResponseObject<List<CertificationDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest);
 
-                entity.HasOne(x => x.Team)
-                    .WithMany(x => x.Members)
-                    .HasForeignKey(x => x.TeamId)
-                    .OnDelete(DeleteBehavior.Cascade);
+            group.MapGet("{id:long}/breakdown", GetBreakdown)
+                .WithName("GetCertificationBreakdown")
+                .WithSummary("Obtiene el desglose del puntaje final por criterio de una certificación.")
+                .Produces<ResponseObject<CertificationBreakdownDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound);
 
-                entity.HasOne(x => x.User)
-                    .WithMany(x => x.TeamMembers)
-                    .HasForeignKey(x => x.MemberUserId)
-                    .OnDelete(DeleteBehavior.Restrict);
-            });
+            group.MapPost("{id:long}/approve", (long id, ICertificationsRepository repository, ClaimsPrincipal user, ILoggerFactory loggerFactory) =>
+                    Resolve(id, true, repository, user, loggerFactory))
+                .WithName("ApproveCertification")
+                .WithSummary("Aprueba una certificaci\u00f3n pendiente y registra la auditor\u00eda.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict);
 
-            modelBuilder.Entity<CoachingSession>(entity =>
-            {
-                entity.HasKey(x => x.Id);
-
-                entity.Property(x => x.AcceptanceStatus)
-                    .IsConcurrencyToken();
-
-                entity.Property(x => x.ReviewStatus)
-                    .IsConcurrencyToken();
-
-                entity.HasOne(x => x.TeamMember)
-                    .WithMany()
-                    .HasForeignKey(x => new { x.TeamId, x.MemberUserId })
-                    .OnDelete(DeleteBehavior.Restrict);
-            });
-
-            modelBuilder.Entity<CoachingActionPlan>(entity =>
-            {
-                entity.HasKey(x => x.Id);
-
-                entity.HasOne(x => x.Session)
-                    .WithOne(x => x.ActionPlan)
-                    .HasForeignKey<CoachingActionPlan>(x => x.CoachingSessionId)
-                    .OnDelete(DeleteBehavior.Cascade);
-            });
-
-            modelBuilder.Entity<CoachingAction>(entity =>
-            {
-                entity.HasKey(x => x.Id);
-
-                entity.HasOne(x => x.ActionPlan)
-                    .WithMany(x => x.Actions)
-                    .HasForeignKey(x => x.CoachingActionPlanId)
-                    .OnDelete(DeleteBehavior.Cascade);
-            });
-
-            modelBuilder.Entity<TeamMemberIndicatorAssignment>(entity =>
-            {
-                entity.HasKey(x => x.Id);
-
-                entity.HasIndex(x => new { x.CoachingSessionId, x.IndicatorId })
-                    .IsUnique();
-
-                entity.Property(x => x.Weight)
-                    .HasPrecision(5, 2);
-
-                entity.Property(x => x.TargetValue)
-                    .HasPrecision(18, 2);
-
-                entity.Property(x => x.AchievedValue)
-                    .HasPrecision(18, 2);
-
-                entity.Property(x => x.AchievementPercentage)
-                    .HasPrecision(9, 2);
-
-                entity.HasOne(x => x.Session)
-                    .WithMany(x => x.IndicatorAssignments)
-                    .HasForeignKey(x => x.CoachingSessionId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(x => x.TargetUnit)
-                    .WithMany()
-                    .HasForeignKey(x => x.TargetUnitId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(x => x.TeamMember)
-                    .WithMany(x => x.IndicatorAssignments)
-                    .HasForeignKey(x => new
-                    {
-                        x.TeamId,
-                        x.MemberUserId
-                    })
-                    .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasOne(x => x.Indicator)
-                    .WithMany(x => x.TeamMemberAssignments)
-                    .HasForeignKey(x => x.IndicatorId)
-                    .OnDelete(DeleteBehavior.Restrict);
-            });
-
-
-            modelBuilder.Entity<UspGetAS400Queries>(e => e.HasNoKey()
-                .Metadata.SetIsTableExcludedFromMigrations(true));
-
-
+            group.MapPost("{id:long}/reject", (long id, ICertificationsRepository repository, ClaimsPrincipal user, ILoggerFactory loggerFactory) =>
+                    Resolve(id, false, repository, user, loggerFactory))
+                .WithName("RejectCertification")
+                .WithSummary("Rechaza una certificaci\u00f3n pendiente (queda como No aprobado) y registra la auditor\u00eda.")
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict);
         }
 
+        private static Task<IResult> GetFormats(ICertificationsRepository repository, ILoggerFactory loggerFactory) =>
+            Execute(loggerFactory, "GetCertificationFormatsError", async () =>
+                Ok(await repository.GetFormatsAsync()));
+
+        private static Task<IResult> CreateFormat(
+            SaveCertificationFormatRequestDto request, ICertificationsRepository repository,
+            ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "CreateCertificationFormatError", async userId =>
+                Mutation(await repository.SaveFormatAsync(null, request, userId), 201, "Formato guardado correctamente."));
+
+        private static Task<IResult> UpdateFormat(
+            int id, SaveCertificationFormatRequestDto request, ICertificationsRepository repository,
+            ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "UpdateCertificationFormatError", async userId =>
+                Mutation(await repository.SaveFormatAsync(id, request, userId), 200, "Formato guardado correctamente."));
+
+        private static Task<IResult> DeleteFormat(
+            int id, ICertificationsRepository repository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "DeleteCertificationFormatError", async userId =>
+                Mutation(await repository.DeleteFormatAsync(id, userId), 200, "Formato eliminado correctamente."));
+
+        private static Task<IResult> GetCertifiers(
+            int? areaId, string? search, ICertificationsRepository repository, ILoggerFactory loggerFactory) =>
+            Execute(loggerFactory, "GetCertifiersError", async () =>
+                Ok(await repository.GetCertifiersAsync(areaId, search)));
+
+        private static Task<IResult> GetCertifierTeams(
+            int? areaId, ICertificationsRepository repository, ILoggerFactory loggerFactory) =>
+            Execute(loggerFactory, "GetCertifierTeamsError", async () =>
+                areaId is null or <= 0
+                    ? Error(400, "Debes indicar el \u00e1rea.")
+                    : Ok(await repository.GetTeamsByAreaAsync(areaId.Value)));
+
+        private static Task<IResult> GetCertifierCandidates(
+            int? areaId, string? search, ICertificationsRepository repository, ILoggerFactory loggerFactory) =>
+            Execute(loggerFactory, "GetCertifierCandidatesError", async () =>
+                areaId is null or <= 0
+                    ? Error(400, "Debes indicar el área.")
+                    : Ok(await repository.GetCertifierCandidatesAsync(areaId.Value, search)));
+
+        private static Task<IResult> DesignateCertifier(
+            DesignateCertifierRequestDto request, ICertificationsRepository repository,
+            ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "DesignateCertifierError", async userId =>
+                string.IsNullOrWhiteSpace(request?.UserId)
+                    ? Error(400, "Debes indicar el usuario a designar.")
+                    : Mutation(await repository.DesignateCertifierAsync(request.UserId.Trim(), request.TeamIds ?? [], userId),
+                        200, "Certificador designado correctamente."));
+
+        private static Task<IResult> RemoveCertifier(
+            string userId, ICertificationsRepository repository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "RemoveCertifierError", async currentUserId =>
+                Mutation(await repository.RemoveCertifierAsync(userId, currentUserId), 200, "Rol de certificador quitado correctamente."));
+
+        private static Task<IResult> GetMyTeams(
+            ICertificationsRepository repository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "GetCertifierAssignedTeamsError", async userId =>
+                Ok(await repository.GetAssignedTeamsAsync(userId)));
+
+        private static Task<IResult> Apply(
+            ApplyCertificationRequestDto request, ICertificationsRepository repository,
+            ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "ApplyCertificationError", async userId =>
+                request is null || request.TeamId <= 0 || string.IsNullOrWhiteSpace(request.LeaderUserId)
+                    ? Error(400, "Debes indicar el equipo y el l\u00edder evaluado.")
+                    : Mutation(await repository.ApplyAsync(request, userId), 201,
+                        "Certificaci\u00f3n registrada correctamente \u2014 pendiente de aprobaci\u00f3n."));
+
+        private static Task<IResult> GetMine(
+            ICertificationsRepository repository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "GetAssignedTeamsCertificationsError", async userId =>
+                Ok(await repository.GetCertificationsAsync(userId, null, null, null, null, null)));
+
+        private static Task<IResult> GetAll(
+            int? areaId, int? teamId, string? certifierId, string? status, string? search,
+            ICertificationsRepository repository, ILoggerFactory loggerFactory) =>
+            Execute(loggerFactory, "GetAllCertificationsError", async () =>
+            {
+                CertificationStatus? parsed = null;
+                if (!string.IsNullOrWhiteSpace(status))
+                {
+                    if (!Enum.TryParse<CertificationStatus>(status, true, out var value) || !Enum.IsDefined(value))
+                    {
+                        return Error(400, "El estado indicado no es v\u00e1lido. Use Pending, Approved o Rejected.");
+                    }
+
+                    parsed = value;
+                }
+
+                return Ok(await repository.GetCertificationsAsync(null, areaId, teamId, certifierId, parsed, search));
+            });
+
+        private static Task<IResult> GetBreakdown(long id, ICertificationsRepository repository, ILoggerFactory loggerFactory) =>
+            Execute(loggerFactory, "GetCertificationBreakdownError", async () =>
+                await repository.GetBreakdownAsync(id) is { } breakdown
+                    ? Ok(breakdown)
+                    : Error(404, "No se encontró la certificación."));
+
+        private static Task<IResult> Resolve(
+            long id, bool approve, ICertificationsRepository repository, ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory) =>
+            WithUser(claimsPrincipal, loggerFactory, "ResolveCertificationError", async userId =>
+                Mutation(await repository.ResolveAsync(id, approve, userId), 200,
+                    approve ? "Certificaci\u00f3n aprobada correctamente." : "Certificaci\u00f3n marcada como no aprobada."));
+
+        private static IResult Ok<T>(T data) =>
+            Results.Ok(new ResponseObject<T> { Code = 200, Message = "OK", Data = data });
+
+        private static IResult Mutation(CertificationOperationResult result, int successCode, string successMessage)
+        {
+            if (result.Status == CertificationOperationStatus.Done)
+            {
+                return Results.Json(new ResponseObject<object>
+                {
+                    Code = successCode,
+                    Message = successMessage,
+                    Data = new { id = result.Id }
+                }, statusCode: successCode);
+            }
+
+            return Error(result.Status switch
+            {
+                CertificationOperationStatus.NotFound => 404,
+                CertificationOperationStatus.Forbidden => 403,
+                CertificationOperationStatus.Invalid when result.Message?.Contains("pendiente") == true => 409,
+                _ => 400
+            }, result.Message!);
+        }
+
+        private static async Task<IResult> WithUser(
+            ClaimsPrincipal claimsPrincipal, ILoggerFactory loggerFactory, string errorName, Func<string, Task<IResult>> action)
+        {
+            var userId = claimsPrincipal.FindFirstValue("userId") ?? claimsPrincipal.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return Error(401, GenericErrors.UnauthorizedUserMessage);
+            }
+
+            return await Execute(loggerFactory, errorName, () => action(userId));
+        }
+
+        private static async Task<IResult> Execute(ILoggerFactory loggerFactory, string errorName, Func<Task<IResult>> action)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (Exception ex)
+            {
+                loggerFactory.CreateLogger(typeof(CertificationsEndpoints)).LogError(ex, errorName);
+                return Error(500, GenericErrors.InternalServerError);
+            }
+        }
+
+        private static IResult Error(int code, string message) =>
+            Results.Json(new ResponseObjectError { Code = code, Message = message }, statusCode: code);
     }
 }
+
 
 
 
@@ -532,599 +284,2320 @@ namespace ApiCoaching.Data
 using ApiCoaching.Constants;
 using ApiCoaching.Dtos;
 using ApiCoaching.Dtos.Coaching;
-using ApiCoaching.Dtos.Teams;
+using ApiCoaching.Dtos.Services;
 using ApiCoaching.Models;
 using ApiCoaching.Repositories.Interfaces;
-using ApiCoaching.Services.Interfaces;
+using ApiCoaching.Services;
+using FluentValidation;
 using System.Security.Claims;
 
 namespace ApiCoaching.Endpoints
 {
-    public static class LoggedUserEndpoints
+    public static class CoachingEndpoints
     {
-        public static void MapLoggedUserEndpoints(this IEndpointRouteBuilder app)
+        public static void MapCoachingEndpoints(this IEndpointRouteBuilder app)
         {
-            var loggedUserGroup = app.MapGroup("/api/logged-user")
-                .WithTags("LoggedUser");
+            var coachingGroup = app.MapGroup("/api/coaching")
+                .WithTags("Coaching");
 
-            loggedUserGroup.MapGet(string.Empty, GetLoggedUser)
-                .WithName("GetLoggedUser")
-                .WithSummary("Obtiene el id, nombre y rol del usuario autenticado según el id contenido en el JWT.")
+            coachingGroup.MapPost("calculate", CalculateCoachingAchievement)
+                .WithName("CalculateCoachingAchievement")
+                .WithSummary("Calcula el porcentaje alcanzado mediante una fórmula dinámica, sin guardar datos.")
                 .RequireAuthorization()
-                .Produces<ResponseObject<LoggedUserDto>>(StatusCodes.Status200OK)
-                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
-                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
-                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
-
-            loggedUserGroup.MapGet("coaching/team-members", GetLoggedUserTeamMembers)
-                .WithName("GetLoggedUserTeamMembers")
-                .WithSummary("Obtiene los miembros del usuario autenticado agrupados por equipo cuando es líder(Coach).")
-                .RequireAuthorization()
-                .Produces<ResponseObject<List<LeaderTeamMembersGroupDto>>>(StatusCodes.Status200OK)
-                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
-                .Produces<ResponseObjectError>(StatusCodes.Status403Forbidden)
-                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
-                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
-
-            loggedUserGroup.MapGet("coaching/members/ongoing-assignments", GetLoggedUserMembersWithOngoingAssignments)
-                .WithName("GetLoggedUserMembersWithOngoingAssignments")
-                .WithSummary("Obtiene los miembros del coach agrupados por equipo, con asignaciones aprobadas e indicador activo; permite filtrar por nombre y código de empleado.")
-                .RequireAuthorization()
-                .Produces<ResponseObject<List<CoachActiveMembersGroupDto>>>(StatusCodes.Status200OK)
-                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
-                .Produces<ResponseObjectError>(StatusCodes.Status403Forbidden)
-                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
-                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
-
-            loggedUserGroup.MapPost("coaching/members/indicators", GetLoggedUserMemberIndicators)
-                .WithName("GetLoggedUserMemberIndicators")
-                .WithSummary("Obtiene los indicadores aprobados del primer grupo de asignaciones del miembro indicado de los equipos del coach autenticado.")
-                .RequireAuthorization()
-                .Produces<ResponseObject<List<MemberIndicatorAssignmentDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObject<CoachingAchievementDto>>(StatusCodes.Status200OK)
                 .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
                 .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
-                .Produces<ResponseObjectError>(StatusCodes.Status403Forbidden)
-                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
                 .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
 
-            loggedUserGroup.MapPost("sync/as400", SyncLoggedUserAs400)
-                .WithName("SyncLoggedUserAs400")
-                .WithSummary("Sincroniza la información AS400 del usuario autenticado usando el cajero asociado a su UserName.")
+            coachingGroup.MapPost("assignments", CreateIndicatorAssignments)
+                .WithName("CreateIndicatorAssignments")
+                .WithSummary("Asigna múltiples indicadores a múltiples miembros de múltiples equipos.")
                 .RequireAuthorization()
-                .Produces<ResponseObject<LoggedUserDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObject<List<long>>>(StatusCodes.Status201Created)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapGet("my-sessions", GetMySessions)
+                .WithName("GetMyCoachingSessions")
+                .WithSummary("Obtiene las sesiones con indicadores asignados al colaborador autenticado; filtra por AcceptanceStatus (Pending, Accepted, Rejected).")
+                .RequireAuthorization()
+                .Produces<ResponseObject<List<MyCoachingSessionDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapGet("history", GetCoachHistory)
+                .WithName("GetCoachingHistory")
+                .WithSummary("Obtiene el historial de procesos de coaching aplicados por el coach autenticado en sus equipos.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<List<CoachingHistoryDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapGet("my-processes", GetMyProcesses)
+                .WithName("GetMyCoachingProcesses")
+                .WithSummary("Obtiene los procesos de coaching evaluados del colaborador autenticado; filtra por ReviewStatus (Pending, Approved, Rejected).")
+                .RequireAuthorization()
+                .Produces<ResponseObject<List<MyCoachingProcessDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapPost("sessions/{sessionId:long}/review/approve", ApproveSessionReview)
+                .WithName("ApproveCoachingSessionReview")
+                .WithSummary("El colaborador aprueba el proceso de coaching evaluado.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapPost("sessions/{sessionId:long}/review/reject", RejectSessionReview)
+                .WithName("RejectCoachingSessionReview")
+                .WithSummary("El colaborador rechaza el proceso de coaching evaluado indicando un motivo.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
                 .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
                 .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
                 .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
                 .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
 
-            loggedUserGroup.MapGet("coaching/teams", GetLoggedUserTeams)
-                .WithName("GetLoggedUserTeams")
-                .WithSummary("Obtiene los equipos asignados al usuario autenticado cuando es líder(Coach).")
+            coachingGroup.MapPost("sessions/{sessionId:long}/accept", AcceptSession)
+                .WithName("AcceptCoachingSession")
+                .WithSummary("El colaborador aprueba los indicadores asignados de la sesión.")
                 .RequireAuthorization()
-                .Produces<ResponseObject<List<TeamLookupDto>>>(StatusCodes.Status200OK)
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
                 .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
-                .Produces<ResponseObjectError>(StatusCodes.Status403Forbidden)
                 .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapPost("sessions/{sessionId:long}/reject", RejectSession)
+                .WithName("RejectCoachingSession")
+                .WithSummary("El colaborador rechaza los indicadores asignados de la sesión indicando un motivo.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<object>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+            coachingGroup.MapPost("sessions/{sessionId:long}/results", SaveCoachingResults)
+                .WithName("SaveCoachingResults")
+                .WithSummary("Guarda los resultados de una sesión y su plan de acción, calculando el porcentaje alcanzado.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<CoachingResultsDto>>(StatusCodes.Status201Created)
+                .Produces<ResponseObjectError>(StatusCodes.Status400BadRequest)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status409Conflict)
                 .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
         }
 
-        private static async Task<IResult> GetLoggedUser(
+        private static async Task<IResult> CreateIndicatorAssignments(
+            CreateIndicatorAssignmentsRequestDto request,
+            IValidator<CreateIndicatorAssignmentsRequestDto> validator,
+            ICoachingRepository repository,
             ClaimsPrincipal claimsPrincipal,
-            IUsersRepository usersRepository,
             ILoggerFactory loggerFactory)
         {
-            var logger = loggerFactory.CreateLogger(typeof(LoggedUserEndpoints));
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
 
             try
             {
-                var currentUserId = GetCurrentUserId(claimsPrincipal);
-
                 if (string.IsNullOrWhiteSpace(currentUserId))
                 {
                     return Results.Json(new ResponseObjectError
                     {
-                        Code = 401,
-                        Message = "No se pudo obtener el identificador del usuario autenticado. "
+                        Code = StatusCodes.Status401Unauthorized,
+                        Message = GenericErrors.UnauthorizedUserMessage
                     }, statusCode: StatusCodes.Status401Unauthorized);
                 }
 
-                var user = await usersRepository.GetLoggedUserById(currentUserId);
-
-                if (user is null)
+                var validationResult = await validator.ValidateAsync(request);
+                if (!validationResult.IsValid)
                 {
                     return Results.Json(new ResponseObjectError
                     {
-                        Code = 404,
-                        Message = "El usuario autenticado no fue encontrado"
-                    }, statusCode: StatusCodes.Status404NotFound);
-                }
-
-                var response = new ResponseObject<LoggedUserDto>
-                {
-                    Code = 200,
-                    Message = "OK",
-                    Data = MapUserData(user)
-                };
-
-                logger.LogInformation("Logged user retrieved successfully for UserId: {UserId}", currentUserId);
-
-                return Results.Ok(response);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "GetLoggedUserError");
-                return Results.Json(new ResponseObjectError
-                {
-                    Code = 500,
-                    Message = GenericErrors.InternalServerError
-                }, statusCode: StatusCodes.Status500InternalServerError);
-            }
-        }
-
-        private static async Task<IResult> SyncLoggedUserAs400(
-            ClaimsPrincipal claimsPrincipal,
-            IUsersRepository usersRepository,
-            IUsersTellersAs400Service coachingCajerosService,
-            ILoggerFactory loggerFactory)
-        {
-            var logger = loggerFactory.CreateLogger(typeof(LoggedUserEndpoints));
-
-            try
-            {
-                var currentUserId = GetCurrentUserId(claimsPrincipal);
-
-                if (string.IsNullOrWhiteSpace(currentUserId))
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 401,
-                        Message = "No se pudo  obtener el identificador del usuario autenticado."
-                    }, statusCode: StatusCodes.Status401Unauthorized);
-                }
-
-                var user = await usersRepository.GetLoggedUserById(currentUserId);
-
-                if (user is null)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 404,
-                        Message = "El usuario autenticado no fue encontrado"
-                    }, statusCode: StatusCodes.Status404NotFound);
-                }
-
-                if (string.IsNullOrWhiteSpace(user.UserName))
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 400,
-                        Message = "El usuario autenticado no tiene un UserName válido para consultar AS400."
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = GenericErrors.RequestValidationErrorMessage,
+                        Errors = validationResult.Errors
+                            .ToDictionary(x => x.PropertyName, x => x.ErrorMessage)
                     }, statusCode: StatusCodes.Status400BadRequest);
                 }
 
-                var cajero = await coachingCajerosService.ObtenerCajeroAsync(user.UserName);
-
-                if (cajero is null)
-                {
-                    return Results.Json(new ResponseObjectError
+                var assignments = request.Teams
+                    .SelectMany(team => team.Members.SelectMany(member =>
                     {
-                        Code = 404,
-                        Message = "No se encontró información en el AS400 para el usuario autenticado."
-                    }, statusCode: StatusCodes.Status404NotFound);
-                }
-
-                await usersRepository.SyncLoggedUserAs400(user, cajero);
-
-                var response = new ResponseObject<LoggedUserDto>
-                {
-                    Code = 200,
-                    Message = "Perfil sincronizado correctamente.",
-                    Data = MapUserData(user)
-                };
-
-                logger.LogInformation("Logged user synchronized successfully for UserId: {UserId}", currentUserId);
-
-                return Results.Ok(response);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "SyncLoggedUserAs400Error");
-                return Results.Json(new ResponseObjectError
-                {
-                    Code = 500,
-                    Message = GenericErrors.InternalServerError
-                }, statusCode: StatusCodes.Status500InternalServerError);
-            }
-        }
-
-        private static async Task<IResult> GetLoggedUserTeams(
-            ClaimsPrincipal claimsPrincipal,
-            IUsersRepository usersRepository,
-            ITeamsRepository teamsRepository,
-            ILoggerFactory loggerFactory)
-        {
-            var logger = loggerFactory.CreateLogger(typeof(LoggedUserEndpoints));
-
-            try
-            {
-                var currentUserId = GetCurrentUserId(claimsPrincipal);
-
-                if (string.IsNullOrWhiteSpace(currentUserId))
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 401,
-                        Message = "No se pudo obtener el identificador del usuario autenticado"
-                    }, statusCode: StatusCodes.Status401Unauthorized);
-                }
-
-                var user = await usersRepository.GetLoggedUserById(currentUserId);
-
-                if (user is null)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 404,
-                        Message = "El usuario autenticado no fue encontrado"
-                    }, statusCode: StatusCodes.Status404NotFound);
-                }
-
-                if (!user.IsLeader)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 403,
-                        Message = "El usuario autenticado no es líder"
-                    }, statusCode: StatusCodes.Status403Forbidden);
-                }
-
-                var teams = await teamsRepository.GetByLeaderUserId(currentUserId);
-                var response = new ResponseObject<List<TeamLookupDto>>
-                {
-                    Code = 200,
-                    Message = "OK",
-                    Data = [.. teams.Select(team => new TeamLookupDto
-                    {
-                        Id = team.Id,
-                        Name = team.Name
-                    })]
-                };
-
-                logger.LogInformation("Teams retrieved successfully for leader UserId: {UserId}", currentUserId);
-
-                return Results.Ok(response);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "GetLoggedUserTeamsError");
-                return Results.Json(new ResponseObjectError
-                {
-                    Code = 500,
-                    Message = GenericErrors.InternalServerError
-                }, statusCode: StatusCodes.Status500InternalServerError);
-            }
-        }
-
-        private static async Task<IResult> GetLoggedUserTeamMembers(
-            int? companyAreaId,
-            int? teamId,
-            int? companyPositionId,
-            ClaimsPrincipal claimsPrincipal,
-            IUsersRepository usersRepository,
-            ITeamsRepository teamsRepository,
-            ILoggerFactory loggerFactory)
-        {
-            var logger = loggerFactory.CreateLogger(typeof(LoggedUserEndpoints));
-
-            try
-            {
-                var currentUserId = GetCurrentUserId(claimsPrincipal);
-
-                if (string.IsNullOrWhiteSpace(currentUserId))
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 401,
-                        Message = "No se pudo obtener el identificador del usuario autenticado."
-                    }, statusCode: StatusCodes.Status401Unauthorized);
-                }
-
-                var user = await usersRepository.GetLoggedUserById(currentUserId);
-
-                if (user is null)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 404,
-                        Message = "El usuario autenticado no fue encontrado."
-                    }, statusCode: StatusCodes.Status404NotFound);
-                }
-
-                if (!user.IsLeader)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 403,
-                        Message = "El usuario autenticado no es líder."
-                    }, statusCode: StatusCodes.Status403Forbidden);
-                }
-
-                var members = await teamsRepository.GetMembersByLeaderUserId(
-                    currentUserId,
-                    companyAreaId,
-                    teamId,
-                    companyPositionId);
-
-                var response = new ResponseObject<List<LeaderTeamMembersGroupDto>>
-                {
-                    Code = 200,
-                    Message = "OK",
-                    Data = [.. members
-                        .GroupBy(member => new { member.TeamId, member.TeamName })
-                        .OrderBy(group => group.Key.TeamName)
-                        .ThenBy(group => group.Key.TeamId)
-                        .Select(group => new LeaderTeamMembersGroupDto
+                        var session = new CoachingSession
                         {
-                            TeamId = group.Key.TeamId,
-                            TeamName = group.Key.TeamName,
-                            Members = [.. group]
-                        })]
-                };
+                            TeamId = team.TeamId,
+                            MemberUserId = member.MemberUserId,
+                            CreatedAt = DateTime.Now,
+                            CreatedBy = currentUserId
+                        };
 
-                logger.LogInformation("Team members retrieved successfully for leader UserId: {UserId}", currentUserId);
-
-                return Results.Ok(response);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "GetLoggedUserTeamMembersError");
-                return Results.Json(new ResponseObjectError
-                {
-                    Code = 500,
-                    Message = GenericErrors.InternalServerError
-                }, statusCode: StatusCodes.Status500InternalServerError);
-            }
-        }
-
-        private static async Task<IResult> GetLoggedUserMembersWithOngoingAssignments(
-            string? name,
-            string? employeeCode,
-            ClaimsPrincipal claimsPrincipal,
-            IUsersRepository usersRepository,
-            ITeamsRepository teamsRepository,
-            ILoggerFactory loggerFactory)
-        {
-            var logger = loggerFactory.CreateLogger(typeof(LoggedUserEndpoints));
-
-            try
-            {
-                var currentUserId = GetCurrentUserId(claimsPrincipal);
-
-                if (string.IsNullOrWhiteSpace(currentUserId))
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 401,
-                        Message = "No se pudo obtener el identificador del usuario autenticado."
-                    }, statusCode: StatusCodes.Status401Unauthorized);
-                }
-
-                var user = await usersRepository.GetLoggedUserById(currentUserId);
-
-                if (user is null)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 404,
-                        Message = "El usuario autenticado no fue encontrado."
-                    }, statusCode: StatusCodes.Status404NotFound);
-                }
-
-                if (!user.IsLeader)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 403,
-                        Message = "El usuario autenticado no es líder."
-                    }, statusCode: StatusCodes.Status403Forbidden);
-                }
-
-                var members = await teamsRepository.GetMembersWithOngoingAssignments(currentUserId, name, employeeCode);
-
-                return Results.Ok(new ResponseObject<List<CoachActiveMembersGroupDto>>
-                {
-                    Code = 200,
-                    Message = "OK",
-                    Data = [.. members
-                        .GroupBy(member => new { member.TeamId, member.TeamName })
-                        .OrderBy(group => group.Key.TeamName)
-                        .ThenBy(group => group.Key.TeamId)
-                        .Select(group => new CoachActiveMembersGroupDto
+                        return member.Indicators.Select(indicator => new TeamMemberIndicatorAssignment
                         {
-                            TeamId = group.Key.TeamId,
-                            TeamName = group.Key.TeamName,
-                            Members = [.. group]
-                        })]
+                            Session = session,
+                            Weight = indicator.Weight,
+                            TeamId = team.TeamId,
+                            MemberUserId = member.MemberUserId,
+                            IndicatorId = indicator.IndicatorId,
+                            TargetValue = indicator.TargetValue,
+                            TargetUnitId = indicator.TargetUnitId,
+                            ValidFrom = indicator.ValidFrom,
+                            ValidTo = indicator.ValidTo,
+                            CreatedAt = DateTime.Now,
+                            CreatedBy = currentUserId
+                        });
+                    }))
+                    .ToList();
+
+                var result = await repository.CreateIndicatorAssignmentsAsync(assignments);
+
+                if (!result.Success)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = result.ErrorMessage!
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                return Results.Created("/api/coaching/assignments", new ResponseObject<List<long>>
+                {
+                    Code = StatusCodes.Status201Created,
+                    Message = "Asignaciones creadas correctamente.",
+                    Data = [.. result.Assignments.Select(x => x.Id)]
                 });
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "GetLoggedUserMembersWithOngoingAssignmentsError");
+                logger.LogError(ex, "CreateIndicatorAssignmentsError");
+
                 return Results.Json(new ResponseObjectError
                 {
-                    Code = 500,
+                    Code = StatusCodes.Status500InternalServerError,
                     Message = GenericErrors.InternalServerError
                 }, statusCode: StatusCodes.Status500InternalServerError);
             }
         }
 
-        private static async Task<IResult> GetLoggedUserMemberIndicators(
-            GetMemberIndicatorsRequestDto request,
+        private static async Task<IResult> SaveCoachingResults(
+            long sessionId,
+            SaveCoachingResultsRequestDto request,
+            IValidator<SaveCoachingResultsRequestDto> validator,
+            ICoachingRepository repository,
             ClaimsPrincipal claimsPrincipal,
-            IUsersRepository usersRepository,
-            ICoachingRepository coachingRepository,
             ILoggerFactory loggerFactory)
         {
-            var logger = loggerFactory.CreateLogger(typeof(LoggedUserEndpoints));
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
 
             try
             {
-                var currentUserId = GetCurrentUserId(claimsPrincipal);
-
                 if (string.IsNullOrWhiteSpace(currentUserId))
                 {
                     return Results.Json(new ResponseObjectError
                     {
-                        Code = 401,
-                        Message = "No se pudo obtener el identificador del usuario autenticado."
+                        Code = StatusCodes.Status401Unauthorized,
+                        Message = GenericErrors.UnauthorizedUserMessage
                     }, statusCode: StatusCodes.Status401Unauthorized);
                 }
 
-                var user = await usersRepository.GetLoggedUserById(currentUserId);
-
-                if (user is null)
+                if (sessionId <= 0)
                 {
                     return Results.Json(new ResponseObjectError
                     {
-                        Code = 404,
-                        Message = "El usuario autenticado no fue encontrado."
-                    }, statusCode: StatusCodes.Status404NotFound);
-                }
-
-                if (!user.IsLeader)
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 403,
-                        Message = "El usuario autenticado no es líder."
-                    }, statusCode: StatusCodes.Status403Forbidden);
-                }
-
-                if (string.IsNullOrWhiteSpace(request.MemberUserId))
-                {
-                    return Results.Json(new ResponseObjectError
-                    {
-                        Code = 400,
-                        Message = "Debe enviar un identificador de miembro y no puede estar vacío."
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = "El identificador de la sesión debe ser mayor que cero."
                     }, statusCode: StatusCodes.Status400BadRequest);
                 }
 
-                var memberUserId = request.MemberUserId.Trim();
-
-                var assignments = await coachingRepository.GetMemberIndicatorsAsync(currentUserId, memberUserId);
-
-                return Results.Ok(new ResponseObject<List<MemberIndicatorAssignmentDto>>
+                var validationResult = await validator.ValidateAsync(request);
+                if (!validationResult.IsValid)
                 {
-                    Code = 200,
-                    Message = "OK",
-                    Data = assignments
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = GenericErrors.RequestValidationErrorMessage,
+                        Errors = validationResult.Errors
+                            .GroupBy(error => error.PropertyName)
+                            .ToDictionary(group => group.Key,
+                                group => string.Join(" ", group.Select(error => error.ErrorMessage).Distinct()))
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                var result = await repository.SaveCoachingResultsAsync(sessionId, request, currentUserId);
+                if (result.Status != SaveCoachingResultsStatus.Saved)
+                {
+                    var statusCode = result.Status switch
+                    {
+                        SaveCoachingResultsStatus.NotFound => StatusCodes.Status404NotFound,
+                        SaveCoachingResultsStatus.AlreadyEvaluated => StatusCodes.Status409Conflict,
+                        _ => StatusCodes.Status400BadRequest
+                    };
+
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = statusCode,
+                        Message = result.ErrorMessage!,
+                        Errors = result.Errors
+                    }, statusCode: statusCode);
+                }
+
+                return Results.Created($"/api/coaching/sessions/{sessionId}/results", new ResponseObject<CoachingResultsDto>
+                {
+                    Code = StatusCodes.Status201Created,
+                    Message = "Resultados del coaching y plan de acción guardados correctamente.",
+                    Data = result.Data
                 });
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                logger.LogError(ex, "GetLoggedUserMemberIndicatorsError");
+                logger.LogError(exception, "SaveCoachingResultsError");
+
                 return Results.Json(new ResponseObjectError
                 {
-                    Code = 500,
+                    Code = StatusCodes.Status500InternalServerError,
                     Message = GenericErrors.InternalServerError
                 }, statusCode: StatusCodes.Status500InternalServerError);
             }
         }
 
-        private static LoggedUserDto MapUserData(User user)
+        private static async Task<IResult> CalculateCoachingAchievement(
+            CalculateCoachingAchievementRequestDto request,
+            IValidator<CalculateCoachingAchievementRequestDto> validator,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
         {
-            return new LoggedUserDto
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+
+            try
             {
-                Id = user.Id,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                FullName = user.FullName,
-                UserName = user.UserName,
-                Email = user.Email,
-                TellerCode = user.TellerCode,
-                EmployeeCode = user.EmployeeCode,
-                EmployeeBranchUbication = user.EmployeeBranchUbication,
-                Status = user.Status,
-                CompanyPositionId = user.CompanyPositionId,
-                CompanyPosition = user.CompanyPosition?.Name,
-                CompanyLocationId = user.CompanyLocationId,
-                CompanyLocation = user.CompanyLocation?.Name,
-                CompanyBranchId = user.CompanyBranchId,
-                CompanyBranch = user.CompanyBranch?.Name,
-                CompanyAreaId = user.CompanyAreaId,
-                CompanyArea = user.CompanyArea?.Name,
-                RoleId = user.RoleId,
-                Role = user.Role?.Name ?? string.Empty
-            };
+                if (string.IsNullOrWhiteSpace(GetCurrentUserId(claimsPrincipal)))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status401Unauthorized,
+                        Message = GenericErrors.UnauthorizedUserMessage
+                    }, statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                var validationResult = await validator.ValidateAsync(request);
+                if (!validationResult.IsValid)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = GenericErrors.RequestValidationErrorMessage,
+                        Errors = validationResult.Errors
+                            .GroupBy(error => error.PropertyName)
+                            .ToDictionary(group => group.Key,
+                                group => string.Join(" ", group.Select(error => error.ErrorMessage).Distinct()))
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                if (!CoachingAchievementCalculator.TryCalculate(
+                    request.AchievedValue!.Value,
+                    request.TargetValue!.Value,
+                    request.MinimumValue,
+                    request.MaximumValue,
+                    request.Rule,
+                    request.Formula,
+                    out var percentage,
+                    out var errorMessage))
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status400BadRequest,
+                        Message = errorMessage!
+                    }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                return Results.Ok(new ResponseObject<CoachingAchievementDto>
+                {
+                    Code = StatusCodes.Status200OK,
+                    Message = "Porcentaje alcanzado calculado correctamente.",
+                    Data = new CoachingAchievementDto { AchievementPercentage = percentage }
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "CalculateCoachingAchievementError");
+
+                return Results.Json(new ResponseObjectError
+                {
+                    Code = StatusCodes.Status500InternalServerError,
+                    Message = GenericErrors.InternalServerError
+                }, statusCode: StatusCodes.Status500InternalServerError);
+            }
         }
+
+        private static async Task<IResult> GetMySessions(
+            string? acceptanceStatus,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Unauthorized();
+                }
+
+                CoachingSessionAcceptanceStatus? status = null;
+                if (!string.IsNullOrWhiteSpace(acceptanceStatus))
+                {
+                    if (!Enum.TryParse<CoachingSessionAcceptanceStatus>(acceptanceStatus, true, out var parsed) ||
+                        !Enum.IsDefined(parsed))
+                    {
+                        return Results.Json(new ResponseObjectError
+                        {
+                            Code = StatusCodes.Status400BadRequest,
+                            Message = "El estado indicado no es válido. Use Pending, Accepted o Rejected."
+                        }, statusCode: StatusCodes.Status400BadRequest);
+                    }
+
+                    status = parsed;
+                }
+
+                var sessions = await repository.GetMySessionsAsync(currentUserId, status);
+
+                return Results.Ok(new ResponseObject<List<MyCoachingSessionDto>>
+                {
+                    Code = StatusCodes.Status200OK,
+                    Message = "OK",
+                    Data = sessions
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "GetMyCoachingSessionsError");
+                return ServerError();
+            }
+        }
+
+        private static async Task<IResult> GetCoachHistory(
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Unauthorized();
+                }
+
+                return Results.Ok(new ResponseObject<List<CoachingHistoryDto>>
+                {
+                    Code = StatusCodes.Status200OK,
+                    Message = "OK",
+                    Data = await repository.GetCoachHistoryAsync(currentUserId)
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "GetCoachingHistoryError");
+                return ServerError();
+            }
+        }
+
+        private static async Task<IResult> GetMyProcesses(
+            string? reviewStatus,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Unauthorized();
+                }
+
+                CoachingSessionReviewStatus? status = null;
+                if (!string.IsNullOrWhiteSpace(reviewStatus))
+                {
+                    if (!Enum.TryParse<CoachingSessionReviewStatus>(reviewStatus, true, out var parsed) ||
+                        !Enum.IsDefined(parsed) || parsed == CoachingSessionReviewStatus.NotSubmitted)
+                    {
+                        return Results.Json(new ResponseObjectError
+                        {
+                            Code = StatusCodes.Status400BadRequest,
+                            Message = "El estado indicado no es válido. Use Pending, Approved o Rejected."
+                        }, statusCode: StatusCodes.Status400BadRequest);
+                    }
+
+                    status = parsed;
+                }
+
+                var processes = await repository.GetMyProcessesAsync(currentUserId, status);
+
+                return Results.Ok(new ResponseObject<List<MyCoachingProcessDto>>
+                {
+                    Code = StatusCodes.Status200OK,
+                    Message = "OK",
+                    Data = processes
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "GetMyCoachingProcessesError");
+                return ServerError();
+            }
+        }
+
+        private static Task<IResult> ApproveSessionReview(
+            long sessionId,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory) =>
+            RespondSession(sessionId, true, null, repository, claimsPrincipal, loggerFactory, review: true);
+
+        private static Task<IResult> RejectSessionReview(
+            long sessionId,
+            RejectCoachingSessionRequestDto request,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            if (string.IsNullOrWhiteSpace(request?.Reason) || request.Reason.Trim().Length > 500)
+            {
+                return Task.FromResult(Results.Json(new ResponseObjectError
+                {
+                    Code = StatusCodes.Status400BadRequest,
+                    Message = "Debes indicar un motivo de rechazo de hasta 500 caracteres."
+                }, statusCode: StatusCodes.Status400BadRequest));
+            }
+
+            return RespondSession(sessionId, false, request.Reason, repository, claimsPrincipal, loggerFactory, review: true);
+        }
+
+        private static Task<IResult> AcceptSession(
+            long sessionId,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory) =>
+            RespondSession(sessionId, true, null, repository, claimsPrincipal, loggerFactory);
+
+        private static Task<IResult> RejectSession(
+            long sessionId,
+            RejectCoachingSessionRequestDto request,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            if (string.IsNullOrWhiteSpace(request?.Reason) || request.Reason.Trim().Length > 500)
+            {
+                return Task.FromResult(Results.Json(new ResponseObjectError
+                {
+                    Code = StatusCodes.Status400BadRequest,
+                    Message = "Debes indicar un motivo de rechazo de hasta 500 caracteres."
+                }, statusCode: StatusCodes.Status400BadRequest));
+            }
+
+            return RespondSession(sessionId, false, request.Reason, repository, claimsPrincipal, loggerFactory);
+        }
+
+        private static async Task<IResult> RespondSession(
+            long sessionId,
+            bool accept,
+            string? reason,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory,
+            bool review = false)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Unauthorized();
+                }
+
+                var status = review
+                    ? await repository.RespondSessionReviewAsync(sessionId, currentUserId, accept, reason)
+                    : await repository.RespondSessionAcceptanceAsync(sessionId, currentUserId, accept, reason);
+
+                if (status == RespondSessionStatus.NotFound)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status404NotFound,
+                        Message = "No se encontró la sesión de coaching del colaborador."
+                    }, statusCode: StatusCodes.Status404NotFound);
+                }
+
+                if (status == RespondSessionStatus.Invalid)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status409Conflict,
+                        Message = review
+                            ? "El proceso ya fue respondido o no está pendiente de aprobación."
+                            : "La aceptación de esta sesión ya fue respondida."
+                    }, statusCode: StatusCodes.Status409Conflict);
+                }
+
+                return Results.Ok(new ResponseObject<object>
+                {
+                    Code = StatusCodes.Status200OK,
+                    Message = accept ? "Indicadores aprobados correctamente." : "Indicadores rechazados correctamente.",
+                    Data = new { sessionId }
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "RespondCoachingSessionError");
+                return ServerError();
+            }
+        }
+
+        private static IResult Unauthorized() => Results.Json(new ResponseObjectError
+        {
+            Code = StatusCodes.Status401Unauthorized,
+            Message = GenericErrors.UnauthorizedUserMessage
+        }, statusCode: StatusCodes.Status401Unauthorized);
+
+        private static IResult ServerError() => Results.Json(new ResponseObjectError
+        {
+            Code = StatusCodes.Status500InternalServerError,
+            Message = GenericErrors.InternalServerError
+        }, statusCode: StatusCodes.Status500InternalServerError);
 
         private static string? GetCurrentUserId(ClaimsPrincipal claimsPrincipal)
         {
             return claimsPrincipal.FindFirstValue("userId")
                 ?? claimsPrincipal.FindFirstValue(ClaimTypes.NameIdentifier);
         }
+    }
+}
 
-        private sealed class LoggedUserDto
-        {
-            public string Id { get; set; } = null!;
-            public string FirstName { get; set; } = null!;
-            public string LastName { get; set; } = null!;
-            public string? FullName { get; set; }
-            public string UserName { get; set; } = null!;
-            public string? Email { get; set; }
-            public string? TellerCode { get; set; }
-            public string? EmployeeCode { get; set; }
-            public UserBranchUbication? EmployeeBranchUbication { get; set; }
-            public UserStatus Status { get; set; }
-            public int? CompanyPositionId { get; set; }
-            public string? CompanyPosition { get; set; }
-            public int? CompanyLocationId { get; set; }
-            public string? CompanyLocation { get; set; }
-            public int? CompanyBranchId { get; set; }
-            public string? CompanyBranch { get; set; }
-            public int? CompanyAreaId { get; set; }
-            public string? CompanyArea { get; set; }
-            public int? RoleId { get; set; }
-            public string Role { get; set; } = null!;
+
+
+Mira que mi compañera de equipo realizó estos endpints, sera que alguno me sirve para los reportes. Asi fue como dejó el Frontend
+import { useEffect, useState } from "react";
+import { Download, Check, X, Search } from "lucide-react";
+import { Modal, useToast } from "../../../shared/components";
+import { useAuthStore } from "../../../hooks/useAuthStore";
+import { displayName } from "../../../helpers/format";
+import { exportPdf } from "../../../shared/reports";
+import { buildCoachingFormatPdf, coachingFileName } from "./coachingFormatReport";
+import { coachService } from "../../../api/coachService";
+import styles from "../../Pages.module.css";
+import base from "./CollaboratorCoachingPage.module.css";
+import ui from "./HistoryCoachingPage.module.css";
+
+const STATUS = {
+    process: "En proceso",
+    pending: "Pendiente de aprobación",
+    approved: "Aprobado",
+};
+
+const STATUS_PILL = {
+    [STATUS.process]: { label: "En proceso", className: ui.pillProcess },
+    [STATUS.pending]: { label: "Pend. aprobación", className: ui.pillPending },
+    [STATUS.approved]: { label: "Aprobado", className: ui.pillApproved },
+};
+
+const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+
+const API_STATUS = { Process: STATUS.process, Pending: STATUS.pending, Approved: STATUS.approved };
+
+const formatNumber = (n) => Number(n).toLocaleString("es-ES", { maximumFractionDigits: 2 });
+
+const formatDateTime = (value) => {
+    const d = new Date(value);
+    return `${d.toLocaleDateString("es-ES")} ${d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}`;
+};
+
+// Adapta la respuesta de /api/coaching/history a la forma que usa la pantalla
+const mapCoaching = (c) => ({
+    id: c.sessionId,
+    collaboratorName: c.collaboratorName,
+    collaboratorCode: c.collaboratorCode ?? "-----",
+    coachName: c.coachName ?? "—",
+    date: new Date(c.date).toLocaleDateString("en-CA"),
+    status: API_STATUS[c.status] ?? STATUS.process,
+    position: c.position ?? "—",
+    location: c.location ?? "—",
+    indicators: c.indicators.map((ind) => ({
+        name: ind.indicatorName,
+        result: ind.achievedValue != null ? `${formatNumber(ind.achievedValue)} ${ind.targetUnitName}` : "—",
+        passed: ind.passed,
+    })),
+    approvals: c.approvals.map((a) => ({ role: a.role, name: a.name, date: formatDateTime(a.date) })),
+});
+
+const getInitials = (name) =>
+    name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+
+const formatPeriod = (iso) => {
+    const [year, month] = iso.split("-");
+    return `${MONTHS_SHORT[Number(month) - 1]} ${year}`;
+};
+
+const formatDate = (iso) => iso.split("-").reverse().join("/");
+
+function StatCard({ value, label, tone }) {
+    return (
+        <div className={`${ui.statCard} ${tone ?? ""}`}>
+            <div className={ui.statValue}>{value ?? "—"}</div>
+            <div className={ui.statLabel}>{label}</div>
+        </div>
+    );
+}
+
+export const HistoryCoachingPage = () => {
+    const { user } = useAuthStore();
+    const [downloadingId, setDownloadingId] = useState(null);
+
+    const [searchQuery, setSearchQuery] = useState("");
+    const [selectedStatus, setSelectedStatus] = useState("todos");
+    const [selectedPeriod, setSelectedPeriod] = useState("todos");
+    const [selectedCoachingModal, setSelectedCoachingModal] = useState(null);
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [history, setHistory] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        coachService.history()
+            .then((data) => setHistory(data.map(mapCoaching)))
+            .catch((error) => toast.error(error.noAccess ? "No tienes permiso para ver el historial." : "No se pudo cargar el historial de coaching."))
+            .finally(() => setLoading(false));
+    }, []);
+
+    const STATS = {
+        total: history.length,
+        process: history.filter((c) => c.status === STATUS.process).length,
+        pending: history.filter((c) => c.status === STATUS.pending).length,
+        approved: history.filter((c) => c.status === STATUS.approved).length,
+    };
+
+    const PERIODS = [...new Set(history.map((c) => c.date.slice(0, 7)))].sort().reverse().map((value) => {
+        const [year, month] = value.split("-");
+        return { value, label: `${MONTHS[Number(month) - 1]} ${year}` };
+    });
+
+    const filteredCoachings = history.filter((c) => {
+        const q = searchQuery.trim().toLowerCase();
+        const matchSearch = !q || c.collaboratorName.toLowerCase().includes(q) || c.collaboratorCode.toLowerCase().includes(q);
+        const matchStatus = selectedStatus === "todos" || c.status === selectedStatus;
+        const matchPeriod = selectedPeriod === "todos" || c.date.startsWith(selectedPeriod);
+        return matchSearch && matchStatus && matchPeriod;
+    });
+
+    const handleDownloadPDF = async (coaching) => {
+        if (coaching.status !== STATUS.approved) {
+            toast.error("El PDF solo está disponible para procesos aprobados");
+            return;
         }
-    }
+        const fileName = coachingFileName(coaching);
+        setDownloadingId(coaching.id);
+        try {
+            await exportPdf(
+                buildCoachingFormatPdf(coaching, { generatedBy: displayName(user) || coaching.coachName }),
+                fileName
+            );
+            toast.success("PDF generado", fileName);
+        } catch (err) {
+            console.error(err);
+            toast.error("No se pudo generar el PDF", "Intenta de nuevo en unos momentos.");
+        } finally {
+            setDownloadingId(null);
+        }
+    };
+
+    const handleViewDetails = (coaching) => {
+        setSelectedCoachingModal(coaching);
+        setShowDetailModal(true);
+    };
+
+    const isApproved = (c) => c.status === STATUS.approved;
+
+    return (
+        <>
+            <header className={styles.pageHeader}>
+                <div>
+                    <h1 className={styles.title}>Historial de coaching</h1>
+                    <p className={styles.subtitle}>Consulta los procesos de coaching aplicados y descarga el PDF de cada uno.</p>
+                </div>
+            </header>
+
+            <div className={base.page}>
+                <div className={ui.stats}>
+                    <StatCard value={STATS.total} label="Total procesos" />
+                    <StatCard value={STATS.process} label="En proceso" tone={ui.process} />
+                    <StatCard value={STATS.pending} label="Pend. aprobación" tone={ui.pending} />
+                    <StatCard value={STATS.approved} label="Aprobados" tone={ui.approved} />
+                </div>
+
+                <div className={ui.filters}>
+                    <div className={`${base.inputIcon} ${ui.searchBox}`}>
+                        <Search size={16} />
+                        <input
+                            type="text"
+                            placeholder="Buscar por colaborador..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className={base.input}
+                            aria-label="Buscar por colaborador"
+                        />
+                    </div>
+                    <select
+                        value={selectedStatus}
+                        onChange={(e) => setSelectedStatus(e.target.value)}
+                        className={`${base.select} ${ui.filterSelect}`}
+                        aria-label="Filtrar por estado"
+                    >
+                        <option value="todos">Todos los estados</option>
+                        {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <select
+                        value={selectedPeriod}
+                        onChange={(e) => setSelectedPeriod(e.target.value)}
+                        className={`${base.select} ${ui.filterSelect}`}
+                        aria-label="Filtrar por período"
+                    >
+                        <option value="todos">Todos los períodos</option>
+                        {PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                    </select>
+                </div>
+
+                <div className={ui.list}>
+                    {loading ? (
+                        <div className={ui.empty}>Cargando historial...</div>
+                    ) : filteredCoachings.length === 0 ? (
+                        <div className={ui.empty}>No hay registros de coaching que coincidan con la búsqueda.</div>
+                    ) : (
+                        filteredCoachings.map((c) => {
+                            const pill = STATUS_PILL[c.status];
+                            return (
+                                <div
+                                    key={c.id}
+                                    className={ui.row}
+                                    onClick={() => handleViewDetails(c)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleViewDetails(c)}
+                                    tabIndex={0}
+                                    title="Doble clic o Enter para ver el detalle"
+                                >
+                                    <span className={ui.rowDate}>{formatPeriod(c.date)}</span>
+                                    <div className={ui.avatar}>{getInitials(c.collaboratorName)}</div>
+                                    <div className={ui.rowInfo}>
+                                        <div className={ui.rowName}>{c.collaboratorName} — {c.collaboratorCode}</div>
+                                        <div className={ui.rowSub}>
+                                            {c.position} · {c.location} · {c.indicators.length} indicadores
+                                        </div>
+                                    </div>
+                                    <div className={ui.rowActions}>
+                                        <span className={`${ui.pill} ${pill.className}`}>{pill.label}</span>
+                                        <button
+                                            type="button"
+                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm}`}
+                                            disabled={!isApproved(c) || downloadingId !== null}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDownloadPDF(c);
+                                            }}
+                                        >
+                                            <Download size={15} /> {downloadingId === c.id ? "Generando..." : "Descargar PDF"}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+
+            <Modal
+                open={showDetailModal}
+                title={selectedCoachingModal ? `Detalle del proceso — ${selectedCoachingModal.collaboratorName}` : ""}
+                onClose={() => setShowDetailModal(false)}
+                footer={
+                    selectedCoachingModal && (
+                        <div className={ui.modalFooter}>
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setShowDetailModal(false)}>
+                                Cerrar
+                            </button>
+                            <button
+                                type="button"
+                                className={`${base.btn} ${base.btnOutline} ${base.btnSm}`}
+                                disabled={!isApproved(selectedCoachingModal) || downloadingId !== null}
+                                onClick={async () => {
+                                    await handleDownloadPDF(selectedCoachingModal);
+                                    setShowDetailModal(false);
+                                }}
+                            >
+                                <Download size={15} /> Descargar PDF
+                            </button>
+                        </div>
+                    )
+                }
+            >
+                {selectedCoachingModal && (
+                    <div className={ui.modalBody}>
+                        <div className={ui.modalGrid}>
+                            <div>
+                                <span className={base.statLabel}>Colaborador</span>
+                                <div className={base.statBox}>{selectedCoachingModal.collaboratorName} — {selectedCoachingModal.collaboratorCode}</div>
+                            </div>
+                            <div>
+                                <span className={base.statLabel}>Coach</span>
+                                <div className={base.statBox}>{selectedCoachingModal.coachName}</div>
+                            </div>
+                            <div>
+                                <span className={base.statLabel}>Fecha del proceso</span>
+                                <div className={base.statBox}>{formatDate(selectedCoachingModal.date)}</div>
+                            </div>
+                            <div>
+                                <span className={base.statLabel}>Estado</span>
+                                <div className={base.statBox}>
+                                    <span className={`${ui.pill} ${STATUS_PILL[selectedCoachingModal.status].className}`}>
+                                        {STATUS_PILL[selectedCoachingModal.status].label}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={ui.divider}>Indicadores evaluados</div>
+                        <div className={ui.indicatorList}>
+                            {selectedCoachingModal.indicators.map((ind) => (
+                                <div key={ind.name} className={ui.indicatorItem}>
+                                    <span>{ind.name}</span>
+                                    <span className={`${ui.result} ${ind.passed ? ui.pass : ui.fail}`}>
+                                        {ind.result} {ind.passed ? <Check size={12} /> : <X size={12} />}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className={ui.approvals}>
+                            <h3 className={ui.approvalsTitle}>Aprobaciones digitales</h3>
+                            {selectedCoachingModal.approvals.length > 0 ? (
+                                <div className={ui.approvalsGrid}>
+                                    {selectedCoachingModal.approvals.map((a) => (
+                                        <div key={a.role}>
+                                            <span className={ui.approvalLabel}>{a.role}</span>
+                                            <span className={ui.approvalValue}>{a.name} · {a.date}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className={ui.noApprovals}>No hay aprobaciones registradas aún</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </Modal>
+        </>
+    );
+};
+
+
+
+
+import { useCallback, useEffect, useState } from "react";
+import { Check, Download, Filter, RotateCcw, Search, Shield } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import cert from "./ManageCertificationPage.module.css";
+import shared from "./CertificationShared.module.css";
+import { useCertificationReports } from "./useCertificationReports";
+import { historyFilters } from "./certificationReport";
+import ui from "./ApplyCertificationPage.module.css";
+import { Datatable, Modal, useToast } from "../../../shared/components";
+import { STATUS, computeFinal, hasRating, mapCertification, toApplyFormat, useCurrentUser } from "./certificationStore";
+import { certificationService } from "../../../api/certificationService";
+import { ApproveCertificationModal, CertifierCell, ScoreCell, StatCard, StatusPill, formatDate, initials, plural } from "./certificationUi";
+
+const todayISO = () => new Date().toLocaleDateString("en-CA");
+
+const latestOf = (list) => [...list].sort((a, b) => b.date.localeCompare(a.date))[0];
+
+// Solo números (o NA cuando el criterio tiene más de una columna)
+const sanitizeNumeric = (raw, prev, allowNA) => {
+    const v = raw.toUpperCase();
+    if (v === "" || /^\d*\.?\d*$/.test(v)) return v;
+    if (allowNA && "NA".startsWith(v)) return v;
+    return prev ?? "";
+};
+
+const noteClass = (value) => {
+    if (value === "NA") return ui.na;
+    if (typeof value !== "number") return ui.noteEmpty;
+    if (value >= 80) return ui.good;
+    if (value >= 50) return ui.mid;
+    return ui.bad;
+};
+
+const noteText = (value) => (value === "NA" ? "NA" : typeof value === "number" ? `${value}%` : "—");
+
+/* ===================== Formulario de certificación ===================== */
+function ApplyForm({ team, format, certifierName, onClose, onSaved }) {
+    const toast = useToast();
+    const [leaderId, setLeaderId] = useState(team.leaders.length === 1 ? String(team.leaders[0].id) : "");
+    const [date, setDate] = useState(todayISO());
+    const [answers, setAnswers] = useState({});
+    const [suggestions, setSuggestions] = useState("");
+    const [stamp] = useState(() => new Date().toLocaleString("es-ES"));
+
+    const leader = team.leaders.find((l) => String(l.id) === leaderId) ?? null;
+    const { rows, total } = computeFinal(format, answers);
+    const passes = total >= format.minScore;
+
+    const setCell = (critId, indId, key, value) =>
+        setAnswers((prev) => ({
+            ...prev,
+            [critId]: { ...prev[critId], [indId]: { ...prev[critId]?.[indId], [key]: value } },
+        }));
+
+    const renderCell = (crit, ind, col) => {
+        const value = answers[crit.id]?.[ind.id]?.[col] ?? "";
+        const allowNA = crit.columns.length > 1;
+
+        if (ind.type === "CE/NCE") {
+            const options = allowNA ? ["CE", "NCE", "NA"] : ["CE", "NCE"];
+            return (
+                <div className={ui.choices} role="group" aria-label={`${ind.name} ${col}`}>
+                    {options.map((opt) => (
+                        <button
+                            key={opt}
+                            type="button"
+                            className={`${ui.choice} ${ui[opt.toLowerCase()]} ${value === opt ? ui.on : ""}`}
+                            aria-pressed={value === opt}
+                            onClick={() => setCell(crit.id, ind.id, col, value === opt ? "" : opt)}
+                        >
+                            {opt}
+                        </button>
+                    ))}
+                </div>
+            );
+        }
+
+        if (ind.type === "Texto") {
+            return (
+                <input
+                    type="text"
+                    className={`${ui.cellInput} ${ui.wide}`}
+                    value={value}
+                    onChange={(e) => setCell(crit.id, ind.id, col, e.target.value)}
+                    aria-label={`${ind.name} ${col}`}
+                />
+            );
+        }
+
+        return (
+            <input
+                type="text"
+                inputMode="decimal"
+                className={ui.cellInput}
+                placeholder="—"
+                value={value}
+                onChange={(e) => setCell(crit.id, ind.id, col, sanitizeNumeric(e.target.value, value, allowNA))}
+                aria-label={`${ind.name} ${col}`}
+            />
+        );
+    };
+
+    const handleSave = async () => {
+        if (!leader) {
+            toast.error("Falta completar: Líder evaluado");
+            return;
+        }
+        if (!date) {
+            toast.error("Falta completar: Fecha de aplicación");
+            return;
+        }
+        const empty = format.criteria.find((c) => !hasRating(c, answers[c.id]));
+        if (empty) {
+            toast.error(`Registra al menos una calificación en el criterio "${empty.name}"`);
+            return;
+        }
+
+        try {
+            await certificationService.apply({ teamId: team.id, leaderUserId: leader.id, date, answers, suggestions });
+            toast.success("Certificación registrada correctamente — pendiente de aprobación");
+            onSaved();
+            onClose();
+        } catch (error) {
+            toast.error(
+                error.noAccess
+                    ? "No tienes permiso para aplicar certificaciones a este equipo."
+                    : error.response?.data?.message ?? "No se pudo guardar la certificación. Intenta de nuevo."
+            );
+        }
+    };
+
+    return (
+        <Modal
+            open
+            size="lg"
+            title={
+                <span className={cert.modalTitle}>
+                    Aplicar certificación — {team.name}
+                    <span className={cert.modalSub}>Formato: {format.name}{leader ? ` · Líder: ${leader.name}` : ""}</span>
+                </span>
+            }
+            onClose={onClose}
+            footer={
+                <div className={shared.modalFooter}>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={onClose}>
+                        Cancelar
+                    </button>
+                    <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleSave}>
+                        <Check size={15} /> Guardar certificación
+                    </button>
+                </div>
+            }
+        >
+            <div className={ui.formHead}>
+                <div className={base.field}>
+                    <label className={base.label}>Equipo</label>
+                    <input type="text" className={`${base.input} ${base.inputReadonly}`} value={team.name} readOnly />
+                </div>
+                <div className={base.field}>
+                    <label className={base.label} htmlFor="ap-leader">Líder evaluado</label>
+                    {team.leaders.length === 1 ? (
+                        <input id="ap-leader" type="text" className={`${base.input} ${base.inputReadonly}`} value={team.leaders[0].name} readOnly />
+                    ) : (
+                        <select id="ap-leader" className={base.select} value={leaderId} onChange={(e) => setLeaderId(e.target.value)}>
+                            <option value="">— Selecciona el líder —</option>
+                            {team.leaders.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                    )}
+                </div>
+                <div className={base.field}>
+                    <label className={base.label} htmlFor="ap-date">Fecha *</label>
+                    <input id="ap-date" type="date" className={base.input} value={date} onChange={(e) => setDate(e.target.value)} />
+                </div>
+            </div>
+
+            <div className={ui.criteria}>
+                {rows.map(({ criterion: c, colNotes }, idx) => (
+                    <section key={c.id} className={ui.criterion}>
+                        <div className={ui.criterionHead}>
+                            <span className={ui.criterionNumber}>{idx + 1}</span>
+                            <div className={ui.criterionTitle}>
+                                <div className={ui.criterionName}>{c.name}</div>
+                                {c.description && <div className={ui.criterionDesc}>{c.description}</div>}
+                            </div>
+                            <span className={ui.criterionWeight}>Peso: {c.weight}%</span>
+                        </div>
+                        <div className={ui.tableScroll}>
+                            <table className={ui.grid}>
+                                <thead>
+                                    <tr>
+                                        <th>Indicador</th>
+                                        {c.columns.map((col) => <th key={col}>{col}</th>)}
+                                        <th>Observaciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {c.indicators.map((ind) => (
+                                        <tr key={ind.id}>
+                                            <td>{ind.name}</td>
+                                            {c.columns.map((col) => <td key={col}>{renderCell(c, ind, col)}</td>)}
+                                            <td>
+                                                <input
+                                                    type="text"
+                                                    className={ui.obsInput}
+                                                    placeholder="Observación..."
+                                                    value={answers[c.id]?.[ind.id]?.__obs ?? ""}
+                                                    onChange={(e) => setCell(c.id, ind.id, "__obs", e.target.value)}
+                                                    aria-label={`Observaciones de ${ind.name}`}
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td>{c.noteLabel}</td>
+                                        {c.columns.map((col) => (
+                                            <td key={col}>
+                                                {col in colNotes && <span className={`${ui.note} ${noteClass(colNotes[col])}`}>{noteText(colNotes[col])}</span>}
+                                            </td>
+                                        ))}
+                                        <td />
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </section>
+                ))}
+            </div>
+
+            <div className={ui.breakdown}>
+                <div className={ui.breakdownLeft}>
+                    <span className={ui.breakdownHeading}>Desglose puntaje final</span>
+                    <div className={ui.breakdownList}>
+                        {rows.map((r, i) => (
+                            <div key={r.criterion.id}>
+                                <span className={ui.breakdownLabel}>C{i + 1} · {r.criterion.weight}%</span>
+                                <span className={ui.breakdownValue}>
+                                    {r.nota ?? 0}% × {r.criterion.weight}% = <em>{r.points} pts</em>
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className={ui.finalBox}>
+                    <span className={ui.finalLabel}>Nota final</span>
+                    <span className={`${ui.finalValue} ${passes ? ui.pass : ui.fail}`}>{total}%</span>
+                    <span className={ui.finalMin}>Mín. para aprobar: {format.minScore}%</span>
+                    <span className={ui.finalFlag}>{passes ? "Alcanza el mínimo" : "No alcanza el mínimo"}</span>
+                </div>
+            </div>
+
+            <div className={`${base.field} ${ui.suggestions}`}>
+                <label className={base.label} htmlFor="ap-sugg">Sugerencias, recomendaciones y compromisos</label>
+                <textarea
+                    id="ap-sugg"
+                    className={base.textarea}
+                    placeholder="Indicar sugerencias, recomendaciones y compromisos a dejar en la agencia..."
+                    value={suggestions}
+                    onChange={(e) => setSuggestions(e.target.value)}
+                />
+            </div>
+
+            <div className={ui.approvalNote}>
+                <div>
+                    <div className={ui.approvalNoteTitle}>Aprobación del certificador</div>
+                    <div className={ui.approvalNoteText}>
+                        Al guardar quedará en estado <strong>Pendiente de aprobación</strong> hasta que el administrador lo apruebe.
+                    </div>
+                </div>
+                <div className={ui.approvalNoteRight}>
+                    <span className={ui.small}>Certificador</span>
+                    <span className={ui.who}>{certifierName}</span>
+                    <span className={ui.when}>{stamp}</span>
+                </div>
+            </div>
+        </Modal>
+    );
 }
 
+/* ===================== Historial del equipo ===================== */
+function TeamHistoryModal({ team, certifications, onClose }) {
+    const { downloadPdf, exportHistory, busy } = useCertificationReports();
+    const [status, setStatus] = useState("todos");
+    const [certifier, setCertifier] = useState("todos");
+    const [search, setSearch] = useState("");
 
+    // Todas las certificaciones del equipo, sin importar quién las aplicó
+    const all = certifications.filter((c) => c.teamId === team.id);
+    const certifiers = [...new Set(all.map((c) => c.certifier))];
+    const q = search.trim().toLowerCase();
+    const rows = all
+        .filter(
+            (c) =>
+                (status === "todos" || c.status === status) &&
+                (certifier === "todos" || c.certifier === certifier) &&
+                (!q || c.leaderName.toLowerCase().includes(q))
+        )
+        .sort((a, b) => b.date.localeCompare(a.date));
 
+    const columns = [
+        { key: "date", header: "Fecha", render: (r) => <span className={shared.mutedLight}>{formatDate(r.date)}</span> },
+        { key: "leaderName", header: "Líder certificado", render: (r) => <span className={shared.strong}>{r.leaderName}</span> },
+        { key: "certifier", header: "Certificador", render: (r) => <CertifierCell name={r.certifier} certifierId={r.certifierId} /> },
+        { key: "formatName", header: "Formato", render: (r) => <span className={shared.muted}>{r.formatName}</span> },
+        { key: "score", header: "Puntaje", align: "center", render: (r) => <ScoreCell cert={r} /> },
+        { key: "status", header: "Estado", render: (r) => <StatusPill status={r.status} /> },
+        {
+            key: "pdf",
+            header: "PDF",
+            align: "center",
+            render: (r) => (
+                <button
+                    type="button"
+                    className={`${shared.iconBtn} ${shared.downloadBtn}`}
+                    disabled={r.status !== STATUS.approved || busy !== null}
+                    onClick={() => downloadPdf(r)}
+                    title={r.status === STATUS.approved ? "Descargar PDF" : "El PDF solo está disponible para certificaciones aprobadas"}
+                    aria-label={`Descargar PDF de la certificación del ${formatDate(r.date)}`}
+                >
+                    <Download size={16} />
+                </button>
+            ),
+        },
+    ];
 
-using System.ComponentModel.DataAnnotations;
-
-namespace ApiCoaching.Models
-{
-    public class ModelLog
-    {
-        [Key]
-        public long Id { get; set; }
-        [MaxLength(15)]
-        public string ModelName { get; set; } = null!;
-        [MaxLength(50)]
-        public string EndpointFunction { get; set; } = null!;
-        public OperationType OperationType { get; set; }
-        public string? JsonModel { get; set; }
-        public DateTime OperationDate { get; set; } = DateTime.Now;
-
-        public string? UserId { get; set; }
-        public virtual User? User { get; set; }
-    }
-
-    public enum OperationType
-    {
-        Create,
-        Update,
-        Delete,
-        Activate,
-        Desactivate
-    }
+    return (
+        <Modal
+            open
+            size="lg"
+            title={
+                <span className={cert.modalTitle}>
+                    Historial — {team.name}
+                    <span className={cert.modalSub}>Todas las certificaciones aplicadas a este equipo, sin importar quién las realizó</span>
+                </span>
+            }
+            onClose={onClose}
+            footer={
+                <div className={shared.modalFooter}>
+                    <button
+                        type="button"
+                        className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${shared.btnTeal}`}
+                        disabled={busy !== null}
+                        onClick={() => exportHistory({
+                            title: `Historial de certificaciones — ${team.name}`,
+                            rows,
+                            filters: historyFilters({ status, certifier, search }),
+                            hideArea: true,
+                        })}
+                    >
+                        <Download size={15} /> Exportar Excel
+                    </button>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={onClose}>
+                        Cerrar
+                    </button>
+                </div>
+            }
+        >
+            <div className={ui.historyFilters}>
+                <select className={`${base.select} ${shared.filterSelect}`} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filtrar por estado">
+                    <option value="todos">Todos los estados</option>
+                    {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select className={`${base.select} ${shared.filterSelect}`} value={certifier} onChange={(e) => setCertifier(e.target.value)} aria-label="Filtrar por certificador">
+                    <option value="todos">Todos los certificadores</option>
+                    {certifiers.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <div className={`${base.inputIcon} ${shared.filterSearch}`}>
+                    <Search size={16} />
+                    <input type="text" className={base.input} placeholder="Buscar por líder..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar por líder" />
+                </div>
+            </div>
+            <div className={ui.historyTable}>
+                <Datatable columns={columns} rows={rows} rowKey="id" maxHeight={340} emptyMessage="Este equipo aún no tiene certificaciones." />
+            </div>
+        </Modal>
+    );
 }
 
+/* ===================== Página ===================== */
+const TEAM_STATE = {
+    pending: { label: "Pendiente aprobación", status: STATUS.pending },
+    approved: { label: "Certificado", status: STATUS.approved },
+    rejected: { label: "No aprobado", status: STATUS.rejected },
+    none: { label: "Sin certificación", status: STATUS.rejected },
+};
+
+const stateOf = (c) => (!c ? "none" : c.status === STATUS.pending ? "pending" : c.status === STATUS.approved ? "approved" : "rejected");
+
+export const ApplyCertificationPage = () => {
+    const toast = useToast();
+    const me = useCurrentUser();
+    const [TEAMS, setTeams] = useState([]);
+    const [certifications, setCertifications] = useState([]);
+
+    const load = useCallback(async () => {
+        try {
+            const [teams, certs] = await Promise.all([certificationService.myTeams(), certificationService.mine()]);
+            setTeams(teams);
+            setCertifications(certs.map(mapCertification));
+        } catch (error) {
+            toast.error(error.noAccess ? "No tienes permiso para aplicar certificaciones." : "No se pudieron cargar los equipos asignados.");
+        }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const AREAS = [...new Set(TEAMS.map((t) => t.area))].sort();
+
+    const [area, setArea] = useState("todas");
+    const [search, setSearch] = useState("");
+    const [stateFilter, setStateFilter] = useState("todos");
+    const [applyTeam, setApplyTeam] = useState(null);
+    const [historyTeam, setHistoryTeam] = useState(null);
+    const [approveTarget, setApproveTarget] = useState(null);
+
+    const infoByTeam = TEAMS.map((team) => {
+        const own = certifications.filter((c) => c.teamId === team.id);
+        const latest = latestOf(own);
+        return { team, hasAny: own.length > 0, latest, state: stateOf(latest) };
+    });
+
+    const q = search.trim().toLowerCase();
+    const visible = infoByTeam.filter(
+        ({ team, hasAny, state }) =>
+            (area === "todas" || team.area === area) &&
+            (!q || team.name.toLowerCase().includes(q)) &&
+            (stateFilter === "todos" ||
+                (stateFilter === "con" && hasAny) ||
+                (stateFilter === "pending" && state === "pending") ||
+                (stateFilter === "none" && !hasAny))
+    );
+
+    const handleApply = (team) => {
+        if (!team.format) {
+            toast.error("El equipo no tiene un formato activo asignado. No es posible iniciar la certificación.");
+            return;
+        }
+        if (team.leaders.length === 0) {
+            toast.error("El equipo no tiene un líder asignado. No es posible iniciar la certificación.");
+            return;
+        }
+        setApplyTeam(team);
+    };
+
+    return (
+        <>
+            <header className={shared.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Aplicar certificación</h1>
+                    <p className={styles.subtitle}>Selecciona un equipo y aplica la certificación a su líder o líderes designados.</p>
+                </div>
+            </header>
+
+            <div className={base.page}>
+                <div className={shared.stats}>
+                    <StatCard value={TEAMS.length} label="Equipos activos" />
+                    <StatCard value={infoByTeam.filter((i) => i.hasAny).length} label="Con certificación aplicada" tone="green" />
+                    <StatCard value={infoByTeam.filter((i) => i.state === "pending").length} label="Pendiente de aprobación" tone="amber" />
+                    <StatCard value={infoByTeam.filter((i) => !i.hasAny).length} label="Sin certificación" tone="red" />
+                </div>
+
+                <section className={shared.filterCard}>
+                    <div className={shared.filterTitle}><Filter size={16} /> Filtrar equipos</div>
+                    <div className={shared.filterRow}>
+                        <select className={`${base.select} ${shared.filterSelect}`} value={area} onChange={(e) => setArea(e.target.value)} aria-label="Filtrar por área">
+                            <option value="todas">Todas las áreas</option>
+                            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <div className={`${base.inputIcon} ${shared.filterSearch}`}>
+                            <Search size={16} />
+                            <input type="text" className={base.input} placeholder="Buscar equipo..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar equipo" />
+                        </div>
+                        <select className={`${base.select} ${shared.filterSelect}`} value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} aria-label="Filtrar por estado de certificación">
+                            <option value="todos">Todos los estados</option>
+                            <option value="con">Con certificación</option>
+                            <option value="pending">Pendiente aprobación</option>
+                            <option value="none">Sin certificación</option>
+                        </select>
+                    </div>
+                </section>
+
+                {visible.length === 0 ? (
+                    <div className={ui.empty}>No hay equipos que coincidan con los filtros.</div>
+                ) : (
+                    <div className={ui.teams}>
+                        {visible.map(({ team, state }) => (
+                            <section key={team.id} className={ui.teamCard}>
+                                <div className={ui.teamHeader}>
+                                    <div>
+                                        <div className={ui.teamName}>{team.name}</div>
+                                        <div className={ui.teamMeta}>{team.area} · {plural(team.members, "miembro", "miembros")}</div>
+                                    </div>
+                                    <div className={ui.teamActions}>
+                                        <StatusPill status={TEAM_STATE[state].status}>{TEAM_STATE[state].label}</StatusPill>
+                                        <button type="button" className={`${base.btn} ${base.btnSm} ${ui.btnGhost}`} onClick={() => setHistoryTeam(team)}>
+                                            <Shield size={14} /> Historial
+                                        </button>
+                                        {state === "approved" ? (
+                                            <button type="button" className={`${base.btn} ${base.btnSm} ${ui.btnWhite}`} onClick={() => handleApply(team)}>
+                                                <RotateCcw size={14} /> Nueva certificación
+                                            </button>
+                                        ) : (
+                                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => handleApply(team)}>
+                                                <Check size={14} /> Aplicar certificación
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className={ui.teamBody}>
+                                    <div className={ui.leadersLabel}>
+                                        {state === "pending" ? "Líderes que recibirán la certificación" : state === "approved" ? "Líderes certificados" : "Líderes del equipo"}
+                                    </div>
+                                    {team.leaders.length === 0 ? (
+                                        <div className={ui.noFormat}>Este equipo no tiene líder asignado.</div>
+                                    ) : (
+                                        team.leaders.map((leader) => {
+                                            const lastCert = latestOf(certifications.filter((c) => c.teamId === team.id && c.leaderId === leader.id));
+                                            const leaderState = stateOf(lastCert);
+                                            return (
+                                                <div key={leader.id} className={ui.leaderRow}>
+                                                    <div className={ui.leaderAvatar}>{initials(leader.name)}</div>
+                                                    <div className={ui.leaderInfo}>
+                                                        <div className={ui.leaderName}>{leader.name}</div>
+                                                        <div className={ui.leaderSub}>{leader.role} · {leader.code}</div>
+                                                    </div>
+                                                    <div className={ui.leaderRight}>
+                                                        <StatusPill status={TEAM_STATE[leaderState].status}>
+                                                            {leaderState === "approved" ? "Certificado ✓" : TEAM_STATE[leaderState].label}
+                                                        </StatusPill>
+                                                        {leaderState === "pending" && (
+                                                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => setApproveTarget(lastCert)}>
+                                                                Aprobar
+                                                            </button>
+                                                        )}
+                                                        {lastCert && leaderState !== "pending" && <span className={shared.mutedLight}>{formatDate(lastCert.date)}</span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                    {!team.format && <div className={ui.noFormat}>Este equipo no tiene un formato de certificación activo.</div>}
+                                </div>
+                            </section>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {applyTeam && (
+                <ApplyForm
+                    key={applyTeam.id}
+                    team={applyTeam}
+                    format={toApplyFormat(applyTeam.format)}
+                    certifierName={me?.name ?? ""}
+                    onClose={() => setApplyTeam(null)}
+                    onSaved={load}
+                />
+            )}
+            {historyTeam && (
+                <TeamHistoryModal team={historyTeam} certifications={certifications.filter((c) => c.teamId === historyTeam.id)} onClose={() => setHistoryTeam(null)} />
+            )}
+            <ApproveCertificationModal cert={approveTarget} onClose={() => setApproveTarget(null)} onResolved={load} />
+        </>
+    );
+};
 
 
 
 
+
+
+import { useCallback, useEffect, useState } from "react";
+import { Download, Check, Filter, Search } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./CertificationShared.module.css";
+import { useCertificationReports } from "./useCertificationReports";
+import { historyFilters } from "./certificationReport";
+import { Datatable, useToast } from "../../../shared/components";
+import { STATUS, mapCertification } from "./certificationStore";
+import { certificationService } from "../../../api/certificationService";
+import { useCatalogs } from "../../../hooks/useCatalogs";
+import { ApproveCertificationModal, CertifierCell, ScoreCell, StatCard, StatusPill, formatDate } from "./certificationUi";
+
+export const GeneralHistoryCertificationPage = () => {
+    const { downloadPdf, exportHistory, busy } = useCertificationReports();
+    const [certifications, setCertifications] = useState([]);
+
+    const load = useCallback(async () => {
+        try {
+            setCertifications((await certificationService.all()).map(mapCertification));
+        } catch (error) {
+            toast.error(error.noAccess ? "No tienes permiso para ver el historial general." : "No se pudo cargar el historial de certificaciones.");
+        }
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    const AREAS = useCatalogs().areas.map((a) => a.label);
+
+    const [area, setArea] = useState("todas");
+    const [team, setTeam] = useState("todos");
+    const [certifier, setCertifier] = useState("todos");
+    const [status, setStatus] = useState("todos");
+    const [search, setSearch] = useState("");
+    const [approveTarget, setApproveTarget] = useState(null);
+
+    const teams = [...new Set(certifications.filter((c) => area === "todas" || c.area === area).map((c) => c.teamName))];
+    const certifiers = [...new Set(certifications.map((c) => c.certifier))];
+
+    const q = search.trim().toLowerCase();
+    const rows = certifications
+        .filter(
+            (c) =>
+                (area === "todas" || c.area === area) &&
+                (team === "todos" || c.teamName === team) &&
+                (certifier === "todos" || c.certifier === certifier) &&
+                (status === "todos" || c.status === status) &&
+                (!q || c.leaderName.toLowerCase().includes(q))
+        )
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+    const count = (s) => certifications.filter((c) => c.status === s).length;
+
+    const handleAreaChange = (value) => {
+        setArea(value);
+        setTeam("todos");
+    };
+
+    const columns = [
+        { key: "teamName", header: "Equipo", render: (r) => <span className={ui.strong}>{r.teamName}</span> },
+        { key: "area", header: "Área", render: (r) => <span className={base.chip}>{r.area}</span> },
+        { key: "leaderName", header: "Líder certificado", render: (r) => <span className={ui.strong}>{r.leaderName}</span> },
+        { key: "certifier", header: "Certificador", render: (r) => <CertifierCell name={r.certifier} certifierId={r.certifierId} showAvatar={false} /> },
+        { key: "formatName", header: "Formato usado", render: (r) => <span className={ui.muted}>{r.formatName}</span> },
+        { key: "score", header: "Puntaje", align: "center", render: (r) => <ScoreCell cert={r} /> },
+        { key: "date", header: "Fecha", render: (r) => <span className={ui.mutedLight}>{formatDate(r.date)}</span> },
+        { key: "status", header: "Estado", render: (r) => <StatusPill status={r.status} /> },
+        {
+            key: "actions",
+            header: "Acciones",
+            align: "right",
+            render: (r) => (
+                <div className={ui.rowActions}>
+                    {r.status === STATUS.pending && (
+                        <button
+                            type="button"
+                            className={`${ui.iconBtn} ${ui.approveBtn}`}
+                            onClick={() => setApproveTarget(r)}
+                            title="Aprobar o rechazar certificación"
+                            aria-label={`Aprobar certificación de ${r.teamName}`}
+                        >
+                            <Check size={16} />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className={`${ui.iconBtn} ${ui.downloadBtn}`}
+                        disabled={r.status !== STATUS.approved || busy !== null}
+                        onClick={() => downloadPdf(r)}
+                        title={r.status === STATUS.approved ? "Descargar PDF" : "El PDF solo está disponible para certificaciones aprobadas"}
+                        aria-label={`Descargar PDF de ${r.teamName}`}
+                    >
+                        <Download size={16} />
+                    </button>
+                </div>
+            ),
+        },
+    ];
+
+    return (
+        <>
+            <header className={ui.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Historial general de certificaciones</h1>
+                    <p className={styles.subtitle}>Consulta todas las certificaciones aplicadas en el sistema, de todos los equipos y áreas.</p>
+                </div>
+                <button
+                    type="button"
+                    className={`${base.btn} ${base.btnOutline} ${ui.btnTeal}`}
+                    disabled={busy !== null}
+                    onClick={() => exportHistory({
+                        title: "Historial general de certificaciones",
+                        rows,
+                        filters: historyFilters({ area, team, certifier, status, search }),
+                    })}
+                >
+                    <Download size={16} /> Exportar Excel
+                </button>
+            </header>
+
+            <div className={base.page}>
+                <div className={ui.stats}>
+                    <StatCard value={certifications.length} label="Total certificaciones" />
+                    <StatCard value={count(STATUS.approved)} label="Aprobadas" tone="green" />
+                    <StatCard value={count(STATUS.pending)} label="Pendiente aprobación" tone="amber" />
+                    <StatCard value={count(STATUS.rejected)} label="No aprobadas" tone="red" />
+                </div>
+
+                <section className={ui.filterCard}>
+                    <div className={ui.filterTitle}><Filter size={16} /> Filtrar historial</div>
+                    <div className={ui.filterRow}>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={area} onChange={(e) => handleAreaChange(e.target.value)} aria-label="Filtrar por área">
+                            <option value="todas">Todas las áreas</option>
+                            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={team} onChange={(e) => setTeam(e.target.value)} aria-label="Filtrar por equipo">
+                            <option value="todos">Todos los equipos</option>
+                            {teams.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={certifier} onChange={(e) => setCertifier(e.target.value)} aria-label="Filtrar por certificador">
+                            <option value="todos">Todos los certificadores</option>
+                            {certifiers.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filtrar por estado">
+                            <option value="todos">Todos los estados</option>
+                            {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <div className={`${base.inputIcon} ${ui.filterSearch}`}>
+                            <Search size={16} />
+                            <input type="text" className={base.input} placeholder="Buscar por líder..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar por líder" />
+                        </div>
+                    </div>
+                </section>
+
+                <section className={ui.tableCard}>
+                    <Datatable columns={columns} rows={rows} rowKey="id" maxHeight={460} emptyMessage="No hay certificaciones que coincidan con los filtros." />
+                </section>
+            </div>
+
+            <ApproveCertificationModal cert={approveTarget} onClose={() => setApproveTarget(null)} onResolved={load} />
+        </>
+    );
+};
+
+
+
+
+
+
+import { useEffect, useState } from "react";
+import { Download, Info, Filter, Search } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./CertificationShared.module.css";
+import { useCertificationReports } from "./useCertificationReports";
+import { historyFilters } from "./certificationReport";
+import { Datatable, useToast } from "../../../shared/components";
+import { STATUS, mapCertification } from "./certificationStore";
+import { certificationService } from "../../../api/certificationService";
+import { CertifierCell, ScoreCell, StatusPill, formatDate } from "./certificationUi";
+
+export const HistoryCertificationPage = () => {
+    const { downloadPdf, exportHistory, busy } = useCertificationReports();
+    const [certifications, setCertifications] = useState([]);
+    const [teams, setTeams] = useState([]);
+
+    useEffect(() => {
+        Promise.all([certificationService.mine(), certificationService.myTeams()])
+            .then(([certs, teams]) => {
+                setCertifications(certs.map(mapCertification));
+                setTeams(teams);
+            })
+            .catch((error) => toast.error(error.noAccess ? "No tienes permiso para ver el historial." : "No se pudo cargar el historial de certificaciones."));
+    }, []);
+
+    const [teamId, setTeamId] = useState("todos");
+    const [certifier, setCertifier] = useState("todos");
+    const [status, setStatus] = useState("todos");
+    const [search, setSearch] = useState("");
+
+    // El backend ya devuelve solo los equipos asignados, sin importar quién aplicó la certificación
+    const mine = certifications;
+    const certifiers = [...new Set(mine.map((c) => c.certifier))];
+
+    const q = search.trim().toLowerCase();
+    const rows = mine
+        .filter(
+            (c) =>
+                (teamId === "todos" || c.teamId === Number(teamId)) &&
+                (certifier === "todos" || c.certifier === certifier) &&
+                (status === "todos" || c.status === status) &&
+                (!q || c.leaderName.toLowerCase().includes(q))
+        )
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+    const columns = [
+        { key: "teamName", header: "Equipo", render: (r) => <span className={ui.strong}>{r.teamName}</span> },
+        { key: "leaderName", header: "Líder certificado", render: (r) => <span className={ui.strong}>{r.leaderName}</span> },
+        { key: "certifier", header: "Certificador", render: (r) => <CertifierCell name={r.certifier} certifierId={r.certifierId} otherLabel="Otro cert." /> },
+        { key: "formatName", header: "Formato usado", render: (r) => <span className={ui.muted}>{r.formatName}</span> },
+        { key: "score", header: "Puntaje", align: "center", render: (r) => <ScoreCell cert={r} /> },
+        { key: "date", header: "Fecha", render: (r) => <span className={ui.mutedLight}>{formatDate(r.date)}</span> },
+        { key: "status", header: "Estado", render: (r) => <StatusPill status={r.status} /> },
+        {
+            key: "actions",
+            header: "Acciones",
+            align: "right",
+            render: (r) => (
+                <div className={ui.rowActions}>
+                    <button
+                        type="button"
+                        className={`${ui.iconBtn} ${ui.downloadBtn}`}
+                        disabled={r.status !== STATUS.approved || busy !== null}
+                        onClick={() => downloadPdf(r)}
+                        title={r.status === STATUS.approved ? "Descargar PDF" : "El PDF solo está disponible para certificaciones aprobadas"}
+                        aria-label={`Descargar PDF de ${r.teamName}`}
+                    >
+                        <Download size={16} />
+                    </button>
+                </div>
+            ),
+        },
+    ];
+
+    return (
+        <>
+            <header className={ui.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Historial de certificaciones</h1>
+                    <p className={styles.subtitle}>Certificaciones de todos los equipos que tienes asignados — incluyendo las realizadas por otros certificadores.</p>
+                </div>
+
+                <button
+                    type="button"
+                    className={`${base.btn} ${base.btnOutline} ${ui.btnTeal}`}
+                    disabled={busy !== null}
+                    onClick={() => exportHistory({
+                        title: "Historial de certificaciones",
+                        rows,
+                        filters: historyFilters({
+                            team: teamId === "todos" ? null : TEAMS.find((t) => String(t.id) === teamId)?.name,
+                            certifier,
+                            status,
+                            search,
+                        }),
+                    })}
+                >
+                    <Download size={16} /> Exportar Excel
+                </button>
+            </header>
+
+            <div className={base.page}>
+                <div className={base.infoBanner}>
+                    <Info size={16} />
+                    <span>Puedes consultar el historial completo de los equipos que te han sido asignados, incluyendo certificaciones realizadas por otros certificadores. La información es de solo lectura.</span>
+                </div>
+
+                <section className={ui.filterCard}>
+                    <div className={ui.filterTitle}><Filter size={16} /> Filtrar historial</div>
+                    <div className={ui.filterRow}>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Filtrar por equipo">
+                            <option value="todos">Todos mis equipos</option>
+                            {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={certifier} onChange={(e) => setCertifier(e.target.value)} aria-label="Filtrar por certificador">
+                            <option value="todos">Todos los certificadores</option>
+                            {certifiers.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filtrar por estado">
+                            <option value="todos">Todos los estados</option>
+                            {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <div className={`${base.inputIcon} ${ui.filterSearch}`}>
+                            <Search size={16} />
+                            <input type="text" className={base.input} placeholder="Buscar por líder..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar por líder" />
+                        </div>
+                    </div>
+                </section>
+
+                <section className={ui.tableCard}>
+                    <Datatable columns={columns} rows={rows} rowKey="id" emptyMessage="No hay certificaciones que coincidan con los filtros." />
+                </section>
+            </div>
+        </>
+    );
+};
+
+
+
+
+import { useCallback, useEffect, useState } from "react";
+import { Download, Check, X, Info, ChevronLeft, TriangleAlert, Clock } from "lucide-react";
+import { Modal, useToast } from "../../../shared/components";
+import { coachService } from "../../../api/coachService";
+import { useAuthStore } from "../../../hooks/useAuthStore";
+import { exportDocument } from "../../../shared/reports";
+import { displayName } from "../../../helpers/format";
+import { buildCoachingReport } from "./coachingReport";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./ConsultaCoachingPage.module.css";
+
+const STATUS_LABEL = { Pending: "Pendiente de aprobación", Approved: "Aprobado", Rejected: "Rechazado" };
+const STATUS_PILL = { Pending: ui.pillPending, Approved: ui.pillApproved, Rejected: ui.pillRejected };
+const MEASUREMENT_LABEL = { 1: "Cumplimiento", 2: "Comportamiento", 3: "Conocimiento" };
+const RULE_SYMBOL = { HigherIsBetter: "≥", LowerIsBetter: "≤" };
+
+const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+const formatDate = (value) => (value ? new Date(value).toLocaleDateString("es-ES") : "—");
+const formatDateTime = (value) => (value ? new Date(value).toLocaleString("es-ES") : "—");
+const formatNumber = (n) => Number(n).toLocaleString("es-ES", { maximumFractionDigits: 2 });
+
+const goalText = (ind) =>
+    ind.ruleName === "InRangeIsBetter"
+        ? `${formatNumber(ind.minimunValue)} – ${formatNumber(ind.maximunValue)} ${ind.targetUnitName}`
+        : `${RULE_SYMBOL[ind.ruleName] ?? ""} ${formatNumber(ind.targetValue)} ${ind.targetUnitName}`.trim();
+
+const getInitials = (name = "") =>
+    name.split(" ").filter(Boolean).map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+
+const periodOf = (p) => {
+    const d = new Date(p.startDate);
+    return { year: String(d.getFullYear()), month: d.getMonth() };
+};
+
+const processTitle = (p) => {
+    const { year, month } = periodOf(p);
+    return `Coaching — ${MONTHS[month]} ${year}`;
+};
+
+function StatCard({ value, label, tone }) {
+    return (
+        <div className={`${ui.statCard} ${tone ?? ""}`}>
+            <div className={ui.statValue}>{value}</div>
+            <div className={ui.statLabel}>{label}</div>
+        </div>
+    );
+}
+
+export const ConsultaCoachingPage = () => {
+    const toast = useToast();
+    const { user } = useAuthStore();
+    const [exporting, setExporting] = useState(null); // "excel-2", "pdf-2"... o null
+    const [processes, setProcesses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [selectedId, setSelectedId] = useState(null);
+    const [filters, setFilters] = useState({ year: "todos", month: "todos", status: "todos" });
+    const [modal, setModal] = useState(null); // "approve" | "reject" | null
+    const [reason, setReason] = useState("");
+    const [saving, setSaving] = useState(false);
+    const [approveStamp, setApproveStamp] = useState("");
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        setError("");
+        try {
+            setProcesses(await coachService.myProcesses());
+        } catch (err) {
+            setError(err.noAccess ? "No tienes permiso para consultar tus procesos." : "No se pudieron cargar los procesos de coaching.");
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    const selected = processes.find((p) => p.sessionId === selectedId) ?? null;
+    const years = [...new Set(processes.map((p) => periodOf(p).year))].sort().reverse();
+
+    const filtered = processes.filter((p) => {
+        const { year, month } = periodOf(p);
+        return (
+            (filters.year === "todos" || year === filters.year) &&
+            (filters.month === "todos" || String(month) === filters.month) &&
+            (filters.status === "todos" || p.reviewStatus === filters.status)
+        );
+    });
+
+    const isApproved = (p) => p.reviewStatus === "Approved";
+
+    const download = async (type, p) => {
+        const label = type === "excel" ? "Excel" : "PDF";
+        setExporting(`${type}-${p.id}`);
+        try {
+            const report = buildCoachingReport(p, {
+                collaborator: { name: CURRENT_USER }, // Mock: cuando exista la API vendrá en el proceso
+                generatedBy: displayName(user) || CURRENT_USER,
+            });
+            await exportDocument(type, report);
+            toast.success(`${label} generado`, processTitle(p));
+        } catch (err) {
+            console.error(err);
+            toast.error(`No se pudo generar el ${label}`, "Intenta de nuevo en unos momentos.");
+        } finally {
+            setExporting(null);
+        }
+    };
+
+    const handleDownloadExcel = (p) => download("excel", p);
+    const handleDownloadPDF = (p) => download("pdf", p);
+
+    const closeModal = () => {
+        setModal(null);
+        setReason("");
+    };
+
+    const handleConfirm = async () => {
+        if (modal === "reject" && !reason.trim()) {
+            toast.warning("Debes indicar el motivo del rechazo");
+            return;
+        }
+        setSaving(true);
+        try {
+            if (modal === "approve") {
+                await coachService.approveProcess(selectedId);
+                toast.success("Coaching aprobado correctamente");
+            } else {
+                await coachService.rejectProcess(selectedId, reason.trim());
+                toast.success("Coaching rechazado correctamente");
+            }
+            closeModal();
+            await load();
+        } catch (err) {
+            toast.error("No se pudo registrar la respuesta", err.response?.data?.message ?? "Intenta nuevamente.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const onRowKey = (e, fn) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fn();
+        }
+    };
+
+    /* ===================== DETALLE ===================== */
+    if (selected) {
+        const p = selected;
+        const approved = isApproved(p);
+        const pending = p.reviewStatus === "Pending";
+
+        return (
+            <div className={base.page}>
+                <div className={ui.topBar}>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setSelectedId(null)}>
+                        <ChevronLeft size={15} /> Volver al listado
+                    </button>
+                    <div className={ui.topActions}>
+                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadExcel(p)}>
+                            <Download size={15} /> Excel
+                        </button>
+                        {approved && (
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadPDF(p)}>
+                                <Download size={15} /> Descargar PDF
+                            </button>
+                        )}
+                        {pending && (
+                            <>
+                                <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setModal("reject")}>
+                                    <X size={15} /> Rechazar
+                                </button>
+                                <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => {
+                                    setApproveStamp(new Date().toLocaleString("es-ES"));
+                                    setModal("approve");
+                                }}>
+                                    <Check size={15} /> Aprobar coaching
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div>
+                    <h1 className={ui.detailTitle}>{processTitle(p)}</h1>
+                    <p className={ui.detailSub}>Información en modo solo lectura. No es posible modificar datos desde esta sección.</p>
+                </div>
+
+                <section className={ui.hero}>
+                    <div className={ui.heroAvatar}>{getInitials(p.coachName)}</div>
+                    <div className={ui.heroInfo}>
+                        <div className={ui.heroName}>Coach: {p.coachName ?? "—"}</div>
+                        <div className={ui.heroMeta}>{[p.position, p.area, p.location].filter(Boolean).join(" · ")}</div>
+                    </div>
+                    <div className={ui.heroField}>
+                        <span className={ui.heroLabel}>Estado</span>
+                        <span className={`${ui.pill} ${STATUS_PILL[p.reviewStatus]}`}>{STATUS_LABEL[p.reviewStatus]}</span>
+                    </div>
+                    <div className={ui.heroField}>
+                        <span className={ui.heroLabel}>Fecha de inicio</span>
+                        <span className={ui.heroValue}>{formatDate(p.startDate)}</span>
+                    </div>
+                    <div className={ui.heroField}>
+                        <span className={ui.heroLabel}>Fecha de fin</span>
+                        <span className={ui.heroValue}>{formatDate(p.endDate)}</span>
+                    </div>
+                </section>
+
+                {pending && (
+                    <div className={ui.warning}>
+                        <TriangleAlert size={16} />
+                        <span>
+                            Este proceso está <strong>Pendiente de tu aprobación</strong>. Revisa los indicadores y el plan de acción, luego presiona <strong>Aprobar coaching</strong> para confirmar.
+                        </span>
+                    </div>
+                )}
+
+                {p.reviewStatus === "Rejected" && (
+                    <div className={ui.warning}>
+                        <TriangleAlert size={16} />
+                        <span>Rechazaste este proceso el {formatDate(p.reviewedAt)}. Motivo: {p.reviewRejectionReason}</span>
+                    </div>
+                )}
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Indicadores evaluados</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        <div className={ui.indicatorList}>
+                            {p.indicators.map((ind) => (
+                                <div key={ind.assignmentId} className={ui.indicatorItem}>
+                                    <span>{ind.indicatorName}</span>
+                                    <div className={ui.indicatorRight}>
+                                        <span className={`${ui.result} ${ind.passed ? ui.pass : ui.fail}`}>
+                                            {ind.achievedValue != null ? `${formatNumber(ind.achievedValue)} ${ind.targetUnitName}` : "—"}
+                                            {ind.achievementPercentage != null && ` (${formatNumber(ind.achievementPercentage)}%)`}
+                                            {ind.passed ? <Check size={12} /> : <X size={12} />}
+                                        </span>
+                                        <span className={ui.goal}>Meta: {goalText(ind)}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Plan de acción</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        {p.actions.length === 0 && <div className={ui.fieldValue}>Sin acciones registradas.</div>}
+                        {p.actions.map((a, idx) => (
+                            <div key={a.id} className={ui.actionBox}>
+                                <span className={ui.actionNumber}>Acción #{idx + 1}</span>
+                                <div className={ui.actionGrid}>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Tipo de medición</span>
+                                        <div className={ui.fieldValue}>{MEASUREMENT_LABEL[a.measurementType] ?? "—"}</div>
+                                    </div>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Fecha compromiso</span>
+                                        <div className={ui.fieldValue}>{formatDate(a.commitmentDate)}</div>
+                                    </div>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Oportunidad de mejora</span>
+                                        <div className={ui.fieldValue}>{a.improvementOpportunity}</div>
+                                    </div>
+                                    <div>
+                                        <span className={ui.fieldLabel}>Acción a realizar</span>
+                                        <div className={ui.fieldValue}>{a.actionDescription}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Aprobaciones digitales</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        <div className={ui.approvalList}>
+                            <div className={`${ui.approvalItem} ${ui.done}`}>
+                                <Check size={15} />
+                                <div>
+                                    <span className={ui.approvalName}>Coach — {p.coachName ?? "—"}</span>
+                                    <span className={ui.approvalDate}>{formatDateTime(p.submittedAt)}</span>
+                                </div>
+                            </div>
+                            {approved ? (
+                                <div className={`${ui.approvalItem} ${ui.done}`}>
+                                    <Check size={15} />
+                                    <div>
+                                        <span className={ui.approvalName}>Colaborador — {p.memberFullName}</span>
+                                        <span className={ui.approvalDate}>{formatDateTime(p.reviewedAt)}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className={`${ui.approvalItem} ${ui.waiting}`}>
+                                    <Clock size={15} />
+                                    <div>
+                                        <span className={ui.approvalName}>Colaborador — {p.memberFullName}</span>
+                                        <span className={ui.approvalDate}>{pending ? "Pendiente de aprobación" : "Rechazado"}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {approved && (
+                        <div className={ui.cardFooter}>
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadPDF(p)}>
+                                <Download size={15} /> Descargar PDF
+                            </button>
+                        </div>
+                    )}
+                </section>
+
+                <Modal
+                    open={modal !== null}
+                    title={modal === "approve" ? "Aprobar coaching" : "Rechazar coaching"}
+                    onClose={closeModal}
+                    footer={
+                        <div className={ui.modalFooter}>
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={closeModal} disabled={saving}>
+                                Cancelar
+                            </button>
+                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleConfirm} disabled={saving}>
+                                {modal === "approve" ? <><Check size={15} /> Sí, aprobar coaching</> : <><X size={15} /> Sí, rechazar</>}
+                            </button>
+                        </div>
+                    }
+                >
+                    {modal === "approve" ? (
+                        <>
+                            <p className={base.modalText}>
+                                Al aprobar confirmas que has revisado y aceptas el proceso de coaching registrado por tu coach. La aprobación quedará registrada con tu sesión activa.
+                            </p>
+                            <div className={ui.modalGrid}>
+                                <div>
+                                    <span className={base.statLabel}>Usuario que aprueba</span>
+                                    <div className={base.statBox}>{p.memberFullName}</div>
+                                </div>
+                                <div>
+                                    <span className={base.statLabel}>Fecha y hora</span>
+                                    <div className={base.statBox}>{approveStamp}</div>
+                                </div>
+                            </div>
+                            <div className={base.warningBanner}>
+                                <TriangleAlert size={16} />
+                                <span>Una vez aprobado el proceso quedará protegido. Cualquier modificación posterior invalidará esta aprobación.</span>
+                            </div>
+                        </>
+                    ) : (
+                        <div className={base.field}>
+                            <label className={base.label} htmlFor="cq-reason">Motivo del rechazo</label>
+                            <textarea
+                                id="cq-reason"
+                                className={base.textarea}
+                                rows={4}
+                                maxLength={500}
+                                value={reason}
+                                onChange={(e) => setReason(e.target.value)}
+                            />
+                        </div>
+                    )}
+                </Modal>
+            </div>
+        );
+    }
+
+    /* ===================== LISTADO ===================== */
+    const count = (status) => processes.filter((p) => p.reviewStatus === status).length;
+
+    return (
+        <>
+            <header className={styles.pageHeader}>
+                <div>
+                    <h1 className={styles.title}>Mis procesos de coaching</h1>
+                    <p className={styles.subtitle}>Consulta el historial de tus procesos de coaching. Solo puedes ver tu propia información.</p>
+                </div>
+            </header>
+
+            <div className={base.page}>
+                <div className={base.infoBanner}>
+                    <Info size={16} />
+                    <span>
+                        La información se muestra en modo <strong>solo lectura</strong>. No es posible modificar ningún dato desde esta sección.
+                    </span>
+                </div>
+
+                <div className={ui.stats}>
+                    <StatCard value={processes.length} label="Total procesos" />
+                    <StatCard value={count("Pending")} label="Pend. aprobación" tone={ui.pending} />
+                    <StatCard value={count("Approved")} label="Aprobados" tone={ui.approved} />
+                </div>
+
+                <section className={base.card}>
+                    <div className={base.cardHeader}>
+                        <h2 className={base.cardTitle}>Filtrar procesos</h2>
+                    </div>
+                    <div className={base.cardBody}>
+                        <div className={ui.filterGrid}>
+                            <div className={base.field}>
+                                <label className={base.label} htmlFor="cq-year">Año</label>
+                                <select id="cq-year" className={base.select} value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })}>
+                                    <option value="todos">Todos los años</option>
+                                    {years.map((y) => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                            </div>
+                            <div className={base.field}>
+                                <label className={base.label} htmlFor="cq-month">Mes</label>
+                                <select id="cq-month" className={base.select} value={filters.month} onChange={(e) => setFilters({ ...filters, month: e.target.value })}>
+                                    <option value="todos">Todos los meses</option>
+                                    {MONTHS.map((m, i) => <option key={m} value={String(i)}>{m}</option>)}
+                                </select>
+                            </div>
+                            <div className={base.field}>
+                                <label className={base.label} htmlFor="cq-status">Estado</label>
+                                <select id="cq-status" className={base.select} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+                                    <option value="todos">Todos los estados</option>
+                                    {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className={ui.list}>
+                    {loading ? (
+                        <div className={ui.empty}>Cargando procesos...</div>
+                    ) : error ? (
+                        <div className={ui.empty}>{error}</div>
+                    ) : filtered.length === 0 ? (
+                        <div className={ui.empty}>No hay procesos de coaching que coincidan con los filtros.</div>
+                    ) : (
+                        filtered.map((p) => (
+                            <div
+                                key={p.sessionId}
+                                className={ui.row}
+                                onClick={() => setSelectedId(p.sessionId)}
+                                onKeyDown={(e) => e.target === e.currentTarget && onRowKey(e, () => setSelectedId(p.sessionId))}
+                                tabIndex={0}
+                                role="button"
+                                aria-label={`Ver ${processTitle(p)}`}
+                            >
+                                <div className={ui.rowAvatar}>{getInitials(p.coachName)}</div>
+                                <div className={ui.rowInfo}>
+                                    <div className={ui.rowTitle}>{processTitle(p)}</div>
+                                    <div className={ui.rowSub}>Coach: {p.coachName ?? "—"} · {p.indicators.length} indicadores evaluados</div>
+                                </div>
+                                <div className={ui.rowRight}>
+                                    <span className={`${ui.pill} ${STATUS_PILL[p.reviewStatus]}`}>{STATUS_LABEL[p.reviewStatus]}</span>
+                                    <span className={ui.rowDate}>{formatDate(p.submittedAt)}</span>
+                                    <div className={ui.rowButtons}>
+                                        <button
+                                            type="button"
+                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDownloadExcel(p);
+                                            }}
+                                        >
+                                            <Download size={15} /> Excel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`}
+                                            disabled={!isApproved(p)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDownloadPDF(p);
+                                            }}
+                                        >
+                                            <Download size={15} /> PDF
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        </>
+    );
+};
 
