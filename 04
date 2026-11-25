@@ -1,721 +1,2081 @@
-  "brandName": "eCoaching",
-  "brandTagline": "Banpaís · Transformación Digital",
-  "confidentialText": "Este documento es de carácter confidencial y está protegido contra edición.",
+Mira, te voy a adjuntar el requerimiento para que entiendas lo que necesitamos de los reportes de Certificaciones. Hay alguna exportaciones en excel... otras en PDF 
 
+En los anexos hay un prototipo que dice Tipo de reporte PDF  (Épica Certificación), para que te guies, esta casi al final
 
+Las pantallas ya están diseñadas:
 
+import { useState } from "react";
+import { Check, Download, Filter, RotateCcw, Search, Shield } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import cert from "./ManageCertificationPage.module.css";
+import shared from "./CertificationShared.module.css";
+import ui from "./ApplyCertificationPage.module.css";
+import { Datatable, Modal, useToast } from "../../../shared/components";
+import {
+    AREAS, CURRENT_CERTIFIER, FORMATS, STATUS, TEAMS,
+    addCertification, computeFinal, hasRating, useCertificationStore,
+} from "./certificationStore";
+import { ApproveCertificationModal, CertifierCell, ScoreCell, StatCard, StatusPill, formatDate, initials, plural } from "./certificationUi";
 
+const todayISO = () => new Date().toLocaleDateString("en-CA");
 
-/**
- * Genera y descarga un reporte tipo "documento" (una ficha con secciones) en Excel o PDF.
- *
- * @param {"excel" | "pdf"} format
- * @param {object} doc
- *   title, fileName, generatedBy
- *   highlights  [{ label, value, tone }]  Datos clave bajo el encabezado
- *   sections    Lista de secciones:
- *     { type: "fields", title, fields: [{ label, value, tone }] }
- *     { type: "table",  title, columns, rows, empty }
- *     { type: "blocks", title, columns, rows, empty, itemTitle(row, i) }  (tarjetas en PDF, tabla en Excel)
- */
-export const exportDocument = async (format, doc) => {
-  const config = await loadReportConfig();
-  const generatedAt = new Date();
-  const data = { ...doc, generatedAt };
-  const baseName = buildFileName(doc.fileName ?? doc.title, generatedAt);
+const latestOf = (list) => [...list].sort((a, b) => b.date.localeCompare(a.date))[0];
 
-  if (format === "excel") {
-    const { buildDocumentExcel } = await import("./documentExcel");
-    saveBlob(await buildDocumentExcel(config, data), `${baseName}.xlsx`);
-  } else {
-    const { buildDocumentPdf } = await import("./documentPdf");
-    saveBlob(await buildDocumentPdf(config, data), `${baseName}.pdf`);
-  }
+// Solo números (o NA cuando el criterio tiene más de una columna)
+const sanitizeNumeric = (raw, prev, allowNA) => {
+    const v = raw.toUpperCase();
+    if (v === "" || /^\d*\.?\d*$/.test(v)) return v;
+    if (allowNA && "NA".startsWith(v)) return v;
+    return prev ?? "";
 };
 
-
-
-
-
-
-
-
-
-export { exportReport, exportDocument } from "./exportReport";
-
-
-
-
-
-
-
-
-import pdfMake from "pdfmake/build/pdfmake";
-import vfsFonts from "pdfmake/build/vfs_fonts";
-import { cellTone, cellValue, columnAlign, displayValue, formatDateTime } from "./reportFormat";
-
-pdfMake.addVirtualFileSystem(vfsFonts);
-
-/* =========================================================
-   Reporte tipo "documento" (una ficha con secciones), en PDF.
-   Secciones: fields (campo / valor) · table · blocks (tarjetas)
-   ========================================================= */
-
-const GREY = "#6B7A8F";
-const LIGHT = "#F4F8FD";
-const LINE = "#E6EBF1";
-const TEXT = "#22303F";
-const M = 32; // margen lateral
-const pageWidth = (config) => (config.pageSize === "A4" ? 595.28 : 612);
-
-const noLines = {
-  hLineWidth: () => 0,
-  vLineWidth: () => 0,
-  paddingLeft: () => 0,
-  paddingRight: () => 0,
-  paddingTop: () => 0,
-  paddingBottom: () => 0,
+const noteClass = (value) => {
+    if (value === "NA") return ui.na;
+    if (typeof value !== "number") return ui.noteEmpty;
+    if (value >= 80) return ui.good;
+    if (value >= 50) return ui.mid;
+    return ui.bad;
 };
 
-const pill = (text, tone) =>
-  tone
-    ? { text: `  ${text}  `, bold: true, fontSize: 7.5, color: tone.fg, background: tone.bg }
-    : { text: text || "—", color: text ? TEXT : "#A3ADBB" };
-
-const fieldValue = (f) => pill(f.value ?? "", f.tone ? cellTone({ tone: () => f.tone }, f.value) : null);
-
-/* ---------- Encabezado (banda de marca) ---------- */
-const banner = (config, doc) => {
-  const brand = config.brandName ?? config.system;
-  return [
-    {
-      table: {
-        widths: ["*"],
-        body: [[{
-          fillColor: config.primaryColor,
-          margin: [16, 14, 16, 12],
-          columns: [
-            {
-              width: "auto",
-              stack: [
-                { text: brand, fontSize: 20, bold: true, color: config.accentColor },
-                { text: config.brandTagline ?? config.organization ?? "", fontSize: 7.5, color: "#C9D6E6", margin: [0, 1, 0, 0] },
-              ],
-            },
-            { width: "auto", text: "/", fontSize: 18, color: "#6F8DB0", margin: [14, 3, 14, 0] },
-            { width: "*", text: doc.title, fontSize: 12.5, bold: true, color: "#FFFFFF", margin: [0, 7, 0, 0] },
-            {
-              width: "auto",
-              alignment: "right",
-              stack: [
-                { text: "Generado el", fontSize: 7, color: "#C9D6E6" },
-                { text: formatDateTime(doc.generatedAt), fontSize: 10, bold: true, color: "#FFFFFF", margin: [0, 2, 0, 0] },
-              ],
-            },
-          ],
-        }]],
-      },
-      layout: noLines,
-    },
-    { canvas: [{ type: "rect", x: 0, y: 0, w: pageWidth(config) - M * 2, h: 3, color: config.accentColor }] },
-  ];
-};
-
-/* ---------- Franja con datos clave ---------- */
-const highlights = (config, doc) => {
-  const items = [
-    ...(doc.highlights ?? []),
-    ...(config.showGeneratedBy && doc.generatedBy ? [{ label: "Generado por", value: doc.generatedBy }] : []),
-  ];
-  if (!items.length) return [];
-  return [{
-    table: {
-      widths: ["*"],
-      body: [[{
-        fillColor: LIGHT,
-        margin: [14, 8, 14, 8],
-        fontSize: 8.5,
-        lineHeight: 1.3,
-        text: items.flatMap((h, i) => [
-          ...(i > 0 ? [{ text: "      " }] : []),
-          { text: `${h.label}: `, color: GREY },
-          h.tone ? pill(h.value, cellTone({ tone: () => h.tone }, h.value)) : { text: h.value || "—", bold: true, color: TEXT },
-        ]),
-      }]],
-    },
-    layout: noLines,
-  }];
-};
-
-/* ---------- Título de sección ---------- */
-const sectionTitle = (config, title) => ({
-  margin: [0, 14, 0, 0],
-  table: {
-    widths: ["*"],
-    body: [[{
-      text: title.toUpperCase(),
-      fillColor: config.primaryColor,
-      color: "#FFFFFF",
-      bold: true,
-      fontSize: 8.5,
-      characterSpacing: 0.5,
-      margin: [10, 6, 10, 6],
-    }]],
-  },
-  layout: noLines,
-});
-
-/* ---------- Secciones ---------- */
-const fieldsSection = (fields) => {
-  const rows = [];
-  for (let i = 0; i < fields.length; i += 2) {
-    const pair = [fields[i], fields[i + 1]];
-    rows.push(pair.flatMap((f) => (f
-      ? [
-          { text: f.label, color: GREY, fontSize: 8, margin: [10, 5, 6, 5] },
-          { ...fieldValue(f), margin: [0, 5, 10, 5] },
-        ]
-      : [{ text: "" }, { text: "" }])));
-  }
-  return {
-    table: { widths: [88, "*", 88, "*"], body: rows },
-    layout: {
-      ...noLines,
-      hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
-      hLineColor: () => LINE,
-    },
-  };
-};
-
-const tableSection = (section) => {
-  if (!section.rows?.length) {
-    return { text: section.empty ?? "Sin registros.", italics: true, color: GREY, margin: [10, 8, 0, 0] };
-  }
-  const head = section.columns.map((c) => ({
-    text: c.header.toUpperCase(),
-    bold: true,
-    fontSize: 7,
-    color: "#3D5A80",
-    characterSpacing: 0.3,
-    alignment: columnAlign(c),
-  }));
-  const body = section.rows.map((row) =>
-    section.columns.map((c) => {
-      const raw = cellValue(c, row);
-      const tone = cellTone(c, raw);
-      return tone
-        ? { ...pill(displayValue(c, raw), tone), alignment: columnAlign(c) }
-        : { text: displayValue(c, raw), alignment: columnAlign(c), color: raw ? TEXT : "#A3ADBB" };
-    })
-  );
-  return {
-    table: { headerRows: 1, dontBreakRows: true, widths: section.columns.map((c) => c.pdfWidth ?? "*"), body: [head, ...body] },
-    layout: {
-      fillColor: (i) => (i === 0 ? "#EAF0F7" : null),
-      hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
-      vLineWidth: () => 0,
-      hLineColor: () => LINE,
-      paddingTop: () => 6,
-      paddingBottom: () => 6,
-      paddingLeft: () => 10,
-      paddingRight: () => 8,
-    },
-  };
-};
-
-const blocksSection = (section) => {
-  if (!section.rows?.length) {
-    return { text: section.empty ?? "Sin registros.", italics: true, color: GREY, margin: [10, 8, 0, 0] };
-  }
-  return {
-    stack: section.rows.map((row, index) => {
-      const fields = section.columns.map((c) => ({ label: c.header, value: displayValue(c, cellValue(c, row)) }));
-      const grid = [];
-      for (let i = 0; i < fields.length; i += 2) {
-        grid.push([fields[i], fields[i + 1]].map((f) => (f
-          ? {
-              margin: [0, 0, 12, 8],
-              stack: [
-                { text: f.label.toUpperCase(), fontSize: 6.5, bold: true, color: GREY, characterSpacing: 0.4 },
-                { text: f.value, fontSize: 8.5, color: TEXT, margin: [0, 2, 0, 0], lineHeight: 1.25 },
-              ],
-            }
-          : { text: "" })));
-      }
-      return {
-        margin: [0, 8, 0, 0],
-        unbreakable: true,
-        table: {
-          widths: ["*"],
-          body: [[{
-            fillColor: LIGHT,
-            margin: [12, 10, 12, 2],
-            stack: [
-              { text: (section.itemTitle?.(row, index) ?? `#${index + 1}`).toUpperCase(), fontSize: 7.5, bold: true, color: "#3D5A80", margin: [0, 0, 0, 8] },
-              { table: { widths: ["*", "*"], body: grid }, layout: noLines },
-            ],
-          }]],
-        },
-        layout: noLines,
-      };
-    }),
-  };
-};
-
-/** Definición del documento (pdfmake) */
-export const buildDocumentPdfDefinition = (config, doc) => {
-  const brand = config.brandName ?? config.system;
-
-  const content = [...banner(config, doc), ...highlights(config, doc)];
-  doc.sections.forEach((s) => {
-    content.push(sectionTitle(config, s.title));
-    if (s.type === "fields") content.push(fieldsSection(s.fields));
-    else if (s.type === "blocks") content.push(blocksSection(s));
-    else content.push(tableSection(s));
-  });
-
-  const footer = (currentPage, pageCount) => ({
-    margin: [M, 8, M, 0],
-    stack: [
-      { canvas: [{ type: "line", x1: 0, y1: 0, x2: pageWidth(config) - M * 2, y2: 0, lineWidth: 0.6, lineColor: LINE }] },
-      {
-        margin: [0, 5, 0, 0],
-        columns: [
-          {
-            width: "*",
-            fontSize: 6.5,
-            color: "#A3ADBB",
-            text: [
-              "Documento generado automáticamente por ",
-              { text: `${brand}${config.organization ? ` — ${config.organization}` : ""}`, bold: true, color: GREY },
-              ...(doc.generatedBy ? ["  ·  Generado por ", { text: doc.generatedBy, bold: true, color: GREY }] : []),
-              "  ·  Fecha ", { text: formatDateTime(doc.generatedAt), bold: true, color: GREY },
-              ...(config.confidentialText ? [`  ·  ${config.confidentialText}`] : []),
-            ],
-          },
-          { width: 60, text: `Página ${currentPage} de ${pageCount}`, alignment: "right", fontSize: 7, color: GREY },
-        ],
-      },
-    ],
-  });
-
-  return {
-    pageSize: config.pageSize ?? "LETTER",
-    pageOrientation: "portrait",
-    pageMargins: [M, 28, M, 46],
-    info: { title: doc.title, author: config.organization, creator: brand },
-    footer,
-    content,
-    defaultStyle: { fontSize: 8.5, color: TEXT },
-  };
-};
-
-/** Devuelve el PDF como Blob */
-export const buildDocumentPdf = (config, doc) => pdfMake.createPdf(buildDocumentPdfDefinition(config, doc)).getBlob();
-
-
-
-
-
-
-
-
-
-
-
-
-
-import ExcelJS from "exceljs";
-import { cellTone, cellValue, displayValue, formatDateTime } from "./reportFormat";
-
-/* =========================================================
-   Reporte tipo "documento" (una ficha con secciones), en Excel.
-   Secciones: fields (campo / valor) · table · blocks (como tabla)
-   ========================================================= */
-
-const argb = (hex) => `FF${String(hex).replace("#", "").toUpperCase()}`;
-const solid = (hex) => ({ type: "pattern", pattern: "solid", fgColor: { argb: argb(hex) } });
-
-const COLS = 5;
-const GREY = "#6B7A8F";
-const SUBHEAD = "#2D5A88";
-const LIGHT = "#F4F8FD";
-const LINE = "#E6EBF1";
-const thin = { style: "thin", color: { argb: argb(LINE) } };
-const box = { top: thin, bottom: thin, left: thin, right: thin };
-
-export const buildDocumentExcel = async (config, doc) => {
-  const brand = config.brandName ?? config.system;
-
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = brand;
-  workbook.created = doc.generatedAt;
-
-  const sheet = workbook.addWorksheet((doc.sheetName ?? "Reporte").slice(0, 31), {
-    pageSetup: {
-      paperSize: config.pageSize === "A4" ? 9 : 1,
-      orientation: "portrait",
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 0,
-      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
-    },
-    headerFooter: { oddFooter: "&R&8Página &P de &N" },
-    views: [{ showGridLines: false }],
-  });
-  sheet.columns = [{ width: 26 }, { width: 30 }, { width: 24 }, { width: 26 }, { width: 18 }];
-
-  let r = 1;
-  const merge = (from, to) => { if (to > from) sheet.mergeCells(r, from, r, to); };
-  const set = (col, props) => Object.assign(sheet.getCell(r, col), props);
-
-  /* ---------- Encabezado ---------- */
-  merge(1, COLS);
-  sheet.getRow(r).height = 34;
-  set(1, {
-    value: `${brand}${config.organization ? ` — ${config.organization}` : ""}   |   ${doc.title}`,
-    font: { size: 15, bold: true, color: { argb: "FFFFFFFF" } },
-    fill: solid(config.primaryColor),
-    alignment: { horizontal: "center", vertical: "middle" },
-  });
-  r++;
-
-  merge(1, COLS);
-  sheet.getRow(r).height = 4;
-  set(1, { fill: solid(config.accentColor) });
-  r++;
-
-  merge(1, COLS);
-  sheet.getRow(r).height = 20;
-  set(1, {
-    value: ["Documento generado automáticamente", config.confidentialText ? "Confidencial" : null, "Solo lectura"].filter(Boolean).join("   ·   "),
-    font: { size: 9, italic: true, color: { argb: argb(GREY) } },
-    alignment: { horizontal: "center", vertical: "middle" },
-  });
-  r++;
-
-  merge(1, COLS);
-  set(1, {
-    value: [
-      `Generado el ${formatDateTime(doc.generatedAt)}`,
-      config.showGeneratedBy && doc.generatedBy ? `Generado por ${doc.generatedBy}` : null,
-      ...(doc.highlights ?? []).map((h) => `${h.label}: ${h.value || "—"}`),
-    ].filter(Boolean).join("   ·   "),
-    font: { size: 9, color: { argb: argb(config.primaryColor) } },
-    fill: solid(LIGHT),
-    alignment: { horizontal: "center", vertical: "middle", wrapText: true },
-  });
-  sheet.getRow(r).height = 22;
-  r += 2;
-
-  /* ---------- Helpers ---------- */
-  const sectionTitle = (title) => {
-    merge(1, COLS);
-    sheet.getRow(r).height = 22;
-    set(1, {
-      value: title.toUpperCase(),
-      font: { size: 10, bold: true, color: { argb: "FFFFFFFF" } },
-      fill: solid(config.primaryColor),
-      alignment: { vertical: "middle", indent: 1 },
-    });
-    r++;
-  };
-
-  // Escribe una fila repartida en columnas; la última ocupa hasta la columna 5
-  const writeRow = (cells, style) => {
-    cells.forEach((cell, i) => {
-      const col = i + 1;
-      const last = i === cells.length - 1;
-      if (last) merge(col, COLS);
-      const target = sheet.getCell(r, col);
-      Object.assign(target, style(cell, i));
-      for (let c = col; c <= (last ? COLS : col); c++) sheet.getCell(r, c).border = box;
-    });
-    r++;
-  };
-
-  const headStyle = (text) => ({
-    value: text,
-    font: { size: 9, bold: true, color: { argb: "FFFFFFFF" } },
-    fill: solid(SUBHEAD),
-    alignment: { horizontal: "center", vertical: "middle", wrapText: true },
-  });
-
-  const valueStyle = (value, tone, align) => ({
-    value: value ?? "",
-    font: tone ? { size: 10, bold: true, color: { argb: argb(tone.fg) } } : { size: 10 },
-    ...(tone ? { fill: solid(tone.bg) } : {}),
-    alignment: { vertical: "top", wrapText: true, horizontal: align ?? (tone ? "center" : "left") },
-  });
-
-  const emptyRow = (text) => {
-    merge(1, COLS);
-    set(1, { value: text, font: { italic: true, size: 10, color: { argb: argb(GREY) } }, alignment: { indent: 1 } });
-    r++;
-  };
-
-  const tableRows = (columns, rows) => {
-    writeRow(columns.map((c) => c.header), headStyle);
-    rows.forEach((row) =>
-      writeRow(columns, (c) => {
-        const raw = cellValue(c, row);
-        return valueStyle(displayValue({ ...c, empty: "" }, raw), cellTone(c, raw), c.align);
-      })
-    );
-  };
-
-  /* ---------- Secciones ---------- */
-  doc.sections.forEach((s) => {
-    sectionTitle(s.title);
-
-    if (s.type === "fields") {
-      writeRow(["Campo", "Valor", "Campo", "Valor"], headStyle);
-      for (let i = 0; i < s.fields.length; i += 2) {
-        const pair = [s.fields[i], s.fields[i + 1]];
-        writeRow(pair.flatMap((f) => (f ? [{ label: true, f }, { f }] : [{}, {}])), (cell) => {
-          if (!cell.f) return { value: "" };
-          if (cell.label) {
-            return { value: cell.f.label, font: { size: 10, color: { argb: argb(GREY) } }, fill: solid(LIGHT), alignment: { vertical: "top", indent: 1 } };
-          }
-          return valueStyle(cell.f.value, cell.f.tone ? cellTone({ tone: () => cell.f.tone }, cell.f.value) : null);
-        });
-      }
-    } else if (!s.rows?.length) {
-      emptyRow(s.empty ?? "Sin registros.");
-    } else {
-      tableRows(s.columns, s.rows); // "table" y "blocks" se muestran como tabla
-    }
-    r++;
-  });
-
-  /* ---------- Pie ---------- */
-  merge(1, COLS);
-  sheet.getRow(r).height = 30;
-  set(1, {
-    value: [
-      `Documento generado automáticamente por ${brand}${config.organization ? ` — ${config.organization}` : ""}`,
-      doc.generatedBy ? `Generado por ${doc.generatedBy}` : null,
-      `Fecha ${formatDateTime(doc.generatedAt)}`,
-      config.confidentialText || null,
-    ].filter(Boolean).join("   ·   "),
-    font: { size: 8, italic: true, color: { argb: argb(GREY) } },
-    alignment: { horizontal: "center", vertical: "middle", wrapText: true },
-  });
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-};
-
-
-
-
-
-
-/** Nombre para mostrar del usuario de la sesión */
-export const displayName = (u) =>
-  toTitleCase(u?.fullName ?? u?.name ?? ([u?.firstName, u?.lastName].filter(Boolean).join(" ") || u?.userName || ""));
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { displayName, toTitleCase } from "../../../helpers/format";
-
-
-
-
-
-
-
-/* =========================================================
-   Reporte de Proceso de Coaching (Excel y PDF).
-   Convierte un proceso de coaching en el formato de exportDocument().
-   Cuando exista la API, solo hay que ajustar los nombres de campos aquí.
-   ========================================================= */
-
-const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-
-const APPROVED = "aprobado";
-const statusTone = (value) => (String(value).toLowerCase() === APPROVED ? "green" : "amber");
-const employeeTone = (value) => (String(value).toLowerCase() === "activo" ? "green" : "grey");
-
-/**
- * @param {object} p             Proceso de coaching
- * @param {object} options
- *   collaborator  Datos del colaborador (si el proceso no los trae)
- *   generatedBy   Nombre de quien descarga el reporte
- */
-export const buildCoachingReport = (p, { collaborator = {}, generatedBy } = {}) => {
-  // Datos del colaborador: primero lo que traiga el proceso, luego lo recibido
-  const c = { ...collaborator, ...(p.collaborator ?? {}) };
-  const period = p.period ?? `${MONTHS[p.month] ?? ""} ${p.year ?? ""}`.trim();
-
-  const approvals = [
-    p.coachApproval && { role: "Coach", name: p.coachApproval.name, date: p.coachApproval.date, result: "Firmado digitalmente" },
-    {
-      role: "Colaborador",
-      name: p.collaboratorApproval?.name ?? c.name,
-      date: p.collaboratorApproval?.date ?? "",
-      result: p.collaboratorApproval ? "Firmado digitalmente" : "Pendiente",
-    },
-  ].filter(Boolean);
-
-  return {
-    title: "Reporte de Proceso de Coaching",
-    fileName: `coaching_${period}`,
-    sheetName: `Coaching ${period}`,
-    generatedBy,
-    highlights: [
-      { label: "Colaborador", value: c.name },
-      { label: "Código", value: c.employeeCode },
-      { label: "Período", value: period },
-      { label: "Estado", value: p.status, tone: statusTone(p.status) },
-    ],
-    sections: [
-      {
-        type: "fields",
-        title: "Datos del colaborador",
-        fields: [
-          { label: "Nombre completo", value: c.name },
-          { label: "Código de empleado", value: c.employeeCode },
-          { label: "Puesto", value: c.position ?? p.position },
-          { label: "Código de cajero", value: c.tellerCode },
-          { label: "Área", value: c.area ?? p.area },
-          { label: "Ubicación", value: c.ubication },
-          { label: "Agencia / Zona", value: c.location ?? p.location },
-          { label: "Estatus", value: c.status, tone: c.status ? employeeTone(c.status) : undefined },
-        ],
-      },
-      {
-        type: "fields",
-        title: "Datos del proceso de coaching",
-        fields: [
-          { label: "Coach asignado", value: p.coachName },
-          { label: "Fecha de inicio", value: p.startDate },
-          { label: "Período", value: period },
-          { label: "Fecha de fin", value: p.endDate },
-          { label: "Fecha del coaching", value: p.date },
-          { label: "Estado del proceso", value: p.status, tone: statusTone(p.status) },
-        ],
-      },
-      {
-        type: "table",
-        title: "Indicadores evaluados",
-        empty: "No hay indicadores evaluados.",
-        rows: p.indicators ?? [],
-        columns: [
-          { header: "Indicador", key: "name", pdfWidth: "*" },
-          { header: "Meta", key: "goal", align: "center", pdfWidth: 80 },
-          { header: "Valor registrado", value: (i) => i.value ?? i.result, align: "center", pdfWidth: 80 },
-          {
-            header: "Resultado",
-            value: (i) => (i.passed ? "Cumple" : "No cumple"),
-            tone: (v) => (v === "Cumple" ? "green" : "red"),
-            pdfWidth: 70,
-          },
-        ],
-      },
-      {
-        type: "blocks",
-        title: "Plan de acción",
-        empty: "No hay acciones registradas.",
-        rows: p.actionPlan ?? [],
-        itemTitle: (_, i) => `Acción #${i + 1}`,
-        columns: [
-          { header: "Tipo de medición", key: "type" },
-          { header: "Fecha compromiso", key: "commitDate" },
-          { header: "Oportunidad de mejora", key: "opportunity" },
-          { header: "Acción a realizar", key: "action" },
-        ],
-      },
-      {
-        type: "table",
-        title: "Aprobaciones digitales",
-        rows: approvals,
-        columns: [
-          { header: "Rol", key: "role", pdfWidth: 70 },
-          { header: "Nombre", key: "name" },
-          { header: "Fecha y hora", key: "date", align: "center", pdfWidth: 100 },
-          { header: "Resultado", key: "result", tone: (v) => (v === "Pendiente" ? "amber" : "green"), pdfWidth: 100 },
-        ],
-      },
-    ],
-  };
-};
-
-
-
-
-
-
-
-import { useAuthStore } from "../../../hooks/useAuthStore";
-import { exportDocument } from "../../../shared/reports";
-import { displayName } from "../../../helpers/format";
-import { buildCoachingReport } from "./coachingReport";
-
-
-
-
-    const { user } = useAuthStore();
-    const [exporting, setExporting] = useState(null); // "excel-2", "pdf-2"... o null
-
-
-
-
-
-
-
-
-
-    const download = async (type, p) => {
-        const label = type === "excel" ? "Excel" : "PDF";
-        setExporting(`${type}-${p.id}`);
-        try {
-            const report = buildCoachingReport(p, {
-                collaborator: { name: CURRENT_USER }, // Mock: cuando exista la API vendrá en el proceso
-                generatedBy: displayName(user) || CURRENT_USER,
-            });
-            await exportDocument(type, report);
-            toast.success(`${label} generado`, processTitle(p));
-        } catch (err) {
-            console.error(err);
-            toast.error(`No se pudo generar el ${label}`, "Intenta de nuevo en unos momentos.");
-        } finally {
-            setExporting(null);
+const noteText = (value) => (value === "NA" ? "NA" : typeof value === "number" ? `${value}%` : "—");
+
+/* ===================== Formulario de certificación ===================== */
+function ApplyForm({ team, format, onClose }) {
+    const toast = useToast();
+    const [leaderId, setLeaderId] = useState(team.leaders.length === 1 ? String(team.leaders[0].id) : "");
+    const [date, setDate] = useState(todayISO());
+    const [answers, setAnswers] = useState({});
+    const [suggestions, setSuggestions] = useState("");
+    const [stamp] = useState(() => new Date().toLocaleString("es-ES"));
+
+    const leader = team.leaders.find((l) => String(l.id) === leaderId) ?? null;
+    const { rows, total } = computeFinal(format, answers);
+    const passes = total >= format.minScore;
+
+    const setCell = (critId, indId, key, value) =>
+        setAnswers((prev) => ({
+            ...prev,
+            [critId]: { ...prev[critId], [indId]: { ...prev[critId]?.[indId], [key]: value } },
+        }));
+
+    const renderCell = (crit, ind, col) => {
+        const value = answers[crit.id]?.[ind.id]?.[col] ?? "";
+        const allowNA = crit.columns.length > 1;
+
+        if (ind.type === "CE/NCE") {
+            const options = allowNA ? ["CE", "NCE", "NA"] : ["CE", "NCE"];
+            return (
+                <div className={ui.choices} role="group" aria-label={`${ind.name} ${col}`}>
+                    {options.map((opt) => (
+                        <button
+                            key={opt}
+                            type="button"
+                            className={`${ui.choice} ${ui[opt.toLowerCase()]} ${value === opt ? ui.on : ""}`}
+                            aria-pressed={value === opt}
+                            onClick={() => setCell(crit.id, ind.id, col, value === opt ? "" : opt)}
+                        >
+                            {opt}
+                        </button>
+                    ))}
+                </div>
+            );
         }
+
+        if (ind.type === "Texto") {
+            return (
+                <input
+                    type="text"
+                    className={`${ui.cellInput} ${ui.wide}`}
+                    value={value}
+                    onChange={(e) => setCell(crit.id, ind.id, col, e.target.value)}
+                    aria-label={`${ind.name} ${col}`}
+                />
+            );
+        }
+
+        return (
+            <input
+                type="text"
+                inputMode="decimal"
+                className={ui.cellInput}
+                placeholder="—"
+                value={value}
+                onChange={(e) => setCell(crit.id, ind.id, col, sanitizeNumeric(e.target.value, value, allowNA))}
+                aria-label={`${ind.name} ${col}`}
+            />
+        );
     };
 
-    const handleDownloadExcel = (p) => download("excel", p);
-    const handleDownloadPDF = (p) => download("pdf", p);
+    const handleSave = () => {
+        if (!leader) {
+            toast.error("Falta completar: Líder evaluado");
+            return;
+        }
+        if (!date) {
+            toast.error("Falta completar: Fecha de aplicación");
+            return;
+        }
+        const empty = format.criteria.find((c) => !hasRating(c, answers[c.id]));
+        if (empty) {
+            toast.error(`Registra al menos una calificación en el criterio "${empty.name}"`);
+            return;
+        }
+
+        addCertification(
+            {
+                teamId: team.id, teamName: team.name, area: team.area,
+                leaderId: leader.id, leaderName: leader.name,
+                formatName: format.name, minScore: format.minScore,
+                score: total, date, suggestions,
+            },
+            CURRENT_CERTIFIER
+        );
+        toast.success("Certificación registrada correctamente — pendiente de aprobación");
+        onClose();
+    };
+
+    return (
+        <Modal
+            open
+            size="lg"
+            title={
+                <span className={cert.modalTitle}>
+                    Aplicar certificación — {team.name}
+                    <span className={cert.modalSub}>Formato: {format.name}{leader ? ` · Líder: ${leader.name}` : ""}</span>
+                </span>
+            }
+            onClose={onClose}
+            footer={
+                <div className={shared.modalFooter}>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={onClose}>
+                        Cancelar
+                    </button>
+                    <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleSave}>
+                        <Check size={15} /> Guardar certificación
+                    </button>
+                </div>
+            }
+        >
+            <div className={ui.formHead}>
+                <div className={base.field}>
+                    <label className={base.label}>Equipo</label>
+                    <input type="text" className={`${base.input} ${base.inputReadonly}`} value={team.name} readOnly />
+                </div>
+                <div className={base.field}>
+                    <label className={base.label} htmlFor="ap-leader">Líder evaluado</label>
+                    {team.leaders.length === 1 ? (
+                        <input id="ap-leader" type="text" className={`${base.input} ${base.inputReadonly}`} value={team.leaders[0].name} readOnly />
+                    ) : (
+                        <select id="ap-leader" className={base.select} value={leaderId} onChange={(e) => setLeaderId(e.target.value)}>
+                            <option value="">— Selecciona el líder —</option>
+                            {team.leaders.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                    )}
+                </div>
+                <div className={base.field}>
+                    <label className={base.label} htmlFor="ap-date">Fecha *</label>
+                    <input id="ap-date" type="date" className={base.input} value={date} onChange={(e) => setDate(e.target.value)} />
+                </div>
+            </div>
+
+            <div className={ui.criteria}>
+                {rows.map(({ criterion: c, colNotes }, idx) => (
+                    <section key={c.id} className={ui.criterion}>
+                        <div className={ui.criterionHead}>
+                            <span className={ui.criterionNumber}>{idx + 1}</span>
+                            <div className={ui.criterionTitle}>
+                                <div className={ui.criterionName}>{c.name}</div>
+                                {c.description && <div className={ui.criterionDesc}>{c.description}</div>}
+                            </div>
+                            <span className={ui.criterionWeight}>Peso: {c.weight}%</span>
+                        </div>
+                        <div className={ui.tableScroll}>
+                            <table className={ui.grid}>
+                                <thead>
+                                    <tr>
+                                        <th>Indicador</th>
+                                        {c.columns.map((col) => <th key={col}>{col}</th>)}
+                                        <th>Observaciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {c.indicators.map((ind) => (
+                                        <tr key={ind.id}>
+                                            <td>{ind.name}</td>
+                                            {c.columns.map((col) => <td key={col}>{renderCell(c, ind, col)}</td>)}
+                                            <td>
+                                                <input
+                                                    type="text"
+                                                    className={ui.obsInput}
+                                                    placeholder="Observación..."
+                                                    value={answers[c.id]?.[ind.id]?.__obs ?? ""}
+                                                    onChange={(e) => setCell(c.id, ind.id, "__obs", e.target.value)}
+                                                    aria-label={`Observaciones de ${ind.name}`}
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td>{c.noteLabel}</td>
+                                        {c.columns.map((col) => (
+                                            <td key={col}>
+                                                {col in colNotes && <span className={`${ui.note} ${noteClass(colNotes[col])}`}>{noteText(colNotes[col])}</span>}
+                                            </td>
+                                        ))}
+                                        <td />
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </section>
+                ))}
+            </div>
+
+            <div className={ui.breakdown}>
+                <div className={ui.breakdownLeft}>
+                    <span className={ui.breakdownHeading}>Desglose puntaje final</span>
+                    <div className={ui.breakdownList}>
+                        {rows.map((r, i) => (
+                            <div key={r.criterion.id}>
+                                <span className={ui.breakdownLabel}>C{i + 1} · {r.criterion.weight}%</span>
+                                <span className={ui.breakdownValue}>
+                                    {r.nota ?? 0}% × {r.criterion.weight}% = <em>{r.points} pts</em>
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className={ui.finalBox}>
+                    <span className={ui.finalLabel}>Nota final</span>
+                    <span className={`${ui.finalValue} ${passes ? ui.pass : ui.fail}`}>{total}%</span>
+                    <span className={ui.finalMin}>Mín. para aprobar: {format.minScore}%</span>
+                    <span className={ui.finalFlag}>{passes ? "Alcanza el mínimo" : "No alcanza el mínimo"}</span>
+                </div>
+            </div>
+
+            <div className={`${base.field} ${ui.suggestions}`}>
+                <label className={base.label} htmlFor="ap-sugg">Sugerencias, recomendaciones y compromisos</label>
+                <textarea
+                    id="ap-sugg"
+                    className={base.textarea}
+                    placeholder="Indicar sugerencias, recomendaciones y compromisos a dejar en la agencia..."
+                    value={suggestions}
+                    onChange={(e) => setSuggestions(e.target.value)}
+                />
+            </div>
+
+            <div className={ui.approvalNote}>
+                <div>
+                    <div className={ui.approvalNoteTitle}>Aprobación del certificador</div>
+                    <div className={ui.approvalNoteText}>
+                        Al guardar quedará en estado <strong>Pendiente de aprobación</strong> hasta que el administrador lo apruebe.
+                    </div>
+                </div>
+                <div className={ui.approvalNoteRight}>
+                    <span className={ui.small}>Certificador</span>
+                    <span className={ui.who}>{CURRENT_CERTIFIER}</span>
+                    <span className={ui.when}>{stamp}</span>
+                </div>
+            </div>
+        </Modal>
+    );
+}
+
+/* ===================== Historial del equipo ===================== */
+function TeamHistoryModal({ team, onClose }) {
+    const toast = useToast();
+    const { certifications } = useCertificationStore();
+    const [status, setStatus] = useState("todos");
+    const [certifier, setCertifier] = useState("todos");
+    const [search, setSearch] = useState("");
+
+    // Todas las certificaciones del equipo, sin importar quién las aplicó
+    const all = certifications.filter((c) => c.teamId === team.id);
+    const certifiers = [...new Set(all.map((c) => c.certifier))];
+    const q = search.trim().toLowerCase();
+    const rows = all
+        .filter(
+            (c) =>
+                (status === "todos" || c.status === status) &&
+                (certifier === "todos" || c.certifier === certifier) &&
+                (!q || c.leaderName.toLowerCase().includes(q))
+        )
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+    const columns = [
+        { key: "date", header: "Fecha", render: (r) => <span className={shared.mutedLight}>{formatDate(r.date)}</span> },
+        { key: "leaderName", header: "Líder certificado", render: (r) => <span className={shared.strong}>{r.leaderName}</span> },
+        { key: "certifier", header: "Certificador", render: (r) => <CertifierCell name={r.certifier} /> },
+        { key: "formatName", header: "Formato", render: (r) => <span className={shared.muted}>{r.formatName}</span> },
+        { key: "score", header: "Puntaje", align: "center", render: (r) => <ScoreCell cert={r} /> },
+        { key: "status", header: "Estado", render: (r) => <StatusPill status={r.status} /> },
+        {
+            key: "pdf",
+            header: "PDF",
+            align: "center",
+            render: (r) => (
+                <button
+                    type="button"
+                    className={`${shared.iconBtn} ${shared.downloadBtn}`}
+                    disabled={r.status !== STATUS.approved}
+                    onClick={() => toast.success("Descargando PDF...")}
+                    title={r.status === STATUS.approved ? "Descargar PDF" : "El PDF solo está disponible para certificaciones aprobadas"}
+                    aria-label={`Descargar PDF de la certificación del ${formatDate(r.date)}`}
+                >
+                    <Download size={16} />
+                </button>
+            ),
+        },
+    ];
+
+    return (
+        <Modal
+            open
+            size="lg"
+            title={
+                <span className={cert.modalTitle}>
+                    Historial — {team.name}
+                    <span className={cert.modalSub}>Todas las certificaciones aplicadas a este equipo, sin importar quién las realizó</span>
+                </span>
+            }
+            onClose={onClose}
+            footer={
+                <div className={shared.modalFooter}>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${shared.btnTeal}`} onClick={() => toast.success("Descargando Excel del historial...")}>
+                        <Download size={15} /> Exportar Excel
+                    </button>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={onClose}>
+                        Cerrar
+                    </button>
+                </div>
+            }
+        >
+            <div className={ui.historyFilters}>
+                <select className={`${base.select} ${shared.filterSelect}`} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filtrar por estado">
+                    <option value="todos">Todos los estados</option>
+                    {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select className={`${base.select} ${shared.filterSelect}`} value={certifier} onChange={(e) => setCertifier(e.target.value)} aria-label="Filtrar por certificador">
+                    <option value="todos">Todos los certificadores</option>
+                    {certifiers.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <div className={`${base.inputIcon} ${shared.filterSearch}`}>
+                    <Search size={16} />
+                    <input type="text" className={base.input} placeholder="Buscar por líder..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar por líder" />
+                </div>
+            </div>
+            <div className={ui.historyTable}>
+                <Datatable columns={columns} rows={rows} rowKey="id" maxHeight={340} emptyMessage="Este equipo aún no tiene certificaciones." />
+            </div>
+        </Modal>
+    );
+}
+
+/* ===================== Página ===================== */
+const TEAM_STATE = {
+    pending: { label: "Pendiente aprobación", status: STATUS.pending },
+    approved: { label: "Certificado", status: STATUS.approved },
+    rejected: { label: "No aprobado", status: STATUS.rejected },
+    none: { label: "Sin certificación", status: STATUS.rejected },
+};
+
+const stateOf = (c) => (!c ? "none" : c.status === STATUS.pending ? "pending" : c.status === STATUS.approved ? "approved" : "rejected");
+
+export const ApplyCertificationPage = () => {
+    const toast = useToast();
+    const { certifications } = useCertificationStore();
+
+    const [area, setArea] = useState("todas");
+    const [search, setSearch] = useState("");
+    const [stateFilter, setStateFilter] = useState("todos");
+    const [applyTeam, setApplyTeam] = useState(null);
+    const [historyTeam, setHistoryTeam] = useState(null);
+    const [approveTarget, setApproveTarget] = useState(null);
+
+    const infoByTeam = TEAMS.map((team) => {
+        const own = certifications.filter((c) => c.teamId === team.id);
+        const latest = latestOf(own);
+        return { team, hasAny: own.length > 0, latest, state: stateOf(latest) };
+    });
+
+    const q = search.trim().toLowerCase();
+    const visible = infoByTeam.filter(
+        ({ team, hasAny, state }) =>
+            (area === "todas" || team.area === area) &&
+            (!q || team.name.toLowerCase().includes(q)) &&
+            (stateFilter === "todos" ||
+                (stateFilter === "con" && hasAny) ||
+                (stateFilter === "pending" && state === "pending") ||
+                (stateFilter === "none" && !hasAny))
+    );
+
+    const handleApply = (team) => {
+        if (!team.formatId) {
+            toast.error("El equipo no tiene un formato activo asignado. No es posible iniciar la certificación.");
+            return;
+        }
+        if (team.leaders.length === 0) {
+            toast.error("El equipo no tiene un líder asignado. No es posible iniciar la certificación.");
+            return;
+        }
+        setApplyTeam(team);
+    };
+
+    return (
+        <>
+            <header className={shared.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Aplicar certificación</h1>
+                    <p className={styles.subtitle}>Selecciona un equipo y aplica la certificación a su líder o líderes designados.</p>
+                </div>
+            </header>
+
+            <div className={base.page}>
+                <div className={shared.stats}>
+                    <StatCard value={TEAMS.length} label="Equipos activos" />
+                    <StatCard value={infoByTeam.filter((i) => i.hasAny).length} label="Con certificación aplicada" tone="green" />
+                    <StatCard value={infoByTeam.filter((i) => i.state === "pending").length} label="Pendiente de aprobación" tone="amber" />
+                    <StatCard value={infoByTeam.filter((i) => !i.hasAny).length} label="Sin certificación" tone="red" />
+                </div>
+
+                <section className={shared.filterCard}>
+                    <div className={shared.filterTitle}><Filter size={16} /> Filtrar equipos</div>
+                    <div className={shared.filterRow}>
+                        <select className={`${base.select} ${shared.filterSelect}`} value={area} onChange={(e) => setArea(e.target.value)} aria-label="Filtrar por área">
+                            <option value="todas">Todas las áreas</option>
+                            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <div className={`${base.inputIcon} ${shared.filterSearch}`}>
+                            <Search size={16} />
+                            <input type="text" className={base.input} placeholder="Buscar equipo..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar equipo" />
+                        </div>
+                        <select className={`${base.select} ${shared.filterSelect}`} value={stateFilter} onChange={(e) => setStateFilter(e.target.value)} aria-label="Filtrar por estado de certificación">
+                            <option value="todos">Todos los estados</option>
+                            <option value="con">Con certificación</option>
+                            <option value="pending">Pendiente aprobación</option>
+                            <option value="none">Sin certificación</option>
+                        </select>
+                    </div>
+                </section>
+
+                {visible.length === 0 ? (
+                    <div className={ui.empty}>No hay equipos que coincidan con los filtros.</div>
+                ) : (
+                    <div className={ui.teams}>
+                        {visible.map(({ team, state }) => (
+                            <section key={team.id} className={ui.teamCard}>
+                                <div className={ui.teamHeader}>
+                                    <div>
+                                        <div className={ui.teamName}>{team.name}</div>
+                                        <div className={ui.teamMeta}>{team.area} · {plural(team.members, "miembro", "miembros")}</div>
+                                    </div>
+                                    <div className={ui.teamActions}>
+                                        <StatusPill status={TEAM_STATE[state].status}>{TEAM_STATE[state].label}</StatusPill>
+                                        <button type="button" className={`${base.btn} ${base.btnSm} ${ui.btnGhost}`} onClick={() => setHistoryTeam(team)}>
+                                            <Shield size={14} /> Historial
+                                        </button>
+                                        {state === "approved" ? (
+                                            <button type="button" className={`${base.btn} ${base.btnSm} ${ui.btnWhite}`} onClick={() => handleApply(team)}>
+                                                <RotateCcw size={14} /> Nueva certificación
+                                            </button>
+                                        ) : (
+                                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => handleApply(team)}>
+                                                <Check size={14} /> Aplicar certificación
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className={ui.teamBody}>
+                                    <div className={ui.leadersLabel}>
+                                        {state === "pending" ? "Líderes que recibirán la certificación" : state === "approved" ? "Líderes certificados" : "Líderes del equipo"}
+                                    </div>
+                                    {team.leaders.length === 0 ? (
+                                        <div className={ui.noFormat}>Este equipo no tiene líder asignado.</div>
+                                    ) : (
+                                        team.leaders.map((leader) => {
+                                            const lastCert = latestOf(certifications.filter((c) => c.teamId === team.id && c.leaderId === leader.id));
+                                            const leaderState = stateOf(lastCert);
+                                            return (
+                                                <div key={leader.id} className={ui.leaderRow}>
+                                                    <div className={ui.leaderAvatar}>{initials(leader.name)}</div>
+                                                    <div className={ui.leaderInfo}>
+                                                        <div className={ui.leaderName}>{leader.name}</div>
+                                                        <div className={ui.leaderSub}>{leader.role} · {leader.code}</div>
+                                                    </div>
+                                                    <div className={ui.leaderRight}>
+                                                        <StatusPill status={TEAM_STATE[leaderState].status}>
+                                                            {leaderState === "approved" ? "Certificado ✓" : TEAM_STATE[leaderState].label}
+                                                        </StatusPill>
+                                                        {leaderState === "pending" && (
+                                                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => setApproveTarget(lastCert)}>
+                                                                Aprobar
+                                                            </button>
+                                                        )}
+                                                        {lastCert && leaderState !== "pending" && <span className={shared.mutedLight}>{formatDate(lastCert.date)}</span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                    {!team.formatId && <div className={ui.noFormat}>Este equipo no tiene un formato de certificación activo.</div>}
+                                </div>
+                            </section>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {applyTeam && <ApplyForm key={applyTeam.id} team={applyTeam} format={FORMATS[applyTeam.formatId]} onClose={() => setApplyTeam(null)} />}
+            {historyTeam && <TeamHistoryModal team={historyTeam} onClose={() => setHistoryTeam(null)} />}
+            <ApproveCertificationModal cert={approveTarget} onClose={() => setApproveTarget(null)} />
+        </>
+    );
+};
 
 
 
 
 
 
+import { useState } from "react";
+import { Check } from "lucide-react";
+import { Modal, useToast } from "../../../shared/components";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./CertificationShared.module.css";
+import { CURRENT_CERTIFIER, STATUS, resolveCertification } from "./certificationStore";
 
-onClick={() => handleDownloadExcel(p)}
+export const formatDate = (iso) => iso.split("-").reverse().join("/");
+
+export const initials = (name) =>
+    name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
+
+export const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+export function StatCard({ value, label, tone }) {
+    return (
+        <div className={`${ui.statCard} ${tone ? ui[tone] : ""}`}>
+            <div className={ui.statValue}>{value}</div>
+            <div className={ui.statLabel}>{label}</div>
+        </div>
+    );
+}
+
+const PILL_BY_STATUS = {
+    [STATUS.pending]: ui.pillPending,
+    [STATUS.approved]: ui.pillApproved,
+    [STATUS.rejected]: ui.pillRejected,
+};
+
+export function StatusPill({ status, children }) {
+    return <span className={`${ui.pill} ${PILL_BY_STATUS[status] ?? ui.pillRejected}`}>{children ?? status}</span>;
+}
+
+export function CertifierCell({ name, showAvatar = true, otherLabel = "Otro" }) {
+    const mine = name === CURRENT_CERTIFIER;
+    if (!showAvatar) return <span className={ui.muted}>{name}</span>;
+    return (
+        <div className={ui.certifier}>
+            <span className={`${ui.avatarSm} ${mine ? "" : ui.other}`}>{initials(name)}</span>
+            <span>{name}</span>
+            <span className={`${ui.tag} ${mine ? ui.tagYou : ui.tagOther}`}>{mine ? "Tú" : otherLabel}</span>
+        </div>
+    );
+}
+
+// El puntaje solo se muestra una vez resuelta la certificación
+export function ScoreCell({ cert }) {
+    if (cert.status === STATUS.pending || cert.score == null) return <span className={ui.mutedLight}>—</span>;
+    const ok = cert.score >= cert.minScore;
+    return <span className={ok ? ui.scoreOk : ui.scoreBad}>{Number(cert.score.toFixed(2))}/100</span>;
+}
+
+const RESULT_OPTIONS = [
+    { value: "approved", label: "Aprobado" },
+    { value: "rejected", label: "Reprobado" },
+    { value: "review", label: "Pendiente de revisión adicional" },
+];
+
+export function ApproveCertificationModal({ cert, onClose }) {
+    const toast = useToast();
+    const [result, setResult] = useState("");
+
+    const handleClose = () => {
+        setResult("");
+        onClose();
+    };
+
+    const handleConfirm = () => {
+        if (!result) {
+            toast.error("Selecciona el resultado de la certificación");
+            return;
+        }
+        if (result === "review") {
+            toast.info("La certificación continúa pendiente de revisión adicional");
+        } else {
+            resolveCertification(cert.id, result === "approved" ? STATUS.approved : STATUS.rejected, CURRENT_CERTIFIER);
+            toast.success(result === "approved" ? "Certificación aprobada correctamente" : "Certificación marcada como no aprobada");
+        }
+        handleClose();
+    };
+
+    return (
+        <Modal
+            open={Boolean(cert)}
+            title="Aprobar certificación"
+            onClose={handleClose}
+            size="sm"
+            footer={
+                <div className={ui.modalFooter}>
+                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleClose}>
+                        Cancelar
+                    </button>
+                    <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleConfirm}>
+                        <Check size={15} /> Confirmar aprobación
+                    </button>
+                </div>
+            }
+        >
+            {cert && (
+                <>
+                    <div className={ui.approveBox}>
+                        <div className={ui.approveTitle}>Aprobación manual de certificación</div>
+                        <p className={ui.approveText}>
+                            Al aprobar confirmas que el proceso de certificación fue completado satisfactoriamente. La aprobación quedará registrada con tu sesión activa.
+                        </p>
+                        <div className={ui.approveMeta}>
+                            <div>
+                                <span className={ui.approveMetaLabel}>Equipo</span>
+                                <span className={ui.approveMetaValue}>{cert.teamName}</span>
+                            </div>
+                            <div>
+                                <span className={ui.approveMetaLabel}>Líder</span>
+                                <span className={ui.approveMetaValue}>{cert.leaderName}</span>
+                            </div>
+                            <div>
+                                <span className={ui.approveMetaLabel}>Fecha</span>
+                                <span className={ui.approveMetaValue}>{new Date().toLocaleDateString("es-ES")}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div className={`${base.field} ${ui.approveField}`}>
+                        <label className={base.label} htmlFor="cert-result">Resultado de la certificación *</label>
+                        <select id="cert-result" className={base.select} value={result} onChange={(e) => setResult(e.target.value)}>
+                            <option value="">— Selecciona el resultado —</option>
+                            {RESULT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                    </div>
+                </>
+            )}
+        </Modal>
+    );
+}
+
+
+
+
+
+import { useEffect, useRef, useState } from "react";
+import { Plus, Info, SquarePen, Trash2, X, Check, TriangleAlert } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import wt from "../coach/AssignmentCoachingPage.module.css";
+import cert from "./ManageCertificationPage.module.css";
+import ui from "./FormatCertificationPage.module.css";
+import { Datatable, Modal, useToast } from "../../../shared/components";
+
+const AREAS = ["HN - Agencias", "HN - Contact Center"];
+const TEAMS_BY_AREA = {
+    "HN - Agencias": ["Equipo La Ceiba A", "Equipo SPS Norte", "Equipo Choluteca B"],
+    "HN - Contact Center": ["Equipo CC Tegucigalpa", "Equipo CC SPS"],
+};
+const INDICATOR_TYPES = ["CE/NCE", "Numérico", "%", "Texto"];
+const CURRENT_USER = "Ana Rodríguez";
+
+let uidCounter = 0;
+const uid = () => `f${Date.now()}-${uidCounter++}`;
+
+const makeIndicators = (names) => names.map((name) => ({ id: uid(), name, type: "CE/NCE", na: false }));
+
+// Plantilla inicial del constructor
+const createTemplateCriteria = () => [
+    {
+        id: uid(), name: "Cumplimiento de Coacheos", weight: 30, description: "",
+        columns: ["Director", "Supervisor", "Observaciones"], newColumn: "",
+        indicators: makeIndicators(["Coacheos Programados", "Coacheos Realizados", "Nota por Coach"]),
+        formula: "Nota = (Coacheos realizados / Coacheos programados) × 100\nSi el rol no aplica, escribir NA y excluir del cálculo.",
+    },
+    {
+        id: uid(), name: "Calidad de Coacheos", weight: 20,
+        description: "Marca CE si cumple, NCE si no cumple. Si no hay Director o Supervisor, escribe NA.",
+        columns: ["Director", "Supervisor", "Observaciones"], newColumn: "",
+        indicators: makeIndicators(["Formato llenado correctamente", "Observaciones adecuadas", "Plan de acción SMART", "Cierre (pasos hamburguesa)", "Compromiso", "Feedback (>=80%)"]),
+        formula: "Nota = (cantidad de CE / total de indicadores que aplican) × 100\nLos indicadores con NA se excluyen del total.",
+    },
+    {
+        id: uid(), name: "Calidad en el Servicio y Atención", weight: 25,
+        description: "Revisa que los colaboradores cumplan con la metodología de servicio. Asignar CE o NCE.",
+        columns: ["Calificación", "Observaciones"], newColumn: "",
+        indicators: makeIndicators(["Cumplimiento de metodología", "Servicio al cliente", "Tiempo de espera", "Tiempo de atención", "Tiempo de permanencia"]),
+        formula: "Nota = (cantidad de CE / total de indicadores evaluados) × 100",
+    },
+    {
+        id: uid(), name: "Cumplimiento de Metas Numéricas", weight: 25,
+        description: "Cumplimiento de metas numéricas de los últimos 3 meses. Se califica el cumplimiento del último mes.",
+        columns: ["Mes 1", "Mes 2", "Mes 3", "Observaciones"], newColumn: "",
+        indicators: makeIndicators(["Cartera Activa", "Cartera Pasiva", "Eficiencia Operativa", "Productos", "Tarjetas de Crédito", "Extra Financiamiento", "Pólizas de Seguros"]),
+        formula: "Nota = Promedio del % de cumplimiento del último mes entre todos los indicadores activos.\nSi un indicador tiene NA, se excluye del promedio.",
+    },
+];
+
+const TEMPLATE_FINAL_FORMULA =
+    "Nota Final = (Nota_Criterio1 × 30%) + (Nota_Criterio2 × 20%) + (Nota_Criterio3 × 25%) + (Nota_Criterio4 × 25%)\n\nSi un criterio es NA para todos sus indicadores, su peso se redistribuye proporcionalmente entre los criterios que aplican.\nResultado: Aprobado si Nota Final >= 70%";
+
+const createTemplateDraft = () => ({
+    name: "", area: "", team: "",
+    criteria: createTemplateCriteria(),
+    finalFormula: TEMPLATE_FINAL_FORMULA,
+    minScore: "70",
+});
+
+// Mock data - En una aplicación real esto vendría de una API
+const INITIAL_FORMATS = [
+    {
+        id: 1, name: "Certificación estándar Agencias v2", area: "HN - Agencias", team: "Equipo La Ceiba A",
+        createdBy: "Carlos Méndez", date: "15/03/2025", status: "Activo",
+        criteria: createTemplateCriteria(), finalFormula: TEMPLATE_FINAL_FORMULA, minScore: "70",
+    },
+    {
+        id: 2, name: "Certificación Contact Center v1", area: "HN - Contact Center", team: "Equipo CC Tegucigalpa",
+        createdBy: "Diana Espinal", date: "10/02/2025", status: "Activo",
+        criteria: createTemplateCriteria().slice(0, 3).map((c, i) => ({ ...c, weight: [40, 30, 30][i] })),
+        finalFormula: "Nota Final = (Nota_Criterio1 × 40%) + (Nota_Criterio2 × 30%) + (Nota_Criterio3 × 30%)\nResultado: Aprobado si Nota Final >= 70%",
+        minScore: "70",
+    },
+];
+
+const cloneDraft = (f) => ({
+    name: f.name, area: f.area, team: f.team,
+    criteria: f.criteria.map((c) => ({ ...c, columns: [...c.columns], indicators: c.indicators.map((i) => ({ ...i })), newColumn: "" })),
+    finalFormula: f.finalFormula, minScore: f.minScore,
+});
+
+const today = () => new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+export const FormatCertificationPage = () => {
+    const toast = useToast();
+
+    const [formats, setFormats] = useState(INITIAL_FORMATS);
+    const [newModalOpen, setNewModalOpen] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState(null);
+
+    // Constructor: null | "new" | "edit"
+    const [mode, setMode] = useState(null);
+    const [editingId, setEditingId] = useState(null);
+    const [draft, setDraft] = useState(null);
+    const builderRef = useRef(null);
+
+    useEffect(() => {
+        if (mode) builderRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, [mode, editingId]);
+
+    const totalWeight = draft ? draft.criteria.reduce((s, c) => s + (parseInt(c.weight) || 0), 0) : 0;
+    const weightOk = totalWeight === 100;
+
+    const setField = (field, value) => setDraft((d) => ({ ...d, [field]: value }));
+
+    const updateCriterion = (id, patch) =>
+        setDraft((d) => ({ ...d, criteria: d.criteria.map((c) => (c.id === id ? { ...c, ...patch } : c)) }));
+
+    const addCriterion = () =>
+        setDraft((d) => ({
+            ...d,
+            criteria: [...d.criteria, { id: uid(), name: "", weight: 0, description: "", columns: [], newColumn: "", indicators: [], formula: "" }],
+        }));
+
+    const removeCriterion = (id) => setDraft((d) => ({ ...d, criteria: d.criteria.filter((c) => c.id !== id) }));
+
+    const addColumn = (c) => {
+        const value = c.newColumn.trim();
+        if (!value || c.columns.includes(value)) return;
+        updateCriterion(c.id, { columns: [...c.columns, value], newColumn: "" });
+    };
+
+    const updateIndicator = (c, indId, patch) =>
+        updateCriterion(c.id, { indicators: c.indicators.map((i) => (i.id === indId ? { ...i, ...patch } : i)) });
+
+    const handleWeight = (c, value) => {
+        const n = parseInt(value) || 0;
+        if (n >= 0 && n <= 100) updateCriterion(c.id, { weight: n });
+    };
+
+    const startNew = () => {
+        setNewModalOpen(false);
+        setEditingId(null);
+        setDraft(createTemplateDraft());
+        setMode("new");
+    };
+
+    const startEdit = (format) => {
+        setEditingId(format.id);
+        setDraft(cloneDraft(format));
+        setMode("edit");
+    };
+
+    const closeBuilder = () => {
+        setMode(null);
+        setEditingId(null);
+        setDraft(null);
+    };
+
+    const handleSave = () => {
+        if (!draft.name.trim() || !draft.area || !draft.team) {
+            toast.error("Completa el nombre y el área del formato");
+            return;
+        }
+        if (draft.criteria.length === 0 || draft.criteria.some((c) => !c.name.trim())) {
+            toast.error("Cada criterio debe tener un nombre");
+            return;
+        }
+        if (!weightOk) {
+            toast.error("Los pesos de los criterios deben sumar 100%");
+            return;
+        }
+        if (!draft.finalFormula.trim()) {
+            toast.error("Describe cómo se calcula la nota final");
+            return;
+        }
+
+        const payload = {
+            name: draft.name.trim(), area: draft.area, team: draft.team,
+            criteria: draft.criteria.map(({ newColumn, ...c }) => c),
+            finalFormula: draft.finalFormula, minScore: draft.minScore,
+        };
+
+        // Solo un formato activo por equipo: se desactivan los demás del mismo equipo
+        setFormats((prev) => {
+            const others = prev.map((f) => (f.id !== editingId && f.team === payload.team ? { ...f, status: "Inactivo" } : f));
+            if (editingId) return others.map((f) => (f.id === editingId ? { ...f, ...payload, status: "Activo" } : f));
+            return [...others, { id: Date.now(), ...payload, createdBy: CURRENT_USER, date: today(), status: "Activo" }];
+        });
+        closeBuilder();
+        toast.success("Formato guardado correctamente");
+    };
+
+    const handleConfirmDelete = () => {
+        setFormats((prev) => prev.filter((f) => f.id !== deleteTarget.id));
+        if (editingId === deleteTarget.id) closeBuilder();
+        setDeleteTarget(null);
+        toast.success("Formato eliminado correctamente");
+    };
+
+    const columns = [
+        { key: "name", header: "Nombre del formato", render: (r) => <span className={ui.formatName}>{r.name}</span> },
+        { key: "area", header: "Área", render: (r) => <span className={base.chip}>{r.area}</span> },
+        { key: "team", header: "Equipo", render: (r) => <span className={ui.formatName}>{r.team}</span> },
+        { key: "sections", header: "Secciones", align: "center", render: (r) => <span className={ui.center}>{r.criteria.length}</span> },
+        { key: "createdBy", header: "Creado por", render: (r) => <span className={ui.muted}>{r.createdBy}</span> },
+        { key: "date", header: "Fecha", render: (r) => <span className={ui.mutedLight}>{r.date}</span> },
+        {
+            key: "status", header: "Estado",
+            render: (r) => <span className={r.status === "Activo" ? base.statusActive : ui.statusInactive}>{r.status}</span>,
+        },
+        {
+            key: "actions", header: "Acciones", align: "right",
+            render: (r) => (
+                <div className={ui.rowActions}>
+                    <button type="button" className={`${ui.iconBtn} ${ui.editBtn}`} onClick={() => startEdit(r)} title="Editar formato" aria-label={`Editar ${r.name}`}>
+                        <SquarePen size={16} />
+                    </button>
+                    <button type="button" className={`${ui.iconBtn} ${ui.deleteBtn}`} onClick={() => setDeleteTarget(r)} title="Eliminar formato" aria-label={`Eliminar ${r.name}`}>
+                        <Trash2 size={16} />
+                    </button>
+                </div>
+            ),
+        },
+    ];
+
+    return (
+        <>
+            <header className={ui.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Formato de certificación</h1>
+                    <p className={styles.subtitle}>Crea y edita el formato que se usará al aplicar certificaciones a los equipos. Solo puede existir un formato activo por equipo.</p>
+                </div>
+                <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={() => setNewModalOpen(true)}>
+                    <Plus size={16} /> Nuevo formato
+                </button>
+            </header>
+
+            <div className={base.page}>
+                <div className={base.infoBanner}>
+                    <Info size={16} />
+                    <span>Cada equipo puede tener únicamente un formato activo a la vez. Cualquier administrador puede editar el formato. Al crear uno nuevo para un equipo que ya tiene formato activo, el anterior se desactiva automáticamente.</span>
+                </div>
+
+                <section className={ui.tableCard}>
+                    <Datatable columns={columns} rows={formats} rowKey="id" emptyMessage="No hay formatos de certificación." />
+                </section>
+
+                {draft && (
+                    <div ref={builderRef} className={base.page}>
+                        <h2 className={ui.builderTitle}>{mode === "edit" ? "Editar formato de certificación" : "Nuevo formato de certificación"}</h2>
+
+                        <section className={base.card}>
+                            <div className={base.cardHeader}>
+                                <h3 className={base.cardTitle}>Datos generales</h3>
+                            </div>
+                            <div className={base.cardBody}>
+                                <div className={ui.generalGrid}>
+                                    <div className={base.field}>
+                                        <label className={base.label} htmlFor="fc-name">Nombre del formato *</label>
+                                        <input
+                                            id="fc-name"
+                                            type="text"
+                                            className={base.input}
+                                            placeholder="Ej. Revisión Interna Agencias v4"
+                                            value={draft.name}
+                                            onChange={(e) => setField("name", e.target.value)}
+                                        />
+                                    </div>
+                                    <div className={base.field}>
+                                        <label className={base.label} htmlFor="fc-area">Área *</label>
+                                        <select
+                                            id="fc-area"
+                                            className={base.select}
+                                            value={draft.area}
+                                            onChange={(e) => setDraft((d) => ({ ...d, area: e.target.value, team: "" }))}
+                                        >
+                                            <option value="">— Selecciona —</option>
+                                            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className={base.field}>
+                                        <label className={base.label} htmlFor="fc-team">Equipo *</label>
+                                        <select
+                                            id="fc-team"
+                                            className={base.select}
+                                            value={draft.team}
+                                            onChange={(e) => setField("team", e.target.value)}
+                                            disabled={!draft.area}
+                                        >
+                                            <option value="">{draft.area ? "— Selecciona —" : "— Selecciona el área primero —"}</option>
+                                            {(TEAMS_BY_AREA[draft.area] ?? []).map((t) => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className={base.card}>
+                            <div className={base.cardHeader}>
+                                <h3 className={base.cardTitle}>Criterios de evaluación</h3>
+                                <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={addCriterion}>
+                                    <Plus size={15} /> Agregar criterio
+                                </button>
+                            </div>
+                            <div className={base.cardBody}>
+                                <div className={base.infoBanner}>
+                                    <Info size={16} />
+                                    <span>Para cada criterio define cuánto vale (%) y cómo se calcula su resultado. Los pesos deben sumar 100%.</span>
+                                </div>
+
+                                <div className={ui.criteriaList}>
+                                    {draft.criteria.map((c, idx) => (
+                                        <div key={c.id} className={ui.criterion}>
+                                            <div className={ui.criterionHead}>
+                                                <span className={ui.criterionNumber}>{idx + 1}</span>
+                                                <input
+                                                    type="text"
+                                                    className={`${base.input} ${ui.criterionName}`}
+                                                    placeholder="Nombre del criterio..."
+                                                    value={c.name}
+                                                    onChange={(e) => updateCriterion(c.id, { name: e.target.value })}
+                                                    aria-label={`Nombre del criterio ${idx + 1}`}
+                                                />
+                                                <label className={ui.weightBox}>
+                                                    <span>Peso</span>
+                                                    <input type="number" min="0" max="100" value={c.weight} onChange={(e) => handleWeight(c, e.target.value)} />
+                                                    <span>%</span>
+                                                </label>
+                                                <button type="button" className={ui.miniDelete} onClick={() => removeCriterion(c.id)} aria-label={`Quitar criterio ${idx + 1}`}>
+                                                    <X size={14} />
+                                                </button>
+                                            </div>
+
+                                            <span className={ui.sectionLabel}>Descripción / instrucción para el certificador</span>
+                                            <textarea
+                                                className={base.textarea}
+                                                value={c.description}
+                                                onChange={(e) => updateCriterion(c.id, { description: e.target.value })}
+                                            />
+
+                                            <span className={ui.sectionLabel}>Columnas de evaluación</span>
+                                            <div className={ui.chips}>
+                                                {c.columns.map((col) => (
+                                                    <span key={col} className={ui.chipCol}>
+                                                        {col}
+                                                        <button type="button" onClick={() => updateCriterion(c.id, { columns: c.columns.filter((x) => x !== col) })} aria-label={`Quitar columna ${col}`}>
+                                                            <X size={11} />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <div className={ui.addRow}>
+                                                <input
+                                                    type="text"
+                                                    className={base.input}
+                                                    placeholder="Nueva columna..."
+                                                    value={c.newColumn}
+                                                    onChange={(e) => updateCriterion(c.id, { newColumn: e.target.value })}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === "Enter") {
+                                                            e.preventDefault();
+                                                            addColumn(c);
+                                                        }
+                                                    }}
+                                                />
+                                                <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => addColumn(c)}>
+                                                    Agregar
+                                                </button>
+                                            </div>
+
+                                            <span className={ui.sectionLabel}>Indicadores / filas</span>
+                                            <div className={ui.indicatorRows}>
+                                                {c.indicators.map((ind) => (
+                                                    <div key={ind.id} className={ui.indicatorRow}>
+                                                        <input
+                                                            type="text"
+                                                            className={base.input}
+                                                            placeholder="Nombre del indicador..."
+                                                            value={ind.name}
+                                                            onChange={(e) => updateIndicator(c, ind.id, { name: e.target.value })}
+                                                        />
+                                                        <select
+                                                            className={`${base.select} ${ui.typeSelect}`}
+                                                            value={ind.type}
+                                                            onChange={(e) => updateIndicator(c, ind.id, { type: e.target.value })}
+                                                            aria-label="Tipo de indicador"
+                                                        >
+                                                            {INDICATOR_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                                                        </select>
+                                                        <label className={ui.naCheck}>
+                                                            <input type="checkbox" checked={ind.na} onChange={(e) => updateIndicator(c, ind.id, { na: e.target.checked })} />
+                                                            NA
+                                                        </label>
+                                                        <button
+                                                            type="button"
+                                                            className={ui.miniDelete}
+                                                            onClick={() => updateCriterion(c.id, { indicators: c.indicators.filter((i) => i.id !== ind.id) })}
+                                                            aria-label="Quitar indicador"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className={`${base.btn} ${base.btnOutline} ${base.btnSm}`}
+                                                style={{ marginTop: 10 }}
+                                                onClick={() => updateCriterion(c.id, { indicators: [...c.indicators, { id: uid(), name: "", type: "CE/NCE", na: false }] })}
+                                            >
+                                                <Plus size={14} /> Agregar indicador
+                                            </button>
+
+                                            <span className={ui.sectionLabel}>Fórmula para calcular el resultado de este criterio</span>
+                                            <textarea
+                                                className={`${base.textarea} ${ui.formula}`}
+                                                value={c.formula}
+                                                onChange={(e) => updateCriterion(c.id, { formula: e.target.value })}
+                                            />
+                                            <div className={ui.helper}>Escribe en palabras simples cómo se obtiene la nota. El desarrollador lo implementará.</div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className={wt.weightSummary}>
+                                    <div className={wt.weightBar}>
+                                        <div className={wt.weightTop}>
+                                            <span>Peso total asignado</span>
+                                            <strong>{totalWeight}%</strong>
+                                        </div>
+                                        <div className={wt.weightTrack}>
+                                            <div className={`${wt.weightFill} ${weightOk ? "" : wt.incomplete}`} style={{ width: `${Math.min(totalWeight, 100)}%` }} />
+                                        </div>
+                                    </div>
+                                    <span className={`${wt.weightStatus} ${weightOk ? "" : wt.incomplete}`}>
+                                        {weightOk ? <><Check size={14} /> Completo</> : totalWeight > 100 ? `Sobran ${totalWeight - 100}%` : `Falta ${100 - totalWeight}%`}
+                                    </span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className={base.card}>
+                            <div className={base.cardHeader}>
+                                <h3 className={base.cardTitle}>Fórmula de la nota final</h3>
+                            </div>
+                            <div className={base.cardBody}>
+                                <div className={base.infoBanner}>
+                                    <Info size={16} />
+                                    <span>Define cómo se combinarán los criterios para obtener el resultado total. El desarrollador usará esta descripción para implementar el cálculo automático.</span>
+                                </div>
+
+                                <div className={`${base.field} ${ui.finalBlock}`}>
+                                    <label className={base.label} htmlFor="fc-final">¿Cómo se calcula la nota final? *</label>
+                                    <textarea
+                                        id="fc-final"
+                                        className={`${base.textarea} ${ui.formula}`}
+                                        style={{ minHeight: 110 }}
+                                        value={draft.finalFormula}
+                                        onChange={(e) => setField("finalFormula", e.target.value)}
+                                    />
+                                    <div className={ui.helper}>Escríbela en palabras simples o con la fórmula directa. Los porcentajes deben coincidir con los pesos definidos arriba.</div>
+                                </div>
+
+                                <div className={`${base.field} ${ui.finalBlock} ${ui.minScore}`}>
+                                    <label className={base.label} htmlFor="fc-min">Nota mínima para aprobar (%)</label>
+                                    <input
+                                        id="fc-min"
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        className={base.input}
+                                        value={draft.minScore}
+                                        onChange={(e) => setField("minScore", e.target.value)}
+                                    />
+                                    <div className={ui.helper}>Si la nota final es menor a este valor el sistema marcará No aprobado.</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <div className={base.actions}>
+                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={closeBuilder}>
+                                Cancelar
+                            </button>
+                            <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={handleSave}>
+                                <Check size={16} /> Guardar formato
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Modal nuevo formato */}
+            <Modal
+                open={newModalOpen}
+                title="Nuevo formato de certificación"
+                onClose={() => setNewModalOpen(false)}
+                size="sm"
+                footer={
+                    <div className={cert.modalFooter}>
+                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setNewModalOpen(false)}>
+                            Cancelar
+                        </button>
+                        <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={startNew}>
+                            Continuar al constructor
+                        </button>
+                    </div>
+                }
+            >
+                <p className={cert.removeText}>
+                    Se abrirá el constructor de formato. Si el equipo seleccionado ya tiene un formato activo, este se desactivará automáticamente al guardar el nuevo.
+                </p>
+                <div className={cert.removeWarning}>
+                    <TriangleAlert size={16} />
+                    <span>Solo puede existir un formato activo por equipo a la vez.</span>
+                </div>
+            </Modal>
+
+            {/* Modal eliminar formato */}
+            <Modal
+                open={Boolean(deleteTarget)}
+                title="Eliminar formato"
+                onClose={() => setDeleteTarget(null)}
+                size="sm"
+                footer={
+                    <div className={cert.modalFooter}>
+                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setDeleteTarget(null)}>
+                            Cancelar
+                        </button>
+                        <button type="button" className={`${base.btn} ${cert.btnDanger} ${base.btnSm}`} onClick={handleConfirmDelete}>
+                            Eliminar formato
+                        </button>
+                    </div>
+                }
+            >
+                <p className={cert.removeText}>
+                    ¿Deseas eliminar este formato de certificación? El equipo quedará sin formato activo.
+                </p>
+                <div className={cert.removeWarning}>
+                    <TriangleAlert size={16} />
+                    <span>Las certificaciones ya aplicadas con este formato no se verán afectadas.</span>
+                </div>
+            </Modal>
+        </>
+    );
+};
+
+
+
+
+
+import { useState } from "react";
+import { Download, Check, Filter, Search } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./CertificationShared.module.css";
+import { Datatable, useToast } from "../../../shared/components";
+import { AREAS, STATUS, useCertificationStore } from "./certificationStore";
+import { ApproveCertificationModal, CertifierCell, ScoreCell, StatCard, StatusPill, formatDate } from "./certificationUi";
+
+export const GeneralHistoryCertificationPage = () => {
+    const toast = useToast();
+    const { certifications } = useCertificationStore();
+
+    const [area, setArea] = useState("todas");
+    const [team, setTeam] = useState("todos");
+    const [certifier, setCertifier] = useState("todos");
+    const [status, setStatus] = useState("todos");
+    const [search, setSearch] = useState("");
+    const [approveTarget, setApproveTarget] = useState(null);
+
+    const teams = [...new Set(certifications.filter((c) => area === "todas" || c.area === area).map((c) => c.teamName))];
+    const certifiers = [...new Set(certifications.map((c) => c.certifier))];
+
+    const q = search.trim().toLowerCase();
+    const rows = certifications
+        .filter(
+            (c) =>
+                (area === "todas" || c.area === area) &&
+                (team === "todos" || c.teamName === team) &&
+                (certifier === "todos" || c.certifier === certifier) &&
+                (status === "todos" || c.status === status) &&
+                (!q || c.leaderName.toLowerCase().includes(q))
+        )
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+    const count = (s) => certifications.filter((c) => c.status === s).length;
+
+    const handleAreaChange = (value) => {
+        setArea(value);
+        setTeam("todos");
+    };
+
+    const columns = [
+        { key: "teamName", header: "Equipo", render: (r) => <span className={ui.strong}>{r.teamName}</span> },
+        { key: "area", header: "Área", render: (r) => <span className={base.chip}>{r.area}</span> },
+        { key: "leaderName", header: "Líder certificado", render: (r) => <span className={ui.strong}>{r.leaderName}</span> },
+        { key: "certifier", header: "Certificador", render: (r) => <CertifierCell name={r.certifier} showAvatar={false} /> },
+        { key: "formatName", header: "Formato usado", render: (r) => <span className={ui.muted}>{r.formatName}</span> },
+        { key: "score", header: "Puntaje", align: "center", render: (r) => <ScoreCell cert={r} /> },
+        { key: "date", header: "Fecha", render: (r) => <span className={ui.mutedLight}>{formatDate(r.date)}</span> },
+        { key: "status", header: "Estado", render: (r) => <StatusPill status={r.status} /> },
+        {
+            key: "actions",
+            header: "Acciones",
+            align: "right",
+            render: (r) => (
+                <div className={ui.rowActions}>
+                    {r.status === STATUS.pending && (
+                        <button
+                            type="button"
+                            className={`${ui.iconBtn} ${ui.approveBtn}`}
+                            onClick={() => setApproveTarget(r)}
+                            title="Aprobar o rechazar certificación"
+                            aria-label={`Aprobar certificación de ${r.teamName}`}
+                        >
+                            <Check size={16} />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className={`${ui.iconBtn} ${ui.downloadBtn}`}
+                        disabled={r.status !== STATUS.approved}
+                        onClick={() => toast.success("Descargando PDF...")}
+                        title={r.status === STATUS.approved ? "Descargar PDF" : "El PDF solo está disponible para certificaciones aprobadas"}
+                        aria-label={`Descargar PDF de ${r.teamName}`}
+                    >
+                        <Download size={16} />
+                    </button>
+                </div>
+            ),
+        },
+    ];
+
+    return (
+        <>
+            <header className={ui.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Historial general de certificaciones</h1>
+                    <p className={styles.subtitle}>Consulta todas las certificaciones aplicadas en el sistema, de todos los equipos y áreas.</p>
+                </div>
+                <button type="button" className={`${base.btn} ${base.btnOutline} ${ui.btnTeal}`} onClick={() => toast.success("Descargando Excel...")}>
+                    <Download size={16} /> Exportar Excel
+                </button>
+            </header>
+
+            <div className={base.page}>
+                <div className={ui.stats}>
+                    <StatCard value={certifications.length} label="Total certificaciones" />
+                    <StatCard value={count(STATUS.approved)} label="Aprobadas" tone="green" />
+                    <StatCard value={count(STATUS.pending)} label="Pendiente aprobación" tone="amber" />
+                    <StatCard value={count(STATUS.rejected)} label="No aprobadas" tone="red" />
+                </div>
+
+                <section className={ui.filterCard}>
+                    <div className={ui.filterTitle}><Filter size={16} /> Filtrar historial</div>
+                    <div className={ui.filterRow}>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={area} onChange={(e) => handleAreaChange(e.target.value)} aria-label="Filtrar por área">
+                            <option value="todas">Todas las áreas</option>
+                            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={team} onChange={(e) => setTeam(e.target.value)} aria-label="Filtrar por equipo">
+                            <option value="todos">Todos los equipos</option>
+                            {teams.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={certifier} onChange={(e) => setCertifier(e.target.value)} aria-label="Filtrar por certificador">
+                            <option value="todos">Todos los certificadores</option>
+                            {certifiers.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filtrar por estado">
+                            <option value="todos">Todos los estados</option>
+                            {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <div className={`${base.inputIcon} ${ui.filterSearch}`}>
+                            <Search size={16} />
+                            <input type="text" className={base.input} placeholder="Buscar por líder..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar por líder" />
+                        </div>
+                    </div>
+                </section>
+
+                <section className={ui.tableCard}>
+                    <Datatable columns={columns} rows={rows} rowKey="id" maxHeight={460} emptyMessage="No hay certificaciones que coincidan con los filtros." />
+                </section>
+            </div>
+
+            <ApproveCertificationModal cert={approveTarget} onClose={() => setApproveTarget(null)} />
+        </>
+    );
+};
 
 
 
 
 
 
+import { useState } from "react";
+import { Download, Info, Filter, Search } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./CertificationShared.module.css";
+import { Datatable, useToast } from "../../../shared/components";
+import { STATUS, TEAMS, useCertificationStore } from "./certificationStore";
+import { CertifierCell, ScoreCell, StatusPill, formatDate } from "./certificationUi";
+
+const ASSIGNED_TEAM_IDS = TEAMS.map((t) => t.id);
+
+export const HistoryCertificationPage = () => {
+    const toast = useToast();
+    const { certifications } = useCertificationStore();
+
+    const [teamId, setTeamId] = useState("todos");
+    const [certifier, setCertifier] = useState("todos");
+    const [status, setStatus] = useState("todos");
+    const [search, setSearch] = useState("");
+
+    // Solo equipos asignados al certificador, sin importar quién aplicó la certificación
+    const mine = certifications.filter((c) => ASSIGNED_TEAM_IDS.includes(c.teamId));
+    const certifiers = [...new Set(mine.map((c) => c.certifier))];
+
+    const q = search.trim().toLowerCase();
+    const rows = mine
+        .filter(
+            (c) =>
+                (teamId === "todos" || c.teamId === Number(teamId)) &&
+                (certifier === "todos" || c.certifier === certifier) &&
+                (status === "todos" || c.status === status) &&
+                (!q || c.leaderName.toLowerCase().includes(q))
+        )
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+    const columns = [
+        { key: "teamName", header: "Equipo", render: (r) => <span className={ui.strong}>{r.teamName}</span> },
+        { key: "leaderName", header: "Líder certificado", render: (r) => <span className={ui.strong}>{r.leaderName}</span> },
+        { key: "certifier", header: "Certificador", render: (r) => <CertifierCell name={r.certifier} otherLabel="Otro cert." /> },
+        { key: "formatName", header: "Formato usado", render: (r) => <span className={ui.muted}>{r.formatName}</span> },
+        { key: "score", header: "Puntaje", align: "center", render: (r) => <ScoreCell cert={r} /> },
+        { key: "date", header: "Fecha", render: (r) => <span className={ui.mutedLight}>{formatDate(r.date)}</span> },
+        { key: "status", header: "Estado", render: (r) => <StatusPill status={r.status} /> },
+        {
+            key: "actions",
+            header: "Acciones",
+            align: "right",
+            render: (r) => (
+                <div className={ui.rowActions}>
+                    <button
+                        type="button"
+                        className={`${ui.iconBtn} ${ui.downloadBtn}`}
+                        disabled={r.status !== STATUS.approved}
+                        onClick={() => toast.success("Descargando PDF...")}
+                        title={r.status === STATUS.approved ? "Descargar PDF" : "El PDF solo está disponible para certificaciones aprobadas"}
+                        aria-label={`Descargar PDF de ${r.teamName}`}
+                    >
+                        <Download size={16} />
+                    </button>
+                </div>
+            ),
+        },
+    ];
+
+    return (
+        <>
+            <header className={ui.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Historial de certificaciones</h1>
+                    <p className={styles.subtitle}>Certificaciones de todos los equipos que tienes asignados — incluyendo las realizadas por otros certificadores.</p>
+                </div>
+                <button type="button" className={`${base.btn} ${base.btnOutline} ${ui.btnTeal}`} onClick={() => toast.success("Descargando Excel...")}>
+                    <Download size={16} /> Exportar Excel
+                </button>
+            </header>
+
+            <div className={base.page}>
+                <div className={base.infoBanner}>
+                    <Info size={16} />
+                    <span>Puedes consultar el historial completo de los equipos que te han sido asignados, incluyendo certificaciones realizadas por otros certificadores. La información es de solo lectura.</span>
+                </div>
+
+                <section className={ui.filterCard}>
+                    <div className={ui.filterTitle}><Filter size={16} /> Filtrar historial</div>
+                    <div className={ui.filterRow}>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={teamId} onChange={(e) => setTeamId(e.target.value)} aria-label="Filtrar por equipo">
+                            <option value="todos">Todos mis equipos</option>
+                            {TEAMS.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={certifier} onChange={(e) => setCertifier(e.target.value)} aria-label="Filtrar por certificador">
+                            <option value="todos">Todos los certificadores</option>
+                            {certifiers.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <select className={`${base.select} ${ui.filterSelect}`} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filtrar por estado">
+                            <option value="todos">Todos los estados</option>
+                            {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <div className={`${base.inputIcon} ${ui.filterSearch}`}>
+                            <Search size={16} />
+                            <input type="text" className={base.input} placeholder="Buscar por líder..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar por líder" />
+                        </div>
+                    </div>
+                </section>
+
+                <section className={ui.tableCard}>
+                    <Datatable columns={columns} rows={rows} rowKey="id" emptyMessage="No hay certificaciones que coincidan con los filtros." />
+                </section>
+            </div>
+        </>
+    );
+};
 
 
 
 
 
 
-handleDownloadExcel(p);
+import { useState } from "react";
+import { Plus, Info, Filter, Search, UserMinus, ChevronRight, ChevronLeft, Check, TriangleAlert } from "lucide-react";
+import styles from "../../Pages.module.css";
+import base from "../coach/CollaboratorCoachingPage.module.css";
+import ui from "./ManageCertificationPage.module.css";
+import { Datatable, Modal, useToast } from "../../../shared/components";
+
+const AREAS = ["HN - Agencias", "HN - Contact Center"];
+const STEP_LABELS = ["Área y usuario", "Equipos a certificar", "Confirmación"];
+
+// Mock data - En una aplicación real esto vendría de una API
+const INITIAL_CERTIFIERS = [
+    { id: 1, code: "EMP-0142", name: "Carlos Méndez", position: "Administrador operativo", area: "HN - Agencias", applied: 12, status: "Activo", teamIds: [] },
+    { id: 2, code: "EMP-0098", name: "Roberto Sánchez", position: "Coordinador regional", area: "HN - Agencias", applied: 7, status: "Activo", teamIds: [] },
+    { id: 3, code: "EMP-0115", name: "Diana Espinal", position: "Administradora operativa", area: "HN - Contact Center", applied: 4, status: "Activo", teamIds: [] },
+];
+
+const MOCK_USERS = [
+    { id: 1, code: "EMP-0044", name: "Patricia Reyes", position: "Asesora", area: "HN - Agencias", status: "Activo" },
+    { id: 2, code: "EMP-0058", name: "Miguel Torres", position: "Cajero", area: "HN - Agencias", status: "Activo" },
+    { id: 3, code: "EMP-0098", name: "Roberto Sánchez", position: "Coordinador regional", area: "HN - Agencias", status: "Activo" },
+    { id: 4, code: "EMP-0115", name: "Diana Espinal", position: "Administradora operativa", area: "HN - Contact Center", status: "Activo" },
+    { id: 5, code: "EMP-0121", name: "Luis Orellana", position: "Asesor", area: "HN - Contact Center", status: "Activo" },
+    { id: 6, code: "EMP-0130", name: "Marta Fuentes", position: "Supervisora", area: "HN - Contact Center", status: "Activo" },
+];
+
+const INITIAL_TEAMS = [
+    { id: 1, name: "Equipo La Ceiba A", area: "HN - Agencias", leader: "Ana Rodríguez", members: 3, certifiers: 2 },
+    { id: 2, name: "Equipo SPS Norte", area: "HN - Agencias", leader: "Jorge Mendoza", members: 2, certifiers: 1 },
+    { id: 3, name: "Equipo Choluteca B", area: "HN - Agencias", leader: "Carlos Pineda", members: 4, certifiers: 0 },
+    { id: 4, name: "Equipo Tegucigalpa Sur", area: "HN - Agencias", leader: null, members: 2, certifiers: 0 },
+    { id: 5, name: "Equipo Contact Center 1", area: "HN - Contact Center", leader: "Laura Mejía", members: 5, certifiers: 1 },
+    { id: 6, name: "Equipo Contact Center 2", area: "HN - Contact Center", leader: null, members: 4, certifiers: 0 },
+];
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const teamMeta = (t) => `${t.area} · ${t.leader ? `Líder: ${t.leader}` : "Sin líder asignado"} · ${plural(t.members, "miembro", "miembros")}`;
+
+export const ManageCertificationPage = () => {
+    const toast = useToast();
+
+    const [certifiers, setCertifiers] = useState(INITIAL_CERTIFIERS);
+    const [teams, setTeams] = useState(INITIAL_TEAMS);
+    const [filterArea, setFilterArea] = useState("todas");
+    const [search, setSearch] = useState("");
+
+    // Modal designar
+    const [designateOpen, setDesignateOpen] = useState(false);
+    const [step, setStep] = useState(1);
+    const [formArea, setFormArea] = useState("");
+    const [userSearch, setUserSearch] = useState("");
+    const [selectedUserId, setSelectedUserId] = useState(null);
+    const [selectedTeamIds, setSelectedTeamIds] = useState([]);
+
+    // Modal quitar
+    const [removeTarget, setRemoveTarget] = useState(null);
+
+    const q = search.trim().toLowerCase();
+    const filteredCertifiers = certifiers.filter(
+        (c) =>
+            (filterArea === "todas" || c.area === filterArea) &&
+            (!q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q))
+    );
+
+    const uq = userSearch.trim().toLowerCase();
+    const areaUsers = MOCK_USERS.filter(
+        (u) => u.area === formArea && (!uq || u.name.toLowerCase().includes(uq) || u.code.toLowerCase().includes(uq))
+    );
+    const areaTeams = teams.filter((t) => t.area === formArea);
+    const selectedUser = MOCK_USERS.find((u) => u.id === selectedUserId) ?? null;
+    const allTeamsSelected = areaTeams.length > 0 && areaTeams.every((t) => selectedTeamIds.includes(t.id));
+
+    const openDesignate = () => {
+        setStep(1);
+        setFormArea("");
+        setUserSearch("");
+        setSelectedUserId(null);
+        setSelectedTeamIds([]);
+        setDesignateOpen(true);
+    };
+
+    const closeDesignate = () => setDesignateOpen(false);
+
+    const handleAreaChange = (area) => {
+        setFormArea(area);
+        setSelectedUserId(null);
+        setSelectedTeamIds([]);
+    };
+
+    const toggleTeam = (id) =>
+        setSelectedTeamIds((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+
+    const toggleAllTeams = () => setSelectedTeamIds(allTeamsSelected ? [] : areaTeams.map((t) => t.id));
+
+    const handleConfirmDesignation = () => {
+        const existing = certifiers.find((c) => c.code === selectedUser.code);
+        const newTeamIds = selectedTeamIds.filter((id) => !existing?.teamIds.includes(id));
+
+        setCertifiers((prev) =>
+            existing
+                ? prev.map((c) => (c.id === existing.id ? { ...c, teamIds: [...c.teamIds, ...newTeamIds] } : c))
+                : [
+                    ...prev,
+                    {
+                        id: Date.now(),
+                        code: selectedUser.code,
+                        name: selectedUser.name,
+                        position: selectedUser.position,
+                        area: selectedUser.area,
+                        applied: 0,
+                        status: "Activo",
+                        teamIds: selectedTeamIds,
+                    },
+                ]
+        );
+        setTeams((prev) => prev.map((t) => (newTeamIds.includes(t.id) ? { ...t, certifiers: t.certifiers + 1 } : t)));
+        closeDesignate();
+        toast.success("Certificador designado correctamente");
+    };
+
+    const handleConfirmRemove = () => {
+        setCertifiers((prev) => prev.filter((c) => c.id !== removeTarget.id));
+        setTeams((prev) =>
+            prev.map((t) => (removeTarget.teamIds.includes(t.id) ? { ...t, certifiers: Math.max(0, t.certifiers - 1) } : t))
+        );
+        setRemoveTarget(null);
+        toast.success("Rol de certificador quitado correctamente");
+    };
+
+    const columns = [
+        { key: "code", header: "Código", render: (r) => <span className={base.code}>{r.code}</span> },
+        { key: "name", header: "Nombre", render: (r) => <span className={base.name}>{r.name}</span> },
+        { key: "position", header: "Puesto" },
+        { key: "area", header: "Área", render: (r) => <span className={base.chip}>{r.area}</span> },
+        { key: "applied", header: "Certificaciones aplicadas", align: "center", render: (r) => <span className={ui.applied}>{r.applied}</span> },
+        { key: "status", header: "Estado", render: (r) => <span className={base.statusActive}>{r.status}</span> },
+        {
+            key: "actions",
+            header: "Acciones",
+            align: "right",
+            render: (r) => (
+                <button
+                    type="button"
+                    className={ui.actionBtn}
+                    onClick={() => setRemoveTarget(r)}
+                    title="Quitar rol de certificador"
+                    aria-label={`Quitar rol de certificador a ${r.name}`}
+                >
+                    <UserMinus size={16} />
+                </button>
+            ),
+        },
+    ];
+
+    const canNext = step === 1 ? Boolean(formArea && selectedUserId) : selectedTeamIds.length > 0;
+
+    const designateFooter = (
+        <div className={ui.modalFooter}>
+            {step === 1 ? (
+                <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={closeDesignate}>
+                    Cancelar
+                </button>
+            ) : (
+                <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setStep(step - 1)}>
+                    <ChevronLeft size={15} /> Atrás
+                </button>
+            )}
+            {step < 3 ? (
+                <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => setStep(step + 1)} disabled={!canNext}>
+                    Siguiente <ChevronRight size={15} />
+                </button>
+            ) : (
+                <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleConfirmDesignation}>
+                    <Check size={15} /> Confirmar designación
+                </button>
+            )}
+        </div>
+    );
+
+    return (
+        <>
+            <header className={ui.headerRow}>
+                <div>
+                    <h1 className={styles.title}>Gestión de certificadores</h1>
+                    <p className={styles.subtitle}>Designa qué usuarios pueden aplicar certificaciones. Solo los certificadores designados pueden iniciar el proceso.</p>
+                </div>
+                <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={openDesignate}>
+                    <Plus size={16} /> Designar certificador
+                </button>
+            </header>
+
+            <div className={base.page}>
+                <div className={base.infoBanner}>
+                    <Info size={16} />
+                    <span>Los certificadores designados aquí son los únicos que pueden aplicar certificaciones a los equipos. Un certificador solo puede gestionar equipos de su área.</span>
+                </div>
+
+                <section className={ui.filterCard}>
+                    <div className={ui.filterTitle}>
+                        <Filter size={16} /> Filtrar
+                    </div>
+                    <div className={ui.filterRow}>
+                        <select
+                            className={`${base.select} ${ui.areaSelect}`}
+                            value={filterArea}
+                            onChange={(e) => setFilterArea(e.target.value)}
+                            aria-label="Filtrar por área"
+                        >
+                            <option value="todas">Todas las áreas</option>
+                            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </select>
+                        <div className={`${base.inputIcon} ${ui.searchBox}`}>
+                            <Search size={16} />
+                            <input
+                                type="text"
+                                className={base.input}
+                                placeholder="Buscar certificador..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                aria-label="Buscar certificador"
+                            />
+                        </div>
+                        <span className={ui.count}>{plural(filteredCertifiers.length, "certificador designado", "certificadores designados")}</span>
+                    </div>
+                </section>
+
+                <section className={ui.tableCard}>
+                    <Datatable
+                        columns={columns}
+                        rows={filteredCertifiers}
+                        rowKey="id"
+                        emptyMessage="No hay certificadores que coincidan con los filtros."
+                    />
+                </section>
+            </div>
+
+            {/* Modal designar certificador */}
+            <Modal
+                open={designateOpen}
+                title={
+                    <span className={ui.modalTitle}>
+                        Designar certificador
+                        <span className={ui.modalSub}>Paso {step} de 3 — {STEP_LABELS[step - 1]}</span>
+                    </span>
+                }
+                onClose={closeDesignate}
+                footer={designateFooter}
+            >
+                <div className={ui.stepper}>
+                    {STEP_LABELS.map((label, i) => {
+                        const n = i + 1;
+                        const state = n < step ? ui.done : n === step ? ui.current : "";
+                        return (
+                            <div key={label} style={{ display: "contents" }}>
+                                <div className={`${ui.step} ${state}`}>
+                                    <span className={ui.stepCircle}>{n}</span>
+                                    <span>{label}</span>
+                                </div>
+                                {n < STEP_LABELS.length && <span className={`${ui.stepLine} ${n < step ? ui.done : ""}`} />}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {step === 1 && (
+                    <>
+                        <div className={ui.fieldBlock}>
+                            <label className={base.label} htmlFor="mc-area">Área *</label>
+                            <select id="mc-area" className={base.select} value={formArea} onChange={(e) => handleAreaChange(e.target.value)}>
+                                <option value="">— Selecciona un área —</option>
+                                {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                            <div className={ui.hint}>Solo aparecerán usuarios y equipos del área seleccionada.</div>
+                        </div>
+
+                        <div className={ui.fieldBlock}>
+                            <label className={base.label} htmlFor="mc-user">Usuario a designar como certificador *</label>
+                            <div className={base.inputIcon}>
+                                <Search size={16} />
+                                <input
+                                    id="mc-user"
+                                    type="text"
+                                    className={base.input}
+                                    placeholder="Buscar por nombre o código..."
+                                    value={userSearch}
+                                    onChange={(e) => setUserSearch(e.target.value)}
+                                />
+                            </div>
+
+                            {!formArea ? (
+                                <div className={ui.emptyHint}>Selecciona un área para ver los usuarios disponibles.</div>
+                            ) : areaUsers.length === 0 ? (
+                                <div className={ui.emptyHint}>No se encontraron usuarios.</div>
+                            ) : (
+                                <div className={ui.userList} role="radiogroup" aria-label="Usuarios">
+                                    {areaUsers.map((u) => (
+                                        <label key={u.id} className={`${ui.option} ${selectedUserId === u.id ? ui.selected : ""}`}>
+                                            <input
+                                                type="radio"
+                                                name="mc-user-radio"
+                                                checked={selectedUserId === u.id}
+                                                onChange={() => setSelectedUserId(u.id)}
+                                            />
+                                            <div className={ui.optionInfo}>
+                                                <div className={ui.optionName}>{u.name} — {u.code}</div>
+                                                <div className={ui.optionSub}>{u.position} · {u.area}</div>
+                                            </div>
+                                            <span className={base.statusActive}>{u.status}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </>
+                )}
+
+                {step === 2 && (
+                    <>
+                        <div className={base.infoBanner}>
+                            <Info size={16} />
+                            <span>Se muestran todos los equipos del área seleccionada. Los equipos que ya tienen certificadores asignados también pueden seleccionarse — un equipo puede tener más de un certificador.</span>
+                        </div>
+
+                        <div className={ui.teamsHead}>
+                            <label>
+                                <input type="checkbox" checked={allTeamsSelected} onChange={toggleAllTeams} />
+                                Asignar todos los equipos del área
+                            </label>
+                            <span className={ui.count}>{plural(selectedTeamIds.length, "equipo seleccionado", "equipos seleccionados")}</span>
+                        </div>
+
+                        <div className={ui.teamsList}>
+                            {areaTeams.map((t) => (
+                                <label key={t.id} className={`${ui.option} ${selectedTeamIds.includes(t.id) ? ui.selected : ""}`}>
+                                    <input type="checkbox" checked={selectedTeamIds.includes(t.id)} onChange={() => toggleTeam(t.id)} />
+                                    <div className={ui.optionInfo}>
+                                        <div className={ui.optionName}>{t.name}</div>
+                                        <div className={ui.optionSub}>{teamMeta(t)}</div>
+                                    </div>
+                                    <span className={`${ui.teamPill} ${t.certifiers > 0 ? ui.has : ui.none}`}>
+                                        {t.certifiers > 0 ? plural(t.certifiers, "certificador", "certificadores") : "Sin certificador"}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                {step === 3 && selectedUser && (
+                    <>
+                        <div className={ui.successNote}>
+                            <Check size={16} />
+                            <span>Revisa el resumen antes de confirmar la designación.</span>
+                        </div>
+                        <div className={ui.summary}>
+                            <span className={ui.summaryLabel}>Certificador designado</span>
+                            <div className={ui.summaryStrong}>{selectedUser.name} — {selectedUser.code}</div>
+                            <span className={ui.summaryLabel}>Área</span>
+                            <div className={ui.summaryValue}>{selectedUser.area}</div>
+                            <span className={ui.summaryLabel}>Equipos asignados</span>
+                            <div className={ui.summaryTeams}>
+                                {areaTeams.filter((t) => selectedTeamIds.includes(t.id)).map((t) => (
+                                    <div key={t.id} className={ui.summaryTeam}>
+                                        <Check size={14} />
+                                        <div>
+                                            <div className={ui.optionName}>{t.name}</div>
+                                            <div className={ui.optionSub}>{teamMeta(t)}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </Modal>
+
+            {/* Modal quitar rol */}
+            <Modal
+                open={Boolean(removeTarget)}
+                title="Quitar rol de certificador"
+                onClose={() => setRemoveTarget(null)}
+                size="sm"
+                footer={
+                    <div className={ui.modalFooter}>
+                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setRemoveTarget(null)}>
+                            Cancelar
+                        </button>
+                        <button type="button" className={`${base.btn} ${ui.btnDanger} ${base.btnSm}`} onClick={handleConfirmRemove}>
+                            Confirmar
+                        </button>
+                    </div>
+                }
+            >
+                <p className={ui.removeText}>
+                    ¿Estás seguro de que deseas quitar el rol de certificador a <strong>{removeTarget?.name}</strong>?
+                </p>
+                <div className={ui.removeWarning}>
+                    <TriangleAlert size={16} />
+                    <span>El usuario dejará de tener acceso para aplicar certificaciones. Las certificaciones ya registradas no se verán afectadas.</span>
+                </div>
+            </Modal>
+        </>
+    );
+};
 
 
+
+
+import { useSyncExternalStore } from "react";
+
+// Mock en memoria compartido por las 3 pantallas de certificación; en producción vendría de la API.
+export const CURRENT_CERTIFIER = "Carlos Méndez";
+
+export const STATUS = {
+    pending: "Pendiente aprobación",
+    approved: "Aprobado",
+    rejected: "No aprobado",
+};
+
+export const AREAS = ["HN - Agencias", "HN - Contact Center", "Corporativo"];
+
+/* ---------------- Formatos activos (estructura que define el constructor) ---------------- */
+// calc: ratio = realizados/programados, ce = CE/(CE+NCE), last = promedio de la última columna
+const buildCriteria = () => [
+    {
+        id: "c1", name: "Cumplimiento de Coacheos", weight: 30, description: "", calc: "ratio", noteLabel: "Nota de cumplimiento",
+        columns: ["Director", "Supervisor", "Resultado"],
+        indicators: [
+            { id: "i1", name: "Coacheos Programados", type: "Numérico" },
+            { id: "i2", name: "Coacheos Realizados", type: "Numérico" },
+        ],
+    },
+    {
+        id: "c2", name: "Calidad de Coacheos", weight: 20, calc: "ce", noteLabel: "Nota de calidad",
+        description: "Marca CE si cumple, NCE si no cumple. Si no hay Director o Supervisor, escribe NA.",
+        columns: ["Director", "Supervisor"],
+        indicators: ["Formato llenado correctamente", "Observaciones adecuadas", "Plan de acción SMART", "Cierre (pasos hamburguesa)", "Compromiso"]
+            .map((name, i) => ({ id: `i${i + 3}`, name, type: "CE/NCE" })),
+    },
+    {
+        id: "c3", name: "Calidad en el Servicio y Atención", weight: 25, description: "Asignar CE o NCE", calc: "ce", noteLabel: "Nota de servicio",
+        columns: ["Calificación"],
+        indicators: ["Cumplimiento de metodología", "Servicio al cliente", "Tiempo de espera", "Tiempo de atención", "Tiempo de permanencia"]
+            .map((name, i) => ({ id: `i${i + 8}`, name, type: "CE/NCE" })),
+    },
+    {
+        id: "c4", name: "Cumplimiento de Metas Numéricas", weight: 25, calc: "last", noteLabel: "Nota numérica",
+        description: "Últimos 3 meses. Se califica el cumplimiento del último mes.",
+        columns: ["Mes 1", "Mes 2", "Mes 3"],
+        indicators: ["Cartera Activa", "Cartera Pasiva", "Eficiencia Operativa", "Productos"]
+            .map((name, i) => ({ id: `i${i + 13}`, name, type: "%" })),
+    },
+];
+
+export const FORMATS = {
+    agencias: { id: "agencias", name: "Cert. estándar Agencias v2", minScore: 70, criteria: buildCriteria() },
+    contact: { id: "contact", name: "Cert. Contact Center v1", minScore: 70, criteria: buildCriteria() },
+};
+
+/* ---------------- Equipos asignados al certificador en sesión ---------------- */
+export const TEAMS = [
+    {
+        id: 1, name: "Equipo La Ceiba A", area: "HN - Agencias", members: 3, formatId: "agencias",
+        leaders: [{ id: 11, name: "Ana Rodríguez", role: "Directora Regional", code: "DIR-001" }],
+    },
+    {
+        id: 2, name: "Equipo SPS Norte", area: "HN - Agencias", members: 2, formatId: "agencias",
+        leaders: [{ id: 12, name: "Jorge Mendoza", role: "Director de Zona", code: "DIR-002" }],
+    },
+    {
+        id: 3, name: "Equipo CC Tegucigalpa", area: "HN - Contact Center", members: 2, formatId: "contact",
+        leaders: [{ id: 13, name: "María Fuentes", role: "Coordinadora", code: "DIR-003" }],
+    },
+    {
+        id: 4, name: "Equipo Choluteca B", area: "HN - Agencias", members: 4, formatId: null,
+        leaders: [{ id: 14, name: "Carlos Pineda", role: "Director de Zona", code: "DIR-004" }],
+    },
+];
+
+/* ---------------- Certificaciones (historial) ---------------- */
+const cert = (id, teamId, teamName, area, leaderId, leaderName, certifier, formatName, date, status, score) => ({
+    id, teamId, teamName, area, leaderId, leaderName, certifier, formatName, minScore: 70, date, status, score,
+});
+
+let state = {
+    certifications: [
+        cert(1, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Carlos Méndez", "Cert. estándar Agencias v2", "2025-05-15", STATUS.pending, null),
+        cert(2, 2, "Equipo SPS Norte", "HN - Agencias", 12, "Jorge Mendoza", "Carlos Méndez", "Cert. estándar Agencias v2", "2025-04-10", STATUS.approved, 92),
+        cert(3, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Roberto Sánchez", "Cert. estándar Agencias v2", "2025-03-02", STATUS.approved, 85),
+        cert(4, 11, "Equipo CC San Pedro", "HN - Contact Center", 21, "Luis Orellana", "Diana Espinal", "Cert. Contact Center v1", "2025-03-20", STATUS.approved, 88),
+        cert(5, 10, "Equipo Corporativo Central", "Corporativo", 20, "Laura Martínez", "Roberto Sánchez", "Cert. Corporativo v1", "2025-03-05", STATUS.rejected, 55),
+        cert(6, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Roberto Sánchez", "Cert. estándar Agencias v1", "2025-01-10", STATUS.approved, 78),
+        cert(7, 2, "Equipo SPS Norte", "HN - Agencias", 12, "Jorge Mendoza", "Roberto Sánchez", "Cert. estándar Agencias v1", "2025-01-10", STATUS.approved, 78),
+        cert(8, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Carlos Méndez", "Cert. estándar Agencias v1", "2024-10-05", STATUS.approved, 72),
+    ],
+    audit: [],
+};
+
+const listeners = new Set();
+const emit = () => listeners.forEach((l) => l());
+const subscribe = (l) => {
+    listeners.add(l);
+    return () => listeners.delete(l);
+};
+const getSnapshot = () => state;
+
+export const useCertificationStore = () => useSyncExternalStore(subscribe, getSnapshot);
+
+export const addCertification = (data, user) => {
+    const id = Date.now();
+    const created = { ...data, id, certifier: user, status: STATUS.pending };
+    state = {
+        certifications: [created, ...state.certifications],
+        audit: [
+            { id, action: "Aplicada", user, teamName: data.teamName, leaderName: data.leaderName, formatName: data.formatName, score: data.score, at: new Date().toISOString() },
+            ...state.audit,
+        ],
+    };
+    emit();
+};
+
+// result: STATUS.approved | STATUS.rejected
+export const resolveCertification = (id, result, user) => {
+    const target = state.certifications.find((c) => c.id === id);
+    state = {
+        certifications: state.certifications.map((c) => (c.id === id ? { ...c, status: result } : c)),
+        audit: [
+            { id: Date.now(), action: result === STATUS.approved ? "Aprobada" : "Rechazada", user, teamName: target.teamName, leaderName: target.leaderName, formatName: target.formatName, score: target.score, at: new Date().toISOString() },
+            ...state.audit,
+        ],
+    };
+    emit();
+};
+
+/* ---------------- Cálculo de notas ---------------- */
+const round2 = (n) => Number(n.toFixed(2));
+const num = (v) => {
+    const n = parseFloat(v);
+    return Number.isNaN(n) ? null : n;
+};
+const avg = (list) => (list.length ? round2(list.reduce((a, b) => a + b, 0) / list.length) : null);
+const isFilled = (v) => v !== undefined && v !== null && String(v).trim() !== "";
+
+// answers: { [indicatorId]: { [column]: valor, __obs: texto } }
+// Devuelve notas por columna ("NA" | número | null) y la nota del criterio (número | null)
+export const computeCriterion = (criterion, answers = {}) => {
+    const cell = (ind, col) => answers[ind.id]?.[col];
+    const colNotes = {};
+
+    if (criterion.calc === "ratio") {
+        const [prog, real] = criterion.indicators;
+        criterion.columns.forEach((col) => {
+            const p = cell(prog, col);
+            const r = cell(real, col);
+            if (p === "NA" || r === "NA") colNotes[col] = "NA";
+            else if (num(p) > 0 && num(r) !== null) colNotes[col] = Math.min(100, round2((num(r) / num(p)) * 100));
+            else colNotes[col] = null;
+        });
+    } else if (criterion.calc === "ce") {
+        criterion.columns.forEach((col) => {
+            const values = criterion.indicators.map((ind) => cell(ind, col));
+            const ce = values.filter((v) => v === "CE").length;
+            const nce = values.filter((v) => v === "NCE").length;
+            if (ce + nce > 0) colNotes[col] = round2((ce / (ce + nce)) * 100);
+            else colNotes[col] = values.some((v) => v === "NA") ? "NA" : null;
+        });
+    } else {
+        const last = criterion.columns[criterion.columns.length - 1];
+        const values = criterion.indicators.map((ind) => num(cell(ind, last))).filter((v) => v !== null);
+        colNotes[last] = values.length ? Math.min(100, avg(values)) : null;
+    }
+
+    const numeric = Object.values(colNotes).filter((v) => typeof v === "number");
+    return { colNotes, nota: avg(numeric) };
+};
+
+export const hasRating = (criterion, answers = {}) =>
+    criterion.indicators.some((ind) => criterion.columns.some((col) => isFilled(answers[ind.id]?.[col])));
+
+// Nota Final = Σ (Nota_Criterio × Peso / 100)
+export const computeFinal = (format, answersByCriterion) => {
+    const rows = format.criteria.map((c) => {
+        const { colNotes, nota } = computeCriterion(c, answersByCriterion[c.id]);
+        return { criterion: c, colNotes, nota, points: round2(((nota ?? 0) * c.weight) / 100) };
+    });
+    return { rows, total: round2(rows.reduce((s, r) => s + r.points, 0)) };
+};
+
+
+Necesito que me ayudes con los reportes y me digas paso a paso que debo ir haciendo 
+Dime si necesitas ver otro archivo antes de empezar
