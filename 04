@@ -1,87 +1,620 @@
+using ApiCoaching.Models;
+using System.Globalization;
+
+namespace ApiCoaching.Constants
+{
+    /// <summary>
+    /// Textos y reglas de presentación de coaching. Un solo lugar para que
+    /// Consulta (colaborador) e Historial (coach) muestren lo mismo.
+    /// </summary>
+    public static class CoachingLabels
+    {
+        private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-HN");
+
+        public static string IndicatorTypeName(IndicatorType type) => type switch
+        {
+            IndicatorType.Numeric => "Numérico",
+            IndicatorType.Qualitative => "Cualitativo",
+            IndicatorType.Operational => "Operativo",
+            IndicatorType.Attitudinal => "Actitudinal",
+            IndicatorType.Sales => "Ventas",
+            _ => type.ToString()
+        };
+
+        public static string MeasurementTypeName(MeasurementType type) => type switch
+        {
+            MeasurementType.Compliance => "Cumplimiento",
+            MeasurementType.Behavior => "Comportamiento",
+            MeasurementType.Knowledge => "Conocimiento",
+            _ => type.ToString()
+        };
+
+        /// <summary>Estado visible del proceso (solo aplica a sesiones aceptadas).</summary>
+        public static string ReviewStatusName(CoachingSessionReviewStatus status) => status switch
+        {
+            CoachingSessionReviewStatus.NotSubmitted => "En proceso",
+            CoachingSessionReviewStatus.Pending => "Pendiente de aprobación",
+            CoachingSessionReviewStatus.Approved => "Aprobado",
+            CoachingSessionReviewStatus.Rejected => "Rechazado",
+            _ => status.ToString()
+        };
+
+        /// <summary>Meta en texto según la regla: "≥ 85 %", "≤ 4 min", "80 – 100 %".</summary>
+        public static string GoalText(Rule rule, decimal target, decimal min, decimal max, string? unit)
+        {
+            var u = string.IsNullOrWhiteSpace(unit) ? string.Empty : $" {unit.Trim()}";
+            return rule switch
+            {
+                Rule.HigherIsBetter => $"≥ {Num(target)}{u}",
+                Rule.LowerIsBetter => $"≤ {Num(target)}{u}",
+                Rule.InRangeIsBetter => $"{Num(min)} – {Num(max)}{u}",
+                _ => $"{Num(target)}{u}"
+            };
+        }
+
+        /// <summary>Valor registrado en texto: "3.2 min", "92 %". Null si aún no se registró.</summary>
+        public static string? ValueText(decimal? achieved, string? unit) =>
+            achieved.HasValue
+                ? $"{Num(achieved.Value)}{(string.IsNullOrWhiteSpace(unit) ? string.Empty : $" {unit.Trim()}")}"
+                : null;
+
+        /// <summary>¿El valor registrado cumple la meta según la regla del indicador?</summary>
+        public static bool? Passed(Rule rule, decimal? achieved, decimal target, decimal min, decimal max)
+        {
+            if (!achieved.HasValue) return null;
+            var v = achieved.Value;
+            return rule switch
+            {
+                Rule.HigherIsBetter => v >= target,
+                Rule.LowerIsBetter => v <= target,
+                Rule.InRangeIsBetter => v >= min && v <= max,
+                _ => null
+            };
+        }
+
+        /// <summary>Puntos que aporta un indicador: % alcanzado × peso / 100.</summary>
+        public static decimal Points(decimal? achievementPercentage, decimal weight) =>
+            decimal.Round((achievementPercentage ?? 0m) * weight / 100m, 2, MidpointRounding.AwayFromZero);
+
+        private static string Num(decimal value) => value.ToString("0.##", Es);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+using ApiCoaching.Models;
+using System.Text.Json.Serialization;
+
+namespace ApiCoaching.Dtos.Coaching
+{
+    /// <summary>
+    /// GET /api/coaching/sessions/{sessionId}/export
+    /// Todo lo que necesitan los reportes de un coaching (PDF del coach, PDF/Excel de Consulta).
+    /// Fechas con hora: UTC (salen con "Z"). Fechas sin hora: DateOnly ("2026-11-01").
+    /// </summary>
+    public class CoachingSessionExportDto
+    {
+        public long SessionId { get; set; }
+
+        [JsonConverter(typeof(JsonStringEnumConverter<CoachingSessionReviewStatus>))]
+        public CoachingSessionReviewStatus Status { get; set; }
+        public string StatusName { get; set; } = null!;
+
+        public string? PeriodName { get; set; }
+        public DateOnly? PeriodStart { get; set; }
+        public DateOnly? PeriodEnd { get; set; }
+
+        public DateTime? CoachingDate { get; set; }   // UTC: cuando el coach envió los resultados
+        public string? TeamName { get; set; }
+        public string? CoachName { get; set; }
+
+        public CoachingExportCollaboratorDto Collaborator { get; set; } = new();
+        public List<CoachingExportIndicatorDto> Indicators { get; set; } = [];
+        public decimal FinalScore { get; set; }
+        public List<CoachingExportActionDto> Actions { get; set; } = [];
+
+        public CoachingExportApprovalDto? CoachApproval { get; set; }
+        public CoachingExportApprovalDto? CollaboratorApproval { get; set; }
+        public string? ReviewRejectionReason { get; set; }
+    }
+
+    public class CoachingExportCollaboratorDto
+    {
+        public string UserId { get; set; } = null!;
+        public string FullName { get; set; } = null!;
+        public string? EmployeeCode { get; set; }
+        public string? TellerCode { get; set; }
+        public string? Position { get; set; }
+        public string? Area { get; set; }
+        public string? Location { get; set; }
+        public string? Branch { get; set; }
+        public string? Ubication { get; set; }    // "Lobby" | "Ventanilla"
+        public string? StatusName { get; set; }   // "Activo", "Vacaciones"...
+    }
+
+    public class CoachingExportIndicatorDto
+    {
+        public long AssignmentId { get; set; }
+        public string Name { get; set; } = null!;
+        public IndicatorType Type { get; set; }
+        public string TypeName { get; set; } = null!;
+        public decimal Weight { get; set; }
+        public string GoalText { get; set; } = null!;     // "≥ 85 %"
+        public decimal TargetValue { get; set; }
+        public string? UnitName { get; set; }
+        public decimal? AchievedValue { get; set; }
+        public string? ValueText { get; set; }            // "92 %"
+        public decimal? AchievementPercentage { get; set; }
+        public decimal Points { get; set; }
+        public bool? Passed { get; set; }
+    }
+
+    public class CoachingExportActionDto
+    {
+        public MeasurementType MeasurementType { get; set; }
+        public string MeasurementTypeName { get; set; } = null!;
+        public DateOnly CommitmentDate { get; set; }
+        public string ImprovementOpportunity { get; set; } = null!;
+        public string ActionDescription { get; set; } = null!;
+    }
+
+    public class CoachingExportApprovalDto
+    {
+        public string? Name { get; set; }
+        public DateTime At { get; set; }   // UTC
+    }
+}
+
+
+
+
+
+
+
+
+
+// =====================================================================
+// PASO 3a — ICoachingRepository.cs
+// Agregar esta firma dentro de la interfaz:
+// =====================================================================
+
+        Task<CoachingSessionExportDto?> GetSessionExportAsync(long sessionId, string userId);
+
+
+// =====================================================================
+// PASO 3b — CoachingRepository.cs
+// 1) Arriba:  using ApiCoaching.Constants;
+// 2) Pegar dentro de la clase (por ejemplo, al final, antes de los métodos privados de validación).
+// =====================================================================
+
+        public async Task<CoachingSessionExportDto?> GetSessionExportAsync(long sessionId, string userId)
+        {
+            // Lo puede ver el colaborador de la sesión o un líder (coach) del equipo.
+            var session = await _dbContext.CoachingSessions
+                .AsNoTracking()
+                .AsSplitQuery()
+                .Include(x => x.TeamMember).ThenInclude(x => x.Team)
+                .Include(x => x.TeamMember).ThenInclude(x => x.User).ThenInclude(x => x.CompanyPosition)
+                .Include(x => x.TeamMember).ThenInclude(x => x.User).ThenInclude(x => x.CompanyArea)
+                .Include(x => x.TeamMember).ThenInclude(x => x.User).ThenInclude(x => x.CompanyLocation)
+                .Include(x => x.TeamMember).ThenInclude(x => x.User).ThenInclude(x => x.CompanyBranch)
+                .Include(x => x.IndicatorAssignments).ThenInclude(x => x.Indicator).ThenInclude(x => x.Period)
+                .Include(x => x.IndicatorAssignments).ThenInclude(x => x.TargetUnit)
+                .Include(x => x.ActionPlan!).ThenInclude(x => x.Actions)
+                .FirstOrDefaultAsync(x => x.Id == sessionId &&
+                    (x.MemberUserId == userId ||
+                     x.TeamMember.Team.Leaders.Any(leader => leader.LeaderUserId == userId)));
+
+            if (session is null) return null;
+
+            // El coach es quien registró resultados y plan; si aún no hay plan, quien creó la sesión.
+            var coachId = session.ActionPlan?.CreatedBy ?? session.CreatedBy;
+            var names = await GetUserNamesAsync([coachId, session.MemberUserId]);
+            var member = session.TeamMember.User;
+
+            var indicators = session.IndicatorAssignments
+                .OrderBy(a => a.Indicator.Type)
+                .ThenBy(a => a.Indicator.Name)
+                .Select(a =>
+                {
+                    var unit = a.TargetUnit?.Name;
+                    var indicator = a.Indicator;
+                    return new CoachingExportIndicatorDto
+                    {
+                        AssignmentId = a.Id,
+                        Name = indicator.Name,
+                        Type = indicator.Type,
+                        TypeName = CoachingLabels.IndicatorTypeName(indicator.Type),
+                        Weight = a.Weight,
+                        GoalText = CoachingLabels.GoalText(indicator.Rule, a.TargetValue,
+                            indicator.MinimunValue, indicator.MaximunValue, unit),
+                        TargetValue = a.TargetValue,
+                        UnitName = unit,
+                        AchievedValue = a.AchievedValue,
+                        ValueText = CoachingLabels.ValueText(a.AchievedValue, unit),
+                        AchievementPercentage = a.AchievementPercentage,
+                        Points = CoachingLabels.Points(a.AchievementPercentage, a.Weight),
+                        Passed = CoachingLabels.Passed(indicator.Rule, a.AchievedValue, a.TargetValue,
+                            indicator.MinimunValue, indicator.MaximunValue)
+                    };
+                })
+                .ToList();
+
+            var period = session.IndicatorAssignments
+                .Select(a => a.Indicator.Period)
+                .Where(p => p is not null)
+                .OrderBy(p => p.StartDate)
+                .FirstOrDefault();
+
+            var collaboratorApproved = session.ReviewStatus == CoachingSessionReviewStatus.Approved
+                && session.ReviewedAt.HasValue;
+
+            return new CoachingSessionExportDto
+            {
+                SessionId = session.Id,
+                Status = session.ReviewStatus,
+                StatusName = CoachingLabels.ReviewStatusName(session.ReviewStatus),
+                PeriodName = period?.Description,
+                PeriodStart = period is null ? null : DateOnly.FromDateTime(period.StartDate),
+                PeriodEnd = period is null ? null : DateOnly.FromDateTime(period.EndDate),
+                CoachingDate = AsUtc(session.SubmittedAt),
+                TeamName = session.TeamMember.Team?.Name,
+                CoachName = names.GetValueOrDefault(coachId),
+
+                Collaborator = new CoachingExportCollaboratorDto
+                {
+                    UserId = member.Id,
+                    FullName = names.GetValueOrDefault(member.Id) ?? member.UserName,
+                    EmployeeCode = member.EmployeeCode,
+                    TellerCode = member.TellerCode,
+                    Position = member.CompanyPosition?.Name,
+                    Area = member.CompanyArea?.Name,
+                    Location = member.CompanyLocation?.Name,
+                    Branch = member.CompanyBranch?.Name,
+                    Ubication = member.EmployeeBranchUbication?.ToString(),
+                    StatusName = member.Status.ToString()
+                },
+
+                Indicators = indicators,
+                FinalScore = indicators.Sum(i => i.Points),
+
+                Actions = session.ActionPlan?.Actions
+                    .OrderBy(x => x.CommitmentDate)
+                    .Select(x => new CoachingExportActionDto
+                    {
+                        MeasurementType = x.MeasurementType,
+                        MeasurementTypeName = CoachingLabels.MeasurementTypeName(x.MeasurementType),
+                        CommitmentDate = DateOnly.FromDateTime(x.CommitmentDate),
+                        ImprovementOpportunity = x.ImprovementOpportunity,
+                        ActionDescription = x.ActionDescription
+                    })
+                    .ToList() ?? [],
+
+                CoachApproval = session.SubmittedAt.HasValue
+                    ? new CoachingExportApprovalDto { Name = names.GetValueOrDefault(coachId), At = AsUtc(session.SubmittedAt)!.Value }
+                    : null,
+
+                CollaboratorApproval = collaboratorApproved
+                    ? new CoachingExportApprovalDto { Name = names.GetValueOrDefault(session.MemberUserId), At = AsUtc(session.ReviewedAt)!.Value }
+                    : null,
+
+                ReviewRejectionReason = session.ReviewRejectionReason
+            };
+        }
+
+        /// <summary>
+        /// SubmittedAt y ReviewedAt se guardan con DateTime.UtcNow, pero EF los lee sin "Kind".
+        /// Se marcan como UTC para que el JSON salga con "Z" y el navegador muestre la hora local.
+        /// </summary>
+        private static DateTime? AsUtc(DateTime? value) =>
+            value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : null;
+
+        /// <summary>Id → nombre para mostrar (FullName o Nombre + Apellido).</summary>
+        private async Task<Dictionary<string, string>> GetUserNamesAsync(IEnumerable<string?> userIds)
+        {
+            var ids = userIds
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!)
+                .Distinct()
+                .ToList();
+
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (ids.Count == 0) return result;
+
+            var users = await _dbContext.Users
+                .AsNoTracking()
+                .Where(u => ids.Contains(u.Id))
+                .Select(u => new { u.Id, Name = u.FullName ?? (u.FirstName + " " + u.LastName) })
+                .ToListAsync();
+
+            foreach (var u in users) result[u.Id] = u.Name;
+            return result;
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// =====================================================================
+// PASO 4 — CoachingEndpoints.cs
+// =====================================================================
+
+// 4a) En MapCoachingEndpoints, después del MapPost("sessions/{sessionId:long}/results"...):
+
+            coachingGroup.MapGet("sessions/{sessionId:long}/export", ExportSession)
+                .WithName("ExportCoachingSession")
+                .WithSummary("Obtiene la información completa de una sesión de coaching para generar sus reportes (PDF/Excel). Disponible para el colaborador de la sesión y los líderes del equipo.")
+                .RequireAuthorization()
+                .Produces<ResponseObject<CoachingSessionExportDto>>(StatusCodes.Status200OK)
+                .Produces<ResponseObjectError>(StatusCodes.Status401Unauthorized)
+                .Produces<ResponseObjectError>(StatusCodes.Status404NotFound)
+                .Produces<ResponseObjectError>(StatusCodes.Status500InternalServerError);
+
+
+// 4b) Handler: pegarlo junto a los demás handlers (por ejemplo, después de GetMyProcesses).
+//     Usa los helpers Unauthorized() y ServerError() que ya existen en la clase.
+
+        private static async Task<IResult> ExportSession(
+            long sessionId,
+            ICoachingRepository repository,
+            ClaimsPrincipal claimsPrincipal,
+            ILoggerFactory loggerFactory)
+        {
+            var logger = loggerFactory.CreateLogger(typeof(CoachingEndpoints));
+            var currentUserId = GetCurrentUserId(claimsPrincipal);
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(currentUserId))
+                {
+                    return Unauthorized();
+                }
+
+                var data = await repository.GetSessionExportAsync(sessionId, currentUserId);
+                if (data is null)
+                {
+                    return Results.Json(new ResponseObjectError
+                    {
+                        Code = StatusCodes.Status404NotFound,
+                        Message = "La sesión de coaching no existe o no tienes acceso a ella."
+                    }, statusCode: StatusCodes.Status404NotFound);
+                }
+
+                return Results.Ok(new ResponseObject<CoachingSessionExportDto>
+                {
+                    Code = StatusCodes.Status200OK,
+                    Message = "OK",
+                    Data = data
+                });
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "ExportCoachingSessionError");
+                return ServerError();
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
 /* =========================================================
-   Reporte de Proceso de Coaching (Excel y PDF).
-   Convierte un proceso de coaching en el formato de exportDocument().
-   Cuando exista la API, solo hay que ajustar los nombres de campos aquí.
+   Datos de reportes de coaching.
+   Convierte la respuesta de GET /api/coaching/sessions/{id}/export
+   al modelo que usan los dos reportes:
+     - coachingFormatReport.js  (PDF "Formato de Coaching" del coach)
+     - consulta/coachingReport.js (PDF y Excel de Consulta)
+   Un solo lugar: si cambia la API, solo se ajusta aquí.
    ========================================================= */
+import { formatDateTime } from "../../../shared/reports/reportFormat";
 
-const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+// "2026-11-01" (DateOnly) → "01/11/2026", sin desfase de zona horaria
+const dmy = (value) => {
+  if (!value) return "—";
+  const [y, m, d] = String(value).slice(0, 10).split("-");
+  return d ? `${d}/${m}/${y}` : String(value);
+};
 
-const APPROVED = "aprobado";
-const statusTone = (value) => (String(value).toLowerCase() === APPROVED ? "green" : "amber");
+// Fecha UTC del backend ("...Z") → "25/11/2026 01:17 p. m." en hora local
+const localDateTime = (value) => (value ? formatDateTime(new Date(value)) : "—");
+
+const slug = (text) =>
+  String(text ?? "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+const approval = (a) => (a ? { name: a.name ?? "—", date: localDateTime(a.at) } : null);
+
+/** Respuesta de /export → modelo común de los reportes */
+export const toCoachingReportData = (dto) => {
+  const col = dto.collaborator ?? {};
+
+  return {
+    collaboratorName: col.fullName,
+    collaboratorCode: col.employeeCode,
+    tellerCode: col.tellerCode,
+    position: col.position,
+    area: col.area,
+    location: col.location ?? col.branch,
+    ubication: col.ubication,
+    employeeStatus: col.statusName,
+
+    coachName: dto.coachName,
+    teamName: dto.teamName,
+    date: dto.coachingDate ? dmy(new Date(dto.coachingDate).toLocaleDateString("en-CA")) : "—",
+    period: dto.periodName ?? "—",
+    periodStart: dmy(dto.periodStart),
+    periodEnd: dmy(dto.periodEnd),
+    status: dto.statusName,
+    approvedAt: dto.collaboratorApproval ? localDateTime(dto.collaboratorApproval.at) : null,
+    rejectionReason: dto.reviewRejectionReason,
+
+    indicators: (dto.indicators ?? []).map((i) => ({
+      name: i.name,
+      type: i.typeName ?? "Sin tipo",
+      weight: Number(i.weight ?? 0),
+      goal: i.goalText ?? "—",
+      value: i.valueText ?? "—",
+      achievement: i.achievementPercentage,
+      passed: i.passed, // true | false | null (sin registrar)
+      points: Number(i.points ?? 0),
+    })),
+    total: Number(dto.finalScore ?? 0),
+
+    actions: (dto.actions ?? []).map((a) => ({
+      measurementType: a.measurementTypeName ?? "—",
+      commitDate: dmy(a.commitmentDate),
+      opportunity: a.improvementOpportunity,
+      action: a.actionDescription,
+    })),
+
+    coachApproval: approval(dto.coachApproval),
+    collaboratorApproval: approval(dto.collaboratorApproval),
+  };
+};
+
+/** Coaching_[NombreColaborador]_[Periodo].pdf */
+export const coachingFileName = (dto) =>
+  `Coaching_${slug(dto.collaborator?.fullName)}_${slug(dto.periodName)}.pdf`;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   Reporte de Proceso de Coaching de Consulta (Excel y PDF).
+   Recibe la respuesta de GET /api/coaching/sessions/{id}/export
+   y la convierte al formato de exportDocument().
+   ========================================================= */
+import { toCoachingReportData } from "../coach/coachingExportData";
+
+const statusTone = (value) => {
+  const v = String(value).toLowerCase();
+  if (v === "aprobado") return "green";
+  if (v === "rechazado") return "red";
+  return "amber";
+};
+
 const employeeTone = (value) => (String(value).toLowerCase() === "activo" ? "green" : "grey");
 
+const resultTone = (value) => ({ Pendiente: "amber", Rechazado: "red" }[value] ?? "green");
+
 /**
- * @param {object} p             Proceso de coaching
+ * @param {object} dto     Respuesta de /export
  * @param {object} options
- *   collaborator  Datos del colaborador (si el proceso no los trae)
  *   generatedBy   Nombre de quien descarga el reporte
  */
-export const buildCoachingReport = (p, { collaborator = {}, generatedBy } = {}) => {
-  // Datos del colaborador: primero lo que traiga el proceso, luego lo recibido
-  const c = { ...collaborator, ...(p.collaborator ?? {}) };
-  const period = p.period ?? `${MONTHS[p.month] ?? ""} ${p.year ?? ""}`.trim();
+export const buildCoachingReport = (dto, { generatedBy } = {}) => {
+  const r = toCoachingReportData(dto);
+  const rejected = r.status === "Rechazado";
 
   const approvals = [
-    p.coachApproval && { role: "Coach", name: p.coachApproval.name, date: p.coachApproval.date, result: "Firmado digitalmente" },
+    {
+      role: "Coach",
+      name: r.coachApproval?.name ?? r.coachName,
+      date: r.coachApproval?.date ?? "",
+      result: r.coachApproval ? "Firmado digitalmente" : "Pendiente",
+    },
     {
       role: "Colaborador",
-      name: p.collaboratorApproval?.name ?? c.name,
-      date: p.collaboratorApproval?.date ?? "",
-      result: p.collaboratorApproval ? "Firmado digitalmente" : "Pendiente",
+      name: r.collaboratorApproval?.name ?? r.collaboratorName,
+      date: r.collaboratorApproval?.date ?? "",
+      result: r.collaboratorApproval ? "Firmado digitalmente" : rejected ? "Rechazado" : "Pendiente",
     },
-  ].filter(Boolean);
+  ];
 
   return {
     title: "Reporte de Proceso de Coaching",
-    fileName: `coaching_${period}`,
-    sheetName: `Coaching ${period}`,
+    fileName: `coaching_${r.period}`,
+    sheetName: `Coaching ${r.period}`,
     generatedBy,
     highlights: [
-      { label: "Colaborador", value: c.name },
-      { label: "Código", value: c.employeeCode },
-      { label: "Período", value: period },
-      { label: "Estado", value: p.status, tone: statusTone(p.status) },
+      { label: "Colaborador", value: r.collaboratorName },
+      { label: "Código", value: r.collaboratorCode },
+      { label: "Período", value: r.period },
+      { label: "Estado", value: r.status, tone: statusTone(r.status) },
     ],
     sections: [
       {
         type: "fields",
         title: "Datos del colaborador",
         fields: [
-          { label: "Nombre completo", value: c.name },
-          { label: "Código de empleado", value: c.employeeCode },
-          { label: "Puesto", value: c.position ?? p.position },
-          { label: "Código de cajero", value: c.tellerCode },
-          { label: "Área", value: c.area ?? p.area },
-          { label: "Ubicación", value: c.ubication },
-          { label: "Agencia / Zona", value: c.location ?? p.location },
-          { label: "Estatus", value: c.status, tone: c.status ? employeeTone(c.status) : undefined },
+          { label: "Nombre completo", value: r.collaboratorName },
+          { label: "Código de empleado", value: r.collaboratorCode },
+          { label: "Puesto", value: r.position },
+          { label: "Código de cajero", value: r.tellerCode },
+          { label: "Área", value: r.area },
+          { label: "Ubicación", value: r.ubication },
+          { label: "Agencia / Zona", value: r.location },
+          { label: "Estatus", value: r.employeeStatus, tone: r.employeeStatus ? employeeTone(r.employeeStatus) : undefined },
         ],
       },
       {
         type: "fields",
         title: "Datos del proceso de coaching",
         fields: [
-          { label: "Coach asignado", value: p.coachName },
-          { label: "Fecha de inicio", value: p.startDate },
-          { label: "Período", value: period },
-          { label: "Fecha de fin", value: p.endDate },
-          { label: "Fecha del coaching", value: p.date },
-          { label: "Estado del proceso", value: p.status, tone: statusTone(p.status) },
+          { label: "Coach asignado", value: r.coachName },
+          { label: "Fecha de inicio", value: r.periodStart },
+          { label: "Período", value: r.period },
+          { label: "Fecha de fin", value: r.periodEnd },
+          { label: "Fecha del coaching", value: r.date },
+          { label: "Estado del proceso", value: r.status, tone: statusTone(r.status) },
+          ...(rejected && r.rejectionReason ? [{ label: "Motivo del rechazo", value: r.rejectionReason }] : []),
         ],
       },
       {
         type: "table",
         title: "Indicadores evaluados",
         empty: "No hay indicadores evaluados.",
-        rows: p.indicators ?? [],
+        rows: r.indicators,
         columns: [
           { header: "Indicador", key: "name", pdfWidth: "*" },
           { header: "Meta", key: "goal", align: "center", pdfWidth: 80 },
-          { header: "Valor registrado", value: (i) => i.value ?? i.result, align: "center", pdfWidth: 80 },
+          { header: "Valor registrado", key: "value", align: "center", pdfWidth: 80 },
           {
             header: "Resultado",
-            value: (i) => (i.passed ? "Cumple" : "No cumple"),
-            tone: (v) => (v === "Cumple" ? "green" : "red"),
+            value: (i) => (i.passed == null ? "—" : i.passed ? "Cumple" : "No cumple"),
+            tone: (v) => (v === "Cumple" ? "green" : v === "No cumple" ? "red" : undefined),
             pdfWidth: 70,
           },
         ],
@@ -90,10 +623,10 @@ export const buildCoachingReport = (p, { collaborator = {}, generatedBy } = {}) 
         type: "blocks",
         title: "Plan de acción",
         empty: "No hay acciones registradas.",
-        rows: p.actionPlan ?? [],
+        rows: r.actions,
         itemTitle: (_, i) => `Acción #${i + 1}`,
         columns: [
-          { header: "Tipo de medición", key: "type" },
+          { header: "Tipo de medición", key: "measurementType" },
           { header: "Fecha compromiso", key: "commitDate" },
           { header: "Oportunidad de mejora", key: "opportunity" },
           { header: "Acción a realizar", key: "action" },
@@ -107,15 +640,9 @@ export const buildCoachingReport = (p, { collaborator = {}, generatedBy } = {}) 
           { header: "Rol", key: "role", pdfWidth: 70 },
           { header: "Nombre", key: "name" },
           { header: "Fecha y hora", key: "date", align: "center", pdfWidth: 100 },
-          { header: "Resultado", key: "result", tone: (v) => (v === "Pendiente" ? "amber" : "green"), pdfWidth: 100 },
+          { header: "Resultado", key: "result", tone: resultTone, pdfWidth: 100 },
         ],
       },
     ],
   };
 };
-
-
-
-
-
-Okei, hagamos los endpoints que necesitamos en el backend para los reportes solo que el endpoint en lugar de tu propuesta de /report será /export
