@@ -646,3 +646,82 @@ export const buildCoachingReport = (dto, { generatedBy } = {}) => {
     ],
   };
 };
+
+
+
+
+
+
+
+
+import { formatDateTime } from "../../../shared/reports/reportFormat";
+import { toCoachingReportData } from "./coachingExportData";
+export { coachingFileName } from "./coachingExportData";
+
+
+
+
+
+
+
+
+
+
+
+exportSession: async (sessionId) => {
+    const { data } = await apiFeedbackAuthorized.get(`/coaching/sessions/${sessionId}/export`);
+    return data.data;
+},
+
+
+
+
+
+
+
+
+
+
+const handleDownloadPDF = async (coaching) => {
+    if (coaching.status !== STATUS.approved) {
+        toast.error("El PDF solo está disponible para procesos aprobados");
+        return;
+    }
+    setDownloadingId(coaching.id);
+    try {
+        const data = await coachService.exportSession(coaching.id);
+        const fileName = coachingFileName(data);
+        await exportPdf(
+            buildCoachingFormatPdf(data, { generatedBy: displayName(user) || data.coachName }),
+            fileName
+        );
+        toast.success("PDF generado", fileName);
+    } catch (err) {
+        console.error(err);
+        toast.error("No se pudo generar el PDF", "Intenta de nuevo en unos momentos.");
+    } finally {
+        setDownloadingId(null);
+    }
+};
+
+
+
+
+
+
+
+
+const download = async (type, p) => {
+    const label = type === "excel" ? "Excel" : "PDF";
+    setExporting(`${type}-${p.sessionId}`);
+    try {
+        const data = await coachService.exportSession(p.sessionId);
+        await exportDocument(type, buildCoachingReport(data, { generatedBy: displayName(user) || p.memberFullName }));
+        toast.success(`${label} generado`, processTitle(p));
+    } catch (err) {
+        console.error(err);
+        toast.error(`No se pudo generar el ${label}`, "Intenta de nuevo en unos momentos.");
+    } finally {
+        setExporting(null);
+    }
+};
