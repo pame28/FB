@@ -2,7 +2,7 @@ import {
   ShieldCheck, Wrench, GraduationCap, ArrowLeftRight, BarChart3,
   FileText, Search, Award, Users, User, UserCog, KeyRound, Eye,
   Building2, Store, MapPin, Briefcase, Shield, GalleryHorizontal,
-  Calendar,
+  Calendar, CalendarRange,
   UserRoundCheck,
   Handshake, Braces, LayoutTemplate
 } from "lucide-react";
@@ -12,7 +12,7 @@ import {
 import { UsuariosRolesPage } from "../pages/modules/administration/UsuariosRolesPage";
 import { PermisosRolPage } from "../pages/modules/administration/PermisosRolPage";
 import { VistaUsuarioRolPage } from "../pages/modules/administration/VistaUsuarioRolPage";
-import { AreasPage, AgenciasPage, UbicacionesPage, PuestosPage } from "../pages/modules/administration/catalogs/CatalogPages";
+import { AreasPage, AgenciasPage, UbicacionesPage, PuestosPage, PeriodosPage } from "../pages/modules/administration/catalogs/CatalogPages";
 
 // Módulo de Mantenimientos
 import { MantenimientoUsuariosPage } from "../pages/modules/management/MantenimientoUsuariosPage";
@@ -121,6 +121,15 @@ const RAW_MODULES = [
         icon: Briefcase,
         path: "puestos",
         component: PuestosPage,
+      },
+      {
+        key: "periodos",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Períodos",
+        description: "Administra los períodos de evaluación de los indicadores.",
+        icon: CalendarRange,
+        path: "periodos",
+        component: PeriodosPage,
       },
     ],
   },
