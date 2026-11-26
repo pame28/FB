@@ -1,10 +1,1246 @@
-USE [BPSGRC];
+USE [BPSGRC]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_CR_PROC_OPERACIONES_TC_VASA]    Script Date: 26/11/2026 16:34:37 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
 
-SELECT  OBJECT_SCHEMA_NAME(m.object_id) AS Esquema,
-        OBJECT_NAME(m.object_id)        AS Objeto,
-        o.type_desc                     AS Tipo
-FROM    sys.sql_modules m
-JOIN    sys.objects o ON o.object_id = m.object_id
-WHERE   m.definition LIKE '%INSERT%operaciones%'
-   OR   m.definition LIKE '%MERGE%operaciones%'
-ORDER BY Objeto;
+-- =============================================
+-- Author:		Orlin Alvarado
+-- Create date: 2014-12-15
+-- Description:	Genera la información de tarjetas y las coloca en la tabla de operaciones
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_CR_PROC_OPERACIONES_TC_VASA]
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+
+	
+	--Limpiamos tabla tempora
+	TRUNCATE TABLE TMPTarjetasVASA
+	
+
+	
+	--Insertamos los nuevos valores
+	INSERT INTO TMPTarjetasVASA
+	SELECT *
+	FROM   uvw_TARJETAS_VASA ut
+	WHERE ISNUMERIC(CIF) = 1
+	
+
+	--Variables para insertar en la tabla operaciones
+	DECLARE @opeNum CHAR(16)
+	       ,@opeMoneda SMALLINT
+	       ,@CifCliente DECIMAL
+	       ,@opeTipIns CHAR(2)
+	       ,@opeCodIns CHAR(2)
+	       ,@opeFecRep CHAR(8)
+	       ,@opeFecOto CHAR(8)
+	       ,@opeFecVen CHAR(8)
+	       ,@opeSaldoVi MONEY
+	       ,@opeSaldoMo MONEY
+	       ,@opeSaldoVe MONEY
+	       ,@opeSaldoCo MONEY
+	       ,@opeSaldoEj MONEY
+	       ,@opeSaldoCa MONEY
+	       ,@opeGar CHAR(2)
+	       ,@opeTipo CHAR(6)
+	       ,@opeCateg CHAR(5)
+	       ,@opeTipCred CHAR(1)
+	       ,@opeMontoOt MONEY
+	       ,@opeIntXcob MONEY
+	       ,@opeIntSus MONEY
+	       ,@opeValGar MONEY
+	       ,@opeTasa SMALLMONEY
+	       ,@opeForPago CHAR(2)
+	       ,@opePerGra SMALLINT
+	       ,@opeDiasMora SMALLINT
+	       ,@opeCredEsp SMALLINT
+	       ,@opeSalCXC MONEY
+	       ,@opeRefin CHAR(1)
+	       ,@opeMoraCap MONEY
+	       ,@opeZona CHAR(2)
+	       ,@opeMoraInt MONEY
+	       ,@opeDepto CHAR(2)
+	       ,@opeFdic CHAR(6)
+	       ,@opeBrch SMALLINT
+	       ,@opeStatus SMALLINT
+	       ,@opeProducto INT
+	       ,@opeOrigen SMALLINT
+	       ,@opeEmpresa CHAR(1)
+	       ,@OpeProductoByte CHAR(6)
+	       ,@opeStatusByte NUMERIC
+	       ,@opeFrecPagInt DECIMAL
+	       ,@opeSector DECIMAL
+	       ,@opeOficial INT
+	       ,@opeInCong CHAR(1)
+	       ,@opeGenDiv CHAR(2)
+	       ,@opeRegion CHAR(1)
+	       ,@opeRefinByte CHAR(1)
+	       ,@opeVecesRefin NUMERIC(3 ,0)
+	       ,@opeFecUltPagCapital CHAR(8)
+		   ,@opeCAT SMALLMONEY
+		   ,@opeMontoCuotaPagar MONEY
+		   ,@opeTasaInteresMoratoria SMALLMONEY
+		   ,@opeSaldoTotal MONEY
+	
+	
+	
+	--Campos para calculos      
+	DECLARE @ID AS INT
+	DECLARE @TipoCambio AS DECIMAL(6 ,4)
+	DECLARE @TipoCambioOriginal AS DECIMAL(6 ,4)
+	DECLARE @factor AS DECIMAL(6 ,4)
+
+	DECLARE @Moneda AS varchar(2)
+	DECLARE @LimiteCredito AS decimal(16,2)
+	DECLARE @BinTarjeta AS varchar(6)
+	DECLARE @Tasa AS decimal(7,4)
+	DECLARE @SaldoActual AS decimal(16,2)
+	DECLARE @InteresesSuspenso AS decimal(10,2)
+	DECLARE @FechaAlta AS date
+	DECLARE @FechaVencimiento AS date
+	DECLARE @SaldoConsumido AS decimal(16,2)
+	DECLARE @CapitalPagoMinimo AS decimal(16,2)
+	DECLARE @SaldoIntra AS DECIMAL(16,2)
+	DECLARE @ModeloLiquidacion AS SMALLINT
+	DECLARE @GrupoAfinidad AS INT
+	DECLARE @CodigoProducto AS VARCHAR(6)
+	DECLARE @MonedaLimiteCompra AS VARCHAR(1)
+	DECLARE @TRUNCAR AS BIT
+	DECLARE @FechaUltimoPago AS DATETIME
+	
+	--Estable si se debe truncar al redondear
+	SET @TRUNCAR = 1
+	
+	--Factor de cambio y fecha de Proceso
+	SELECT @TipoCambio = g.genTasa
+		  ,@TipoCambioOriginal = g.genTasa
+	      ,@opeFecRep = CONVERT(VARCHAR(8) ,g.genFecha ,112)
+	FROM   GENERALES g
+	WHERE  g.genStatus = 1
+	
+	--Obtenemos el primer ID para realizar el Ciclo
+	SELECT @ID = MIN(t.ID)
+	FROM   TMPTarjetasVASA t
+	
+	SELECT @opeTipIns = p.parTipIns
+	      ,@opeCodIns      = p.parCodIns
+	      ,@opeForPago     = p.parFormPagoTC
+	      ,@opeTipo		   = p.parTipoOpe
+	FROM   PARAMETROS p
+	--Recorremos todos los registros
+	WHILE (@ID IS NOT NULL)
+	BEGIN
+	    --Obtenemos los datos de la tabla
+	    SELECT @CifCliente = cast(t.CIF AS DECIMAL)
+	          ,@opeNum               = t.NumeroTarjeta
+	          ,@opeProducto          = 0
+	          ,@opeEmpresa           = '1'
+	          ,@opeGar               = '09'
+	          ,@OpeProductoByte      = LEFT(t.BinTarjeta ,6)
+	          ,@opeStatusByte        = 0
+	          ,@opeFrecPagInt        = 0
+	          ,@opeSector            = 0
+	          ,@opeOficial           = 0
+	          ,@opeInCong            = ''
+	          ,@opeRegion            = 'U'
+	          ,@opeRefinByte         = ' '
+	          ,@opeTasa              = 0
+	          ,@opeDepto             = '01'
+	          ,@opeZona              = '01'
+	          ,@opeGenDiv            = 'ZZ'
+	          ,@opeFdic              = '140107'
+	          ,@opeTipCred           = 2
+	          ,@opeOrigen            = 1
+	          ,@opeForPago           = '51'
+	          ,@opeSaldoVi           = 0
+	          ,@opeSaldoMo           = 0
+	          ,@opeSaldoCo           = 0
+	          ,@opeSaldoVe           = 0
+	          ,@opeSaldoEj           = 0
+	          ,@opeSalCXC            = 0
+	          ,@opeSaldoCa           = 0
+	          ,@opeIntXcob           = 0
+	          ,@opeIntSus            = 0
+	          ,@opeMoraCap           = 0
+	          ,@opeMoraInt           = 0
+	          ,@opeMontoOt           = 0
+	          ,@opeDiasMora          = t.DiasMora
+	          ,@opeCredEsp           = 0
+	          ,@opeRefin             = ''
+	          ,@opeCateg             = 'CFM'
+	          ,@opeBrch              = 1
+	          ,@opePerGra            = 0
+	          ,@opeVecesRefin        = 0
+	          ,@opeValGar            = 0
+	          ,@Moneda =			t.Moneda
+	          ,@Tasa = t.Tasa
+	          ,@InteresesSuspenso	= t.InteresesSuspenso
+	          ,@LimiteCredito		= t.LimiteCredito
+	          ,@FechaAlta			= t.FechaAlta
+	          ,@SaldoActual			= t.SaldoActual
+	          ,@opeFecUltPagCapital		 = ''--Campos capturador 2015
+			  ,@opeCAT					 = 0 --Campos capturador 2015
+			  
+			  ,@opeTasaInteresMoratoria  = 0 --Campos capturador 2015
+			  ,@opeSaldoTotal			 = 0 --Campos capturador 2015
+	          ,@FechaVencimiento     = t.FechaVencimiento
+	          ,@FechaUltimoPago		 = '1900-01-01'
+	          ,@SaldoIntra			 = t.SaldoIntra
+	          ,@ModeloLiquidacion    = t.ModeloLiquidacion
+	          ,@GrupoAfinidad        = t.GrupoAfinidad
+	          ,@CodigoProducto       = t.CodigoProducto
+	          ,@CapitalPagoMinimo	 = t.CapitalPagoMinimo
+	          ,@opeMontoCuotaPagar	 = t.PagoMinimo
+	          ,@MonedaLimiteCompra   = t.MonedaLimiteCompra
+	    FROM   TMPTarjetasVASA t
+	    WHERE  T.ID = @ID
+	    
+	    
+	    IF(YEAR(@FechaUltimoPago) <> 1900)
+	    	SET @opeFecUltPagCapital = CONVERT(VARCHAR(8), @FechaUltimoPago, 112)
+	    
+	    --SET @opeMontoCuotaPagar = @PagoMinimo 		
+	    
+	    --PRINT 'Procesando operacion: ID = ' + CAST(@ID AS VARCHAR(20)) +
+	    --', NO = ' + @opeNum
+	    --Moneda
+	    SET @opeMoneda = CASE @Moneda
+	                          WHEN 'HN' THEN 1
+	                          ELSE 2
+	                     END
+	    
+	    --Factor de cambio
+	    IF (@opeMoneda = 2)
+	    BEGIN
+	    	SET @TipoCambio = @TipoCambioOriginal
+	        SET @factor = @TipoCambio
+	    END
+	    ELSE
+	        SET @factor = 1
+	    
+	    --Ajuste según requerimiento 148-2016 para evitar que se conviera el valor en lempiras
+	    IF(@MonedaLimiteCompra = 'L')
+	    BEGIN
+	    	SET @factor = 1
+	    	SET @TipoCambio = 1
+	    END
+			
+	    
+	    --Estado
+	    IF (@ModeloLiquidacion IN ('900') OR @GrupoAfinidad IN(10,22))
+	        SET @opeStatus = 2
+	    ELSE
+	        SET @opeStatus = 0
+	    
+	    
+	    IF (@opeMoneda = 1)
+	    BEGIN
+	        SET @opeTasa = @Tasa
+	        SET @opeIntSus = @InteresesSuspenso
+	        SET @opeMontoOt = CAST(@LimiteCredito * @TipoCambio AS NUMERIC(18 ,2))
+	    END
+	    ELSE
+	    BEGIN
+	        SET @opeTasa = @Tasa
+	        SET @opeIntSus = CAST(@InteresesSuspenso * @factor AS NUMERIC(18 ,2))
+	        SET @opeMontoOt = CAST(@LimiteCredito * @TipoCambio AS NUMERIC(18 ,2))
+	    END
+	    
+	    --Fecha de otorgado
+	        SET @opeFecOto = CONVERT(VARCHAR(8), @FechaAlta, 112)
+	    
+	    
+	    --Fecha de vencimiento
+	        SET @opeFecVen = CONVERT(VARCHAR(8) ,@FechaVencimiento ,112)
+
+	    --Corrige fecha de vencimiento para tarjetas castigadas
+	    IF(@opeStatus = 2 AND @opeFecVen < @opeFecOto)
+	    BEGIN
+	    	SET @opeFecVen = CONVERT(VARCHAR(8),DATEADD(YEAR,2,@opeFecOto),112)
+	    END
+	    
+	    --Tasa de Interes
+	    --IF (@opeTasa < 1)
+	        --SET @opeTasa = 1    --Se Comenta esta condicion a peticion del proceso de riesgos
+	    
+	    --Categoria
+	    SELECT TOP 1 @opeCateg = ISNULL(MAX(lv.LvEquivalente) ,'I')
+	    FROM   ListasValores lv
+	    WHERE  lv.liId = 15
+	           AND lv.lvValor = @opeTipCred
+	           AND CAST(lv.lvValor3 AS INT) <= @opeDiasMora
+	           AND CAST(lv.lvValor4 AS INT) >= @opeDiasMora
+	    
+	   SET @opeSaldoTotal = CAST(@SaldoActual * @factor AS NUMERIC(18,2)) + ROUND(@SaldoIntra * @factor ,2 ,1)
+	   SET @CapitalPagoMinimo = CAST(@CapitalPagoMinimo * @factor AS NUMERIC(18,2))
+	   --*****************************************************************
+	    --Para validar que se reporte el saldo vencido
+	    --******************************************************************
+		  --  IF (@opeDiasMora < 90)
+				--SET @opeSaldoVi = 	@opeSaldoTotal
+		  --  ELSE
+		  --  	SET @opeSaldoMo = @opeSaldoTotal
+	    	
+	    IF (@opeFecVen <= @opeFecRep)
+	        SET @opeSaldoVe = @opeSaldoTotal
+	    ELSE
+	    IF (@opeDiasMora < 90)
+		BEGIN
+	        SET @opeSaldoVi = @opeSaldoTotal
+			
+			-- COLOCA VALOR PAGO MINIMO DE CAPITAL A OPERACIONES VIGENTES CON DIAS DE MORA
+			IF @opeDiasMora > 0
+			begin
+				SET @opeMoraCap = @CapitalPagoMinimo	
+
+				--Si el Capital en mora es mayor al saldo vigente se coloca el saldo vigente como capital en mora
+				if @opeMoraCap > @opeSaldoVi
+					set @opeMoraCap = @opeSaldoVi
+			end
+		END			
+	    ELSE
+	    	BEGIN
+	    		SET @opeSaldoMo = @opeSaldoTotal
+	    		SET @opeMoraCap = @CapitalPagoMinimo	
+
+	    	END
+		
+		
+		--VALIDACION PARA QUE SI LOS DIAS DE MORA SON MAYOR A 90 VALIDE QUE EL SALDO CAPITAL MORA NO SEA MAYOR AL SALDO CAPITAL 30/10/2019 --MARIO ESCOBAR
+		if @opeMoraCap > @opeSaldoTotal
+			set @opeMoraCap = @opeSaldoTotal
+
+	    
+	    --Reemplaza procedimiento usp_updateSaldoCapitalMora
+		--SET @opeMoraCap = 0--CAST(@T1UMO1 * @factor AS NUMERIC(18 ,2))
+	    
+	    --Elimina el saldo en mora negativo
+	    IF (@opeMoraCap < 0)
+	        SET @opeMoraCap = 0
+	    
+	    --Reemplaza procedimiento usp_updateDiasMoraTarjetas    
+	    IF (@opeMoraCap > 0 AND @opeDiasMora = 0)
+	        SET @opeDiasMora = 1
+	    
+	    IF ((@opeSaldoVi + @opeSaldoMo + @opeSaldoVe) = 0)
+	    BEGIN
+	        SET @opeDiasMora = 0
+	        SET @opeCateg = 'CFM'
+	    END
+	    
+	    IF (@opeStatus = 2)
+	    BEGIN
+	        SET @opeSaldoCa = @opeSaldoVi + @opeSaldoMo + @opeSaldoVe
+	        SET @opesaldove = 0
+	        SET @opeSaldoVi = 0
+	        SET @opeSaldoMo = 0
+	        --SET @opeForPago = 'ZZ' --MODIFICADO 16/10/2019 SOLICITADO POR VICTORIA LARA
+			SET @opeForPago = '51'
+	        SET @opeMoraCap = 0
+	    END
+	    
+	    --Dias Mora Tarjetas Vencidas
+	    IF (@opeSaldoVe > 0 AND @opeDiasMora = 0)
+	    BEGIN
+	        SET @opeDiasMora = DATEDIFF(DAY ,@opeFecVen ,@opeFecRep)
+	        IF (@opeDiasMora = 0)
+	            SET @opeDiasMora = 1
+	    END
+	    
+	    --Remplaza procedimiento usp_updateCodigoDestinoBPAlternativa
+	    SELECT @opeFdic = ISNULL(lv.LvEquivalente ,'140107')
+	    FROM   ListasValores lv
+	    WHERE  lv.liId = 16
+	           AND lv.lvValor = @CodigoProducto
+	    
+	    --Reemplaza procedimiento usp_updateInteresesPorCobrarNegativos
+	    IF (@opeIntXcob < 0)
+	    BEGIN
+	        SET @opeIntXcob = 0
+	    END 
+	    
+	    --Reemplaza procedimiento usp_updateInteresesSuspensoNegativos
+	    IF (@opeIntSus < 0)
+	        SET @opeIntSus = 0
+	    
+	    
+	    IF (
+	           @opeDiasMora > 0
+	           AND @opeMoraInt = 0
+	           AND @opeMoraCap = 0
+	           AND @opeMoraInt > 0
+	       )
+	        SET @opeMoraInt = @opeIntXcob
+	    
+	    
+	    
+	    
+	    --Reemplaza procedimiento usp_updateSaldoInteresesMora
+	    IF (
+	           @opeDiasMora > 0
+	           AND @opeMoraInt = 0
+	           AND @opeMoraCap = 0
+	           AND @opeIntXcob > 0
+	       )
+	        SET @opeMoraInt = @opeIntXcob
+	    
+	    SET @opeStatusByte = CASE 
+	                              WHEN @opeSaldoVi > 0 THEN 0
+	                              WHEN @opeSaldoMo > 0 THEN 1
+	                              WHEN @opeSaldoCa > 0 THEN 10
+	                              ELSE 0
+	                         END 
+		
+	    /*******************************************************************/
+	    --Ajuste monto Cuota a Pagar
+	    --Requerimiento 107-2016
+	    --Fecha: 2016-08-26
+	    
+	    --Para las operaciones, Vencidas y Ejecución, se debe reportar el saldo
+		IF(@opeSaldoVe > 0 OR @opeSaldoEj > 0)
+		BEGIN
+			SET @opeMontoCuotaPagar = @opeSaldoTotal
+		END
+		
+		/*********************Fin requerimiento 107-2016***************************/
+	    
+	    /*******************************************************************/
+	    --Ajuste monto Cuota a Pagar
+	    --Requerimiento 165-2016
+	    --Fecha: 2016-10-26
+	    --Para las operaciones castigadas se debe reportar el saldo + interes en suspenso 165-2016
+		IF(@opeSaldoCa > 0)
+		BEGIN
+			SET @opeMontoCuotaPagar = @opeSaldoTotal + @opeIntSus
+			SET @opeEmpresa='3'--SI LA OPERACIONES TIENE SALDO CASTIGADO SE COLOCA EMPRESA 3 --30/10/2019 --MARIO ESCOBAR
+		END
+		/****************************************************/
+	    if((select COUNT(*) from operaciones where opeNum = @opeNum and opeMoneda = @opeMoneda ) < 1)
+		begin
+			EXECUTE usp_OPERACIONES_INSERT
+				@opeNum,
+				@opeMoneda,
+				@CifCliente,
+				@opeTipIns,
+				@opeCodIns,
+				@opeFecRep,
+				@opeFecOto,
+				@opeFecVen,
+				@opeSaldoVi,
+				@opeSaldoMo,
+				@opeSaldoVe,
+				@opeSaldoCo,
+				@opeSaldoEj,
+				@opeSaldoCa,
+				@opeGar,
+				@opeTipo,
+				@opeCateg,
+				@opeTipCred,
+				@opeMontoOt,
+				@opeIntXcob,
+				@opeIntSus,
+				@opeValGar,
+				@opeTasa,
+				@opeForPago,
+				@opePerGra,
+				@opeDiasMora,
+				@opeCredEsp,
+				@opeSalCXC,
+				@opeRefin,
+				@opeMoraCap,
+				@opeZona,
+				@opeMoraInt,
+				@opeDepto,
+				@opeFdic,
+				@opeBrch,
+				@opeStatus,
+				@opeProducto,
+				@opeOrigen,
+				@opeEmpresa,
+				@OpeProductoByte,
+				@opeStatusByte,
+				@opeFrecPagInt,
+				@opeSector,
+				@opeOficial,
+				@opeInCong,
+				@opeGenDiv,
+				@opeRegion,
+				@opeRefinByte,
+				@opeVecesRefin
+			   ,@opeFecUltPagCapital
+			   ,@opeCAT
+			   ,@opeMontoCuotaPagar
+			   ,@opeTasaInteresMoratoria
+			   ,@opeSaldoTotal
+	    end
+	    
+	    SELECT @ID = MIN(t.ID)
+	    FROM   TMPTarjetasVASA t
+	    WHERE  T.ID > @ID
+	END
+	
+	
+	
+	--UPDATE operaciones
+	--SET    opeDiasMora = oc.DiasMoraTotales
+	--select * FROM   operaciones o
+	--WHERE  o.opeStatus IN (2)
+	--       AND o.opeTipo IN (130000)
+	
+END
+
+
+
+
+
+USE [BPSGRC]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_CR_PROC_OPERACIONES_TC_CONTINGENTE]    Script Date: 26/11/2026 16:36:43 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Orlin Alvarado
+-- Create date: 2014-01-28
+-- Description:	Establece el monto contingente de las tarjetas de credito
+-- =============================================
+-- Modificado: Orlin Alvarado
+-- Descripcion: Se agrego validacion para que coloque cero cuando el monto contingente sea
+--              igual al monto otorgado.
+-- Fecha:       2016-10-05
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_CR_PROC_OPERACIONES_TC_CONTINGENTE] 
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+
+    -- Insert statements for procedure here
+		--Eliminamos operaciones en dolares sin Movimiento
+	DELETE 
+	FROM   operaciones
+	WHERE  opeTipo = '130000'
+	       AND (
+	               opeSaldoVi + opeSaldoMo + opeSaldoVe + opeSaldoEj + 
+	               opeSaldoCa
+	           ) = 0
+	       AND opeMoneda = 2
+	
+	--Eliminamos operaciones con saldo 0 o negativo con estatus castigado
+	DELETE 
+	FROM   operaciones
+	WHERE  opeTipo = '130000'
+	       AND (
+	               opeSaldoVi + opeSaldoMo + opeSaldoVe + opeSaldoEj + 
+	               opeSaldoCa
+	           ) <= 0
+	       AND opeStatus = 2
+	
+	--Reemplaza procedimiento usp_updateSaldoVigenteNegativoTarjetas
+	UPDATE operaciones
+	SET    opeSaldoVi = 0
+	WHERE  opeSaldoVi < 0
+	       AND opeTipo = 130000  
+	
+	--Saldo vencido negativo tarjetas
+	UPDATE operaciones
+	SET    opeSaldoVe = 0
+	WHERE  opeSaldoVe < 0
+	       AND opeTipo = 130000 
+	              
+	--Actualiza saldo contingente
+	UPDATE operaciones
+	SET    opeSaldoCo = a.SaldoContingente
+	FROM   operaciones o
+	       INNER JOIN (
+	                SELECT s.opeNum
+	                      ,s.opeMontoOt
+	                      ,s.sLoc
+	                      ,s.sInt
+	                      ,CASE 
+	                            WHEN (s.opeMontoOt -(s.sLoc + s.sInt)) > 0 THEN (s.opeMontoOt -(s.sLoc + s.sInt))
+	                            WHEN (s.opeMontoOt -(s.sLoc + s.sInt)) <= 0 THEN 
+	                                 0
+	                            ELSE s.opeMontoOt
+	                       END     SaldoContingente
+	                FROM   (
+	                           SELECT o.opeNum
+	                                 ,o.opeMontoOt
+	                                 ,o.opeStatus
+	                                 ,(
+	                                      o.opeSaldoVi + o.opeSaldoMo + o.opeSaldoVe 
+	                                      + o.opeSaldoEj + o.opeSaldoCa
+	                                  )     sLoc
+	                                 ,(
+	                                      ISNULL(o2.opeSaldoVi ,0) + ISNULL(o2.opeSaldoMo ,0) 
+	                                      + ISNULL(o2.opeSaldoVe ,0) + ISNULL(o2.opeSaldoEj ,0) 
+	                                      + ISNULL(o2.opeSaldoCa ,0)
+	                                  )     sInt
+	                           FROM   operaciones o
+	                                  LEFT JOIN operaciones o2
+	                                       ON  o.opeNum = o2.opeNum
+	                                       AND o2.opeMoneda = 2
+	                                       AND o2.opeStatus <> 2
+	                           WHERE  o.opeTipo = '130000'
+	                                  AND o.opeMoneda = 1
+	                                  AND o.opeStatus <> 2
+	                       )       s
+	            )a
+	            ON  o.opeNum = a.opeNum
+	
+	       
+	--Eliminamos aquellas operaciones en lempiras con saldo Cero y que tengan transaccion en dolares
+	DELETE o
+	FROM   operaciones o
+	WHERE  opeTipo = '130000'
+	       AND (
+	               opeSaldoVi + opeSaldoMo + opeSaldoVe + opeSaldoEj + 
+	               opeSaldoCa
+	           ) = 0
+	       AND opeMoneda = 1
+	       AND EXISTS(
+	               SELECT 1
+	               FROM   operaciones o2
+	               WHERE  o2.opeMoneda = 2
+	                      AND o2.opeNum = o.opeNum
+	           ) 
+	  
+       
+	
+	--Eliminamos el saldo contigente a dolares cuando tienen
+	--valor en lempiras
+	UPDATE operaciones
+	SET    opeSaldoCo     = 0
+	      ,opeMontoOt     = 0
+	FROM   operaciones o
+	WHERE  o.opeTipo = '130000'
+	       AND o.opeMoneda = 2
+	       AND EXISTS(
+	               SELECT 1
+	               FROM   operaciones o2
+	               WHERE  o2.opeNum = o.opeNum
+	                      AND o2.opeMoneda = 1
+	           )
+END
+
+
+
+
+USE [BPSGRC]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_CR_PROC_OPERACIONES_EXTRAS_VASA]    Script Date: 26/11/2026 16:37:27 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Orlin Alvarado
+-- Create date: 2014-05-27
+-- Description:	Genera la información de tarjetas y las coloca en la tabla de operaciones
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_CR_PROC_OPERACIONES_EXTRAS_VASA]
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+	
+	--Limpiar tabla operaciones
+	--DELETE FROM operaciones
+	--WHERE opeTipo = '130100'
+	
+	--TRUNCATE TABLE operaciones --Temporalmente para certificar
+	
+	--Limpiamos tabla tempora
+	TRUNCATE TABLE TMPExtrasVASA
+	
+	--Insertamos los nuevos valores
+	INSERT INTO TMPExtrasVASA
+	SELECT * FROM uvw_EXTRAS_VASA uev
+	WHERE uev.Tipo = 'E'
+
+	
+	--Variables para insertar en la tabla operaciones
+	DECLARE @opeNum CHAR(16)
+	       ,@opeMoneda SMALLINT
+	       ,@CifCliente DECIMAL
+	       ,@opeTipIns CHAR(2)
+	       ,@opeCodIns CHAR(2)
+	       ,@opeFecRep CHAR(8)
+	       ,@opeFecOto CHAR(8)
+	       ,@opeFecVen CHAR(8)
+	       ,@opeSaldoVi MONEY
+	       ,@opeSaldoMo MONEY
+	       ,@opeSaldoVe MONEY
+	       ,@opeSaldoCo MONEY
+	       ,@opeSaldoEj MONEY
+	       ,@opeSaldoCa MONEY
+	       ,@opeGar CHAR(2)
+	       ,@opeTipo CHAR(6)
+	       ,@opeCateg CHAR(5)
+	       ,@opeTipCred CHAR(1)
+	       ,@opeMontoOt MONEY
+	       ,@opeIntXcob MONEY
+	       ,@opeIntSus MONEY
+	       ,@opeValGar MONEY
+	       ,@opeTasa SMALLMONEY
+	       ,@opeForPago CHAR(2)
+	       ,@opePerGra SMALLINT
+	       ,@opeDiasMora SMALLINT
+	       ,@opeCredEsp SMALLINT
+	       ,@opeSalCXC MONEY
+	       ,@opeRefin CHAR(1)
+	       ,@opeMoraCap MONEY
+	       ,@opeZona CHAR(2)
+	       ,@opeMoraInt MONEY
+	       ,@opeDepto CHAR(2)
+	       ,@opeFdic CHAR(6)
+	       ,@opeBrch SMALLINT
+	       ,@opeStatus SMALLINT
+	       ,@opeProducto INT
+	       ,@opeOrigen SMALLINT
+	       ,@opeEmpresa CHAR(1)
+	       ,@OpeProductoByte CHAR(6)
+	       ,@opeStatusByte NUMERIC
+	       ,@opeFrecPagInt DECIMAL
+	       ,@opeSector DECIMAL
+	       ,@opeOficial INT
+	       ,@opeInCong CHAR(1)
+	       ,@opeGenDiv CHAR(2)
+	       ,@opeRegion CHAR(1)
+	       ,@opeRefinByte CHAR(1)
+	       ,@opeVecesRefin NUMERIC(3,0)
+	       ,@opeFecUltPagCapital CHAR(8)
+		   ,@opeCAT SMALLMONEY
+		   ,@opeMontoCuotaPagar MONEY
+		   ,@opeTasaInteresMoratoria SMALLMONEY
+		   ,@opeSaldoTotal MONEY
+	
+		
+	--Campos para calculos      
+	DECLARE @ID AS INT
+	DECLARE @TipoCambio AS DECIMAL(6 ,4)
+	DECLARE @factor AS DECIMAL(6,4)
+	DECLARE @Moneda AS CHAR(2)
+	DECLARE @FechaOtorgado AS CHAR(8)
+	DECLARE @Estado AS int
+	DECLARE @BIN AS CHAR(8)
+	DECLARE @MontoOtorgado AS DECIMAL(12,2)
+	DECLARE @Tasa AS DECIMAL(6,2)
+	DECLARE @SaldoActual AS DECIMAL(12,2)
+	DECLARE @NumeroCuotas AS DECIMAL(3,0)
+	DECLARE @FechaVencimiento AS VARCHAR(8)
+	DECLARE @TRUNCAR AS BIT
+	
+	--Estable si se debe truncar al redondear
+	SET @TRUNCAR = 1
+	--Factor de cambio y fecha de Proceso
+	SELECT @TipoCambio = g.genTasa
+	      ,@opeFecRep = CONVERT(VARCHAR(8) ,g.genFecha ,112)
+	FROM   GENERALES g
+	WHERE  g.genStatus = 1
+	
+	--Obtenemos el primer ID para realizar el Ciclo
+	SELECT @ID = MIN(t.ID)
+	FROM TMPExtrasVASA t
+	
+	--Recorremos todos los registros
+	WHILE (@ID IS NOT NULL)
+	BEGIN
+	    --Obtenemos los datos de la tabla
+	    SELECT 
+	          @CifCliente               = t.CIF
+	          ,@opeNum					 = 'EF' + RTRIM(LTRIM(t.IdExtra))
+	          ,@opeProducto              = 0
+	          ,@opeEmpresa               = '1'
+	          ,@opeGar                   = '09'
+	          ,@opeTipo                  = '130100'
+	          ,@opeTipIns                = '01'
+	          ,@opeCodIns                = '15'
+	          ,@OpeProductoByte          = 'EF'
+	          ,@opeStatusByte            = 0
+	          ,@opeFrecPagInt            = 0
+	          ,@opeSector                = 0
+	          ,@opeOficial               = 0
+	          ,@opeInCong                = ''
+	          ,@opeRegion                = 'U'
+	          ,@opeRefinByte             = ' '
+	          ,@opeTasa                  = 0
+	          ,@opeDepto                 = '01'
+	          ,@opeZona                  = '01'
+	          ,@opeGenDiv				 = 'ZZ'
+	          ,@opeFdic                  = '140107'
+	          ,@opeTipCred				 = 2
+	          ,@opeOrigen				 = 1
+	          ,@opeForPago				 = '11' --Requerimiento 109-2016
+	          ,@opeSaldoVi               = 0
+	          ,@opeSaldoMo               = 0
+	          ,@opeSaldoCo               = 0
+	          ,@opeSaldoVe               = 0
+	          ,@opeSaldoEj               = 0
+	          ,@opeSalCXC                = 0
+	          ,@opeSaldoCa               = 0
+	          ,@opeIntXcob               = 0
+	          ,@opeIntSus                = 0
+	          ,@opeMoraCap               = 0
+	          ,@opeMoraInt               = 0
+	          ,@opeMontoOt               = 0
+			  ,@opeDiasMora              = 0
+	          ,@opeCredEsp               = 0
+	          ,@opeRefin                 = ''
+	          ,@opeCateg                 = 'CFM'
+	          ,@opeBrch                  = 1
+	          ,@opePerGra                = 0
+	          ,@opeVecesRefin            = 0
+	          ,@opeValGar				 = 0
+	          ,@opeFecUltPagCapital		 = ''--Campos capturador 2015
+			  ,@opeCAT					 = 0 --Campos capturador 2015
+			  ,@opeTasaInteresMoratoria  = 0 --Campos capturador 2015
+			  ,@opeSaldoTotal			 = 0 --Campos capturador 2015
+	          ,@Moneda					 = t.Moneda
+	          ,@FechaOtorgado			 = t.FechaOtorgado
+	          ,@Estado					 = t.Estado
+	          ,@MontoOtorgado		     = t.MontoOtorgado
+	          ,@Tasa					 = t.Tasa
+	          ,@SaldoActual			     = t.SaldoActual
+	          ,@BIN					     = t.BIN
+	          ,@NumeroCuotas			 = t.NumeroCuotas
+	          ,@FechaVencimiento         = t.FechaVencimiento
+	          ,@opeMontoCuotaPagar		 = t.MontoCuota --Campos capturador 2015	
+	    FROM TMPExtrasVASA t
+	    WHERE  T.ID = @ID
+	    
+	    
+	    
+	    --PRINT 'Procesando operacion: ID = ' + CAST(@ID AS VARCHAR(20)) + 
+	    --', NO = ' + @opeNum
+	    --Moneda
+	    SET @opeMoneda = CASE @Moneda
+	                          WHEN 'HN' THEN 1
+	                          ELSE 2
+	                     END
+	    
+	    --Factor de cambio
+	    IF (@opeMoneda = 2)
+	        SET @factor = @TipoCambio
+	    ELSE
+	        SET @factor = 1
+	    
+	    --Estado
+	    IF(@Estado IN(10, 22))
+			SET @opeStatus = 2
+		ELSE
+			SET @opeStatus = 0
+	
+		 --Fecha de otorgado
+	    IF (ISDATE(@FechaOtorgado) = 1)
+			IF(@FechaOtorgado > @opeFecRep)
+				set @opeFecOto = @opeFecRep
+			ELSE
+				SET @opeFecOto = @FechaOtorgado
+	    ELSE
+	        SET @opeFecOto = @opeFecRep		 
+		
+	    --Fecha de vencimiento
+	    --SET @opeFecVen = CONVERT(VARCHAR(8),DATEADD(MM, @T1RPLA, @opeFecOto), 112)
+	    
+	    --Fecha de vencimiento tomando en cuenta la fecha de corte
+	    SET @opeFecVen = @FechaVencimiento 
+	    
+	        
+	    SET @opeTasa = @Tasa
+	    
+	    IF(@TRUNCAR = 1)
+			SET @opeMontoOt = ROUND(@MontoOtorgado * @factor,2,1)
+		ELSE
+			SET @opeMontoOt = CAST(@MontoOtorgado * @factor AS NUMERIC(18,2))
+			
+		IF(@TRUNCAR = 1)
+			SET @opeSaldoVi = ROUND(@SaldoActual * @factor,2,1)
+		ELSE
+			SET @opeSaldoVi = CAST(@SaldoActual * @factor AS NUMERIC(18,2))
+		
+		IF(@opeStatus = 2)
+		BEGIN
+			set @opeSaldoCa =  @opeSaldoVi
+			SET @opeSaldoVi = 0
+		END
+		
+		/*******************************************************************/
+	    --Ajuste monto Cuota a Pagar
+	    --Requerimiento 107-2016
+	    --Fecha: 2016-08-26
+	    
+	    --Para las operaciones, Vencidas, Ejecución y Castigado, se debe reportar 0
+		IF(@opeSaldoVe > 0 OR @opeSaldoEj > 0 OR @opeSaldoCa > 0)
+		BEGIN
+			SET @opeMontoCuotaPagar = @SaldoActual
+		END
+		/*********************Fin requerimiento 107-2016***************************/
+	    
+
+		--Validacion para colocar la empresa 3 para los extras castigados
+		IF @opeSaldoCa > 0
+			SET @opeEmpresa = '3'
+	    
+	    EXECUTE usp_OPERACIONES_INSERT
+	    @opeNum,
+	    @opeMoneda,
+	    @CifCliente,
+	    @opeTipIns,
+	    @opeCodIns,
+	    @opeFecRep,
+	    @opeFecOto,
+	    @opeFecVen,
+	    @opeSaldoVi,
+	    @opeSaldoMo,
+	    @opeSaldoVe,
+	    @opeSaldoCo,
+	    @opeSaldoEj,
+	    @opeSaldoCa,
+	    @opeGar,
+	    @opeTipo,
+	    @opeCateg,
+	    @opeTipCred,
+	    @opeMontoOt,
+	    @opeIntXcob,
+	    @opeIntSus,
+	    @opeValGar,
+	    @opeTasa,
+	    @opeForPago,
+	    @opePerGra,
+	    @opeDiasMora,
+	    @opeCredEsp,
+	    @opeSalCXC,
+	    @opeRefin,
+	    @opeMoraCap,
+	    @opeZona,
+	    @opeMoraInt,
+	    @opeDepto,
+	    @opeFdic,
+	    @opeBrch,
+	    @opeStatus,
+	    @opeProducto,
+	    @opeOrigen,
+	    @opeEmpresa,
+	    @OpeProductoByte,
+	    @opeStatusByte,
+	    @opeFrecPagInt,
+	    @opeSector,
+	    @opeOficial,
+	    @opeInCong,
+	    @opeGenDiv,
+	    @opeRegion,
+	    @opeRefinByte,
+	    @opeVecesRefin
+	     ,@opeFecUltPagCapital
+	   ,@opeCAT
+	   ,@opeMontoCuotaPagar
+	   ,@opeTasaInteresMoratoria
+	   ,@opeSaldoTotal
+	    
+	    
+	    SELECT @ID = MIN(t.ID)
+	    FROM TMPExtrasVASA t
+	    WHERE  T.ID > @ID
+	END
+	
+	
+	
+	
+	
+	
+	
+END
+
+
+
+
+USE [BPSGRC]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_CR_PROC_DEUDORES]    Script Date: 26/11/2026 16:37:47 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Orlin Alvarado
+-- Create date: 2014-12-22
+-- Description:	Inserta los deudores en la tabla de deudores
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_CR_PROC_DEUDORES]
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
+	
+	DECLARE @ID NUMERIC(18 ,0)
+	DECLARE @Correlativo NUMERIC(4 ,0)
+	DECLARE @IdentidadTemplate VARCHAR(9)
+	
+	
+	--Limpiamos tabla de deudores
+	TRUNCATE TABLE DEUDORES
+	
+	--Limpiamos tabla temporal
+	TRUNCATE TABLE TMPDeudores
+	
+	INSERT INTO TMPDeudores
+	SELECT *
+	FROM   uvw_DEUDORES_PTM udp
+	ORDER BY
+	       udp.CLDOC ASC
+	
+	SELECT @ID = MIN(tp.ID)
+	FROM   TMPDeudores tp
+	
+	SET @Correlativo = 1000
+	SET @IdentidadTemplate = '111100000'
+	DECLARE @CifCliente DECIMAL(18 ,0)
+	DECLARE @deuTipoID CHAR(2)
+	DECLARE @deuID CHAR(20)
+	DECLARE @deuNombre CHAR(60)
+	DECLARE @deuTipoPer CHAR(2)
+	DECLARE @deuPersRela CHAR(1)
+	DECLARE @deuTipoObli CHAR(1)
+	DECLARE @deuCatCM CHAR(5)
+	DECLARE @deuCatCs CHAR(5)
+	DECLARE @deuCatVv CHAR(5)
+	DECLARE @deuTotDeuda MONEY
+	DECLARE @deuTipoDeu CHAR(1)
+	DECLARE @deuCatMin CHAR(5)
+	DECLARE @deuCatMax CHAR(5)
+	DECLARE @deuGrupEco CHAR(5)
+	DECLARE @deuSexo CHAR(1)
+	DECLARE @deuPaisDomi CHAR(2)
+	DECLARE @deuCIIU CHAR(4)
+	DECLARE @deuPaisIdentificacion CHAR(2)
+	DECLARE @deuFecNaci CHAR(8)
+	DECLARE @CLTIPE AS CHAR(1)
+	DECLARE @CLISEX AS CHAR(1)
+	DECLARE @CLDOC AS NUMERIC(18 ,2)	
+	DECLARE @TIPOSOC AS NUMERIC(3)
+	DECLARE @CLGRECO AS CHAR(5)
+	DECLARE @CLCTGR AS NUMERIC(3 ,0)
+	DECLARE @CLTID AS CHAR(1)
+	DECLARE @CLINO1 AS VARCHAR(15)
+	DECLARE @CLINO2 AS VARCHAR(15)
+	DECLARE @CLIAP1 AS VARCHAR(15)
+	DECLARE @CLIAP2 AS VARCHAR(15)
+	DECLARE @CLNOMB AS VARCHAR(60)
+	
+	WHILE (@ID IS NOT NULL)
+	BEGIN
+	    --PRINT 'Procesando: ID = ' + CAST(@ID AS VARCHAR) + ', CIF = ' + CAST(@CLDOC AS VARCHAR) 
+	    
+	    SELECT @CifCliente = d.CLDOC
+	          ,@deuTipoID                 = ''
+	          ,@deuID                     = d.CLNUID
+	          ,@CLNOMB                    = d.CLNOMB
+	          ,@deuTipoPer                = ''
+	          ,@deuPersRela               = ''
+	          ,@deuTipoObli               = ''
+	          ,@deuCatCM                  = ''
+	          ,@deuCatCs                  = ''
+	          ,@deuCatVv                  = ''
+	          ,@deuTotDeuda               = 0
+	          ,@deuTipoDeu                = ''
+	          ,@deuCatMin                 = ''
+	          ,@deuCatMax                 = ''
+	          ,@deuGrupEco                = d.CLGRECO
+	          ,@deuSexo                   = d.CLISEX
+	          ,@deuPaisDomi               = d.PaisOrigen
+	          ,@deuFecNaci                = d.FECHA_NAC
+	          ,@deuPaisIdentificacion     = 'HN'
+	          ,@deuCIIU                   = ''
+	          ,@CLTIPE                    = d.CLTIPE
+	          ,@CLDOC                     = d.CLDOC
+	          ,@CLISEX                    = d.CLISEX
+	          ,@TIPOSOC                   = d.TIPOSOC
+	          ,@CLCTGR                    = d.CLCTGR
+	          ,@CLGRECO                   = d.CLGRECO
+	          ,@CLTID                     = d.CLTID
+	          ,@CLINO1                    = d.CLINO1
+	          ,@CLINO2                    = d.CLINO2
+	          ,@CLIAP1                    = d.CLIAP1
+	          ,@CLIAP2                    = d.CLIAP2
+	          ,@deuCIIU                   = d.CIIU
+	           --,@PaisOrigen = d.PaisOrigen
+	    FROM   TMPDeudores d
+	    WHERE  d.ID = @ID
+	    
+	    SET @deuNombre = @CLNOMB
+	    
+	    --Tipo de identificacion
+	    IF (@CLTID = 'C')
+	    BEGIN
+	        SET @deuTipoID = '03'
+	        IF (LEN(@deuID) = 15 AND LEFT(@deuID ,1) = '0')
+	        BEGIN
+	            --Según lo solicitado por Luis padilla, la CNBS sugerio que se eliminara
+	            --El cero inicial para los Carnets de Residencia
+	            SET @deuID = RIGHT(RTRIM(@deuID) ,14)
+	        END
+	    END
+	    ELSE
+	    IF (@CLTID = 'P')
+	    BEGIN
+	        SET @deuTipoID = '04'
+	        IF (LEN(@deuID) = 15 AND LEFT(@deuID ,1) = '0')
+	        BEGIN
+	            --Según lo solicitado por Luis padilla, la CNBS sugerio que se eliminara
+	            --El cero inicial para los Pasaportes
+	            SET @deuID = RIGHT(RTRIM(@deuID) ,14)
+	        END
+	    END
+	    ELSE
+	    IF (@CLTID = 'I')
+	    BEGIN
+	        SET @deuTipoID = '01'
+	    END
+	    ELSE
+	    IF (@CLTID = 'R')
+	    BEGIN
+	        SET @deuTipoID = '06'
+	        IF (LEN(@deuID) = 14)
+	            SET @deuTipoID = '06'
+	        ELSE
+	            SET @deuTipoID = '02'
+	    END
+	    ELSE
+	    BEGIN
+	        SET @deuTipoID = '06'
+	    END
+	    
+	    
+	    IF (@CLTIPE = 'J') --Clientes Juridicos
+	    BEGIN        
+	        IF(@CLTID = 'M')
+	        BEGIN
+				IF (LEN(@deuID) = 14)
+					SET @deuTipoID = '06'
+				ELSE
+					SET @deuTipoID = '02'
+			END
+	        
+	        --Tipo de persona, reemplaza procedimiento usp_updateTipoPersonaJuridicos	
+	        SELECT @deuTipoPer = ISNULL(MAX(lv.LvEquivalente) ,'07')
+	        FROM   ListasValores lv
+	        WHERE  lv.liId = 13
+	               AND lv.lvValor = @TIPOSOC
+	    END
+	    ELSE
+	    BEGIN
+	        SELECT @deuTipoPer = '01'
+      
+	        IF(@CLTID = 'M')
+	        BEGIN
+				IF (LEN(@deuID) = 13)
+					SET @deuTipoID = '01'
+				ELSE
+					SET @deuTipoID = '04'	
+	        END
+	        
+	        
+	        --Ajustamos nombre tal como lo solicita la CNBS
+	        SET @deuNombre = @CLINO1 + ' ' + @CLINO2 + ' ' + @CLIAP1 + ' ' + @CLIAP2
+	        SET @deuNombre = RTRIM(LTRIM(@deuNombre))
+	        IF (@deuNombre = '')
+	            SET @deuNombre = @CLNOMB
+	    END
+	    
+	    /*******************************************
+	     * Esta corrección fue solicitada por Luis padilla en la fecha 27/03/2015
+	     *******************************************/
+	    --Correccion temporal para los clientes juridicos  para colocar un CIIU valido    
+	    IF (
+	           @deuTipoPer NOT IN ('01')
+	           AND @deuCIIU IN ('9820' ,'', '9999')
+	       )
+	    BEGIN
+	        SET @deuCIIU = '4799'
+	    END	      
+	    --Correccion para el CIIU clientes naturales
+	    IF (@deuTipoPer IN ('01') AND @deuCIIU IN ('', '9999'))
+	    BEGIN
+	        SET @deuCIIU = '9820'
+	    END	      
+	    
+	    --Corrige CIIU que la comision reporta que no existe
+	    IF(@deuCIIU = '1329')
+			SET @deuCIIU = '1312'
+		
+			       
+	    IF (@deuTipoPer IN ('01') AND @deuCIIU IS NULL)
+	    BEGIN
+	        SET @deuCIIU = '9820'
+	    END	   
+	    
+	    IF (@deuTipoPer not IN ('01') AND @deuCIIU IS NULL)
+	    BEGIN
+	        SET @deuCIIU = '4690'
+	    END	 
+	    
+	    SELECT @deuPersRela = ISNULL(MAX(lv.LvEquivalente) ,'')
+	    FROM   ListasValores lv
+	    WHERE  lv.liId = 14
+	           AND lv.lvValor = @CLCTGR
+	    
+	    SET @deuGrupEco = @CLGRECO
+	    
+	    --Corrige el genero del deudor basado en el tipo de persona
+	    IF (
+	           @deuTipoPer IN ('01' ,'13' ,'14')
+	           AND @deuSexo NOT IN ('M' ,'F')
+	       )
+	        SET @deuSexo = 'M'
+	    
+	    IF (
+	           @deuTipoPer NOT IN ('01' ,'13' ,'14')
+	           AND @deuSexo NOT IN ('Z')
+	       )
+	        SET @deuSexo = 'Z'
+	    
+	    EXECUTE [usp_DEUDORES_INSERT] 
+	    --SELECT 
+	    @CifCliente
+	    ,@deuTipoID
+	    ,@deuID
+	    ,@deuNombre
+	    ,@deuTipoPer
+	    ,@deuPersRela
+	    ,@deuTipoObli
+	    ,@deuCatCM
+	    ,@deuCatCs
+	    ,@deuCatVv
+	    ,@deuTotDeuda
+	    ,@deuTipoDeu
+	    ,@deuCatMin
+	    ,@deuCatMax
+	    ,@deuGrupEco
+	    ,@deuSexo
+	    ,@deuPaisDomi
+	    ,@deuFecNaci
+	    ,@deuCIIU
+	    ,@deuPaisIdentificacion
+	    
+	    
+	    SELECT @ID = MIN(d.ID)
+	    FROM   TMPDeudores d
+	    WHERE  d.ID > @ID
+	END
+END
+
+
+
+
+Porque será que no se llena ... que omite el insert? Lo raro es que no encuentro unas tarjetas en la tabla de Operaciones y si esta en la tabla ETARJETAS
+
