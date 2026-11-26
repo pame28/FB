@@ -1,15 +1,55 @@
-import { Briefcase, Building2, MapPin, Store } from "lucide-react";
+import { Briefcase, Building2, CalendarRange, MapPin, Store } from "lucide-react";
 import { catalogServices } from "../../../../api/catalogService";
 
 /**
  * Configuración de cada catálogo.
  * fields: campos del formulario y columnas de la tabla.
- *   type: "text" (por defecto) | "number" | "select"
+ *   type: "text" (por defecto) | "number" | "select" | "date" | "boolean"
  *   required: obligatorio
  *   unique: no permite valores repetidos (ignora tildes y mayúsculas)
  *   options: solo para "select" → [{ value, label }]
+ *   defaultValue: valor inicial al crear (p. ej. true para "boolean")
  * feminine: para los textos ("Nueva área" / "Nuevo puesto").
+ *
+ * Opcionales:
+ *   labelField: campo que identifica al registro en mensajes y en la tabla (por defecto "name")
+ *   sort: (a, b) => número, orden del listado (por defecto alfabético por labelField)
+ *   statusFilter: muestra el filtro Activos / Inactivos (usa el campo "status")
+ *   validate: (values, items, currentId) => { campo: "mensaje" } validaciones entre campos
+ *   deleteHint: mensaje cuando el backend no permite eliminar
  */
+
+/* ---------- Períodos: validaciones entre campos ---------- */
+const dmy = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
+
+const validatePeriod = (values, items, currentId) => {
+  const errors = {};
+  const { startDate: start, endDate: end } = values;
+  if (!start || !end) return errors;
+
+  // Las fechas vienen como "yyyy-mm-dd": se pueden comparar como texto
+  if (end < start) {
+    errors.endDate = "La fecha fin no puede ser anterior a la fecha inicio.";
+    return errors;
+  }
+
+  // Un período activo no puede traslaparse con otro período activo
+  if (values.status === "true") {
+    const overlap = items.find(
+      (p) =>
+        p.id !== currentId &&
+        p.status === true &&
+        start <= String(p.endDate).slice(0, 10) &&
+        end >= String(p.startDate).slice(0, 10)
+    );
+    if (overlap) {
+      errors.startDate = `Se traslapa con el período activo "${overlap.description?.trim()}" (${dmy(overlap.startDate)} – ${dmy(overlap.endDate)}).`;
+    }
+  }
+
+  return errors;
+};
+
 export const CATALOG_CONFIGS = {
   areas: {
     title: "Áreas",
@@ -74,7 +114,35 @@ export const CATALOG_CONFIGS = {
       { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Cajero" },
     ],
   },
+
+  periods: {
+    title: "Períodos",
+    subtitle: "Períodos de evaluación a los que pertenecen los indicadores.",
+    singular: "período",
+    plural: "períodos",
+    feminine: false,
+    icon: CalendarRange,
+    service: catalogServices.periods,
+    labelField: "description",
+    statusFilter: true,
+    // Los más recientes primero
+    sort: (a, b) => String(b.startDate).localeCompare(String(a.startDate)),
+    validate: validatePeriod,
+    deleteHint: "No se pudo eliminar. Es posible que el período tenga indicadores asociados; puedes desactivarlo en lugar de eliminarlo.",
+    fields: [
+      { name: "description", label: "Descripción", required: true, unique: true, placeholder: "Ej. 2026 - Periodo 1" },
+      { name: "startDate", label: "Fecha inicio", type: "date", required: true, width: 130 },
+      { name: "endDate", label: "Fecha fin", type: "date", required: true, width: 130 },
+      { name: "status", label: "Estado", type: "boolean", width: 110, defaultValue: true },
+    ],
+  },
 };
+
+
+
+
+
+
 
 
 
@@ -89,13 +157,28 @@ import styles from "../../../Pages.module.css";
 
 const PAGE_SIZE = 10;
 
+const STATUS_FILTERS = [
+  { value: "todos", label: "Todos los estados" },
+  { value: "true", label: "Activos" },
+  { value: "false", label: "Inactivos" },
+];
 
 const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
+// "2026-11-01T00:00:00" → "01/11/2026" (sin pasar por Date: no hay desfase de zona horaria)
+const formatDate = (value) => String(value).slice(0, 10).split("-").reverse().join("/");
+
+// Solo estos tipos participan en la búsqueda de texto
+const SEARCHABLE = [undefined, "text", "number", "select"];
+
 export function CatalogCrudPage({ config }) {
-  const { title, subtitle, singular, plural, feminine, icon: Icon, service, fields } = config;
+  const {
+    title, subtitle, singular, plural, feminine, icon: Icon, service, fields,
+    labelField = "name", sort, statusFilter, deleteHint,
+  } = config;
   const e = feminine ? "a" : "o";
   const article = feminine ? "la" : "el";
+  const labelOf = (it) => String(it?.[labelField] ?? "").trim();
 
   const toast = useToast();
 
@@ -104,6 +187,7 @@ export function CatalogCrudPage({ config }) {
   const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("todos");
   const [page, setPage] = useState(1);
 
   const [form, setForm] = useState({ open: false, item: null });
@@ -129,15 +213,23 @@ export function CatalogCrudPage({ config }) {
 
   useEffect(() => { load(); }, [load]);
 
-  /* ---------- Búsqueda, orden y paginación (en el navegador) ---------- */
+  /* ---------- Búsqueda, filtro, orden y paginación (en el navegador) ---------- */
   const filtered = useMemo(() => {
     const q = normalizeText(search);
-    const list = q
+    const searchable = fields.filter((f) => SEARCHABLE.includes(f.type));
+
+    let list = q
       ? items.filter((it) =>
-          String(it.id).includes(q) || fields.some((f) => normalizeText(it[f.name]).includes(q)))
+          String(it.id).includes(q) || searchable.some((f) => normalizeText(it[f.name]).includes(q)))
       : items;
-    return [...list].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? ""), "es"));
-  }, [items, search, fields]);
+
+    if (statusFilter && status !== "todos") {
+      list = list.filter((it) => String(it.status) === status);
+    }
+
+    const byLabel = (a, b) => String(a[labelField] ?? "").localeCompare(String(b[labelField] ?? ""), "es");
+    return [...list].sort(sort ?? byLabel);
+  }, [items, search, status, statusFilter, fields, labelField, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -148,7 +240,7 @@ export function CatalogCrudPage({ config }) {
     setForm({ open: false, item: null });
     toast.success(
       `${capitalize(singular)} ${isEdit ? "actualizad" : "cread"}${e}`,
-      `"${item.name}" se ${isEdit ? "actualizó" : "agregó"} correctamente.`
+      `"${labelOf(item)}" se ${isEdit ? "actualizó" : "agregó"} correctamente.`
     );
     load();
   };
@@ -163,13 +255,14 @@ export function CatalogCrudPage({ config }) {
     setDeleteError("");
     try {
       await service.remove(toDelete.id);
-      toast.success(`${capitalize(singular)} eliminad${e}`, `"${toDelete.name}" se eliminó correctamente.`);
+      toast.success(`${capitalize(singular)} eliminad${e}`, `"${labelOf(toDelete)}" se eliminó correctamente.`);
       setToDelete(null);
       load();
     } catch (err) {
       setDeleteError(err.noAccess
         ? `No tienes permiso para eliminar ${plural}.`
         : err.response?.data?.message
+          ?? deleteHint
           ?? `No se pudo eliminar. Es posible que ${article} ${singular} esté asignad${e} a uno o más usuarios.`);
     } finally {
       setDeleting(false);
@@ -177,7 +270,28 @@ export function CatalogCrudPage({ config }) {
   };
 
   /* ---------- Columnas ---------- */
- const dash = <span className={styles.muted}>—</span>;
+  const dash = <span className={styles.muted}>—</span>;
+
+  const renderValue = (f, it) => {
+    const value = it[f.name];
+    if (value === null || value === undefined || value === "") return dash;
+    switch (f.type) {
+      case "number":
+        return <span className={styles.mono}>{value}</span>;
+      case "date":
+        return <span className={styles.mono}>{formatDate(value)}</span>;
+      case "boolean":
+        return value
+          ? <span className={`${styles.tag} ${styles.tagTeal}`}>Activo</span>
+          : <span className={`${styles.tag} ${styles.tagNeutral}`}>Inactivo</span>;
+      case "select": {
+        const label = f.options.find((o) => o.value === value)?.label ?? value;
+        return <span className={`${styles.tag} ${styles.tagBlue}`}>{label}</span>;
+      }
+      default:
+        return f.name === labelField ? <span className={styles.cellMain}>{value}</span> : value;
+    }
+  };
 
   const columns = [
     {
@@ -190,17 +304,7 @@ export function CatalogCrudPage({ config }) {
       key: f.name,
       header: f.label,
       width: f.width,
-      render: (it) => {
-        const value = it[f.name];
-        if (value === null || value === undefined || value === "") return dash;
-        if (f.type === "number") return <span className={styles.mono}>{value}</span>;
-        if (f.type === "select") {
-          const label = f.options.find((o) => o.value === value)?.label ?? value;
-          return <span className={`${styles.tag} ${styles.tagBlue}`}>{label}</span>;
-        }
-        if (f.name === "name") return <span className={styles.cellMain}>{value}</span>;
-        return value;
-      },
+      render: (it) => renderValue(f, it),
     })),
     {
       key: "actions",
@@ -210,11 +314,11 @@ export function CatalogCrudPage({ config }) {
       render: (it) => (
         <div className={styles.rowActions}>
           <button type="button" className={styles.iconBtn} title="Editar"
-            aria-label={`Editar ${it.name}`} onClick={() => setForm({ open: true, item: it })}>
+            aria-label={`Editar ${labelOf(it)}`} onClick={() => setForm({ open: true, item: it })}>
             <Pencil size={16} />
           </button>
           <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
-            aria-label={`Eliminar ${it.name}`} onClick={() => openDelete(it)}>
+            aria-label={`Eliminar ${labelOf(it)}`} onClick={() => openDelete(it)}>
             <Trash2 size={16} />
           </button>
         </div>
@@ -222,6 +326,7 @@ export function CatalogCrudPage({ config }) {
     },
   ];
 
+  const hasFilters = Boolean(search) || status !== "todos";
 
   return (
     <>
@@ -265,6 +370,15 @@ export function CatalogCrudPage({ config }) {
               onChange={(ev) => { setSearch(ev.target.value); setPage(1); }}
               aria-label={`Buscar ${plural}`} />
           </label>
+
+          {statusFilter && (
+            <select className={styles.select} style={{ width: "auto" }} value={status}
+              onChange={(ev) => { setStatus(ev.target.value); setPage(1); }}
+              aria-label="Filtrar por estado">
+              {STATUS_FILTERS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
+
           {!loading && (
             <span className={styles.count}>
               {filtered.length} {filtered.length === 1 ? singular : plural}
@@ -276,8 +390,8 @@ export function CatalogCrudPage({ config }) {
           columns={columns}
           rows={rows}
           loading={loading}
-          emptyMessage={search
-            ? `No hay resultados para "${search}".`
+          emptyMessage={hasFilters
+            ? (search ? `No hay resultados para "${search}".` : `No hay ${plural} con ese estado.`)
             : `Aún no hay ${plural} registrad${e}s.`}
           pagination={{
             page: currentPage,
@@ -307,8 +421,13 @@ export function CatalogCrudPage({ config }) {
           <div className={styles.personChip}>
             <div className={styles.personAvatar}><Icon size={18} /></div>
             <div className={styles.personInfo}>
-              <span className={styles.personName}>{toDelete.name}</span>
+              <span className={styles.personName}>{labelOf(toDelete)}</span>
               {toDelete.code != null && <span className={styles.personMeta}>Código: {toDelete.code}</span>}
+              {toDelete.startDate && (
+                <span className={styles.personMeta}>
+                  {formatDate(toDelete.startDate)} – {formatDate(toDelete.endDate)}
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -326,6 +445,19 @@ export function CatalogCrudPage({ config }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Modal } from "../../../../shared/components";
@@ -333,6 +465,7 @@ import { normalizeText } from "../../../../helpers/format";
 import styles from "../../../Pages.module.css";
 
 const FORM_ID = "catalog-form";
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // "Name" (backend) → "name" (formulario)
 const mapApiErrors = (errors = {}) =>
@@ -340,10 +473,17 @@ const mapApiErrors = (errors = {}) =>
     Object.entries(errors).map(([key, msg]) => [key.charAt(0).toLowerCase() + key.slice(1), msg])
   );
 
-const toValues = (fields, item) =>
-  Object.fromEntries(fields.map((f) => [f.name, item?.[f.name] ?? ""]));
+// Valor del registro → valor del input
+const toValue = (f, item) => {
+  const raw = item?.[f.name];
+  if (f.type === "date") return raw ? String(raw).slice(0, 10) : "";          // "2026-11-01T00:00:00" → "2026-11-01"
+  if (f.type === "boolean") return String(raw ?? f.defaultValue ?? true);     // true → "true"
+  return raw ?? f.defaultValue ?? "";
+};
 
-const validate = (fields, values, items, currentId) => {
+const toValues = (fields, item) => Object.fromEntries(fields.map((f) => [f.name, toValue(f, item)]));
+
+const validate = (fields, values, items, currentId, extraValidate) => {
   const errors = {};
 
   fields.forEach((f) => {
@@ -359,6 +499,11 @@ const validate = (fields, values, items, currentId) => {
       return;
     }
 
+    if (f.type === "date" && value && !DATE_RE.test(value)) {
+      errors[f.name] = `${f.label} no es una fecha válida.`;
+      return;
+    }
+
     // Duplicados: compara sin tildes ni mayúsculas y excluye el registro que se está editando
     if (f.unique && value) {
       const duplicate = items.find(
@@ -368,21 +513,29 @@ const validate = (fields, values, items, currentId) => {
     }
   });
 
+  // Validaciones entre campos definidas en la configuración (solo si cada campo ya es válido)
+  if (extraValidate && Object.keys(errors).length === 0) {
+    Object.assign(errors, extraValidate(values, items, currentId));
+  }
+
   return errors;
 };
 
+// Valores del formulario → body para la API
 const toBody = (fields, values) =>
   Object.fromEntries(
     fields.map((f) => {
       const raw = values[f.name];
       if (f.type === "number") return [f.name, raw === "" || raw === null ? null : Number(raw)];
       if (f.type === "select") return [f.name, raw];
+      if (f.type === "boolean") return [f.name, raw === "true"];
+      if (f.type === "date") return [f.name, raw || null];                     // "yyyy-mm-dd", sin hora
       return [f.name, String(raw ?? "").trim()];
     })
   );
 
 export function CatalogFormModal({ open, item, items = [], config, onClose, onSaved }) {
-  const { singular, plural, feminine, fields, service } = config;
+  const { singular, plural, feminine, fields, service, validate: extraValidate } = config;
   const isEdit = Boolean(item);
   const e = feminine ? "a" : "o";
 
@@ -407,7 +560,7 @@ export function CatalogFormModal({ open, item, items = [], config, onClose, onSa
 
   const handleSubmit = async (ev) => {
     ev.preventDefault();
-    const found = validate(fields, values, items, item?.id);
+    const found = validate(fields, values, items, item?.id, extraValidate);
     setErrors(found);
     if (Object.keys(found).length > 0) return;
 
@@ -417,7 +570,7 @@ export function CatalogFormModal({ open, item, items = [], config, onClose, onSa
 
     try {
       const saved = isEdit ? await service.update(item.id, body) : await service.create(body);
-      onSaved(saved ?? { ...item, ...body }, isEdit);
+      onSaved(saved && typeof saved === "object" ? saved : { ...item, ...body }, isEdit);
     } catch (err) {
       const data = err.response?.data;
       if (data?.errors) setErrors(mapApiErrors(data.errors));
@@ -442,14 +595,28 @@ export function CatalogFormModal({ open, item, items = [], config, onClose, onSa
       "aria-invalid": !!errors[f.name],
       autoFocus: index === 0,
     };
+    const invalid = errors[f.name] ? styles.invalid : "";
 
     if (f.type === "select") {
       return (
-        <select {...common} className={`${styles.select} ${errors[f.name] ? styles.invalid : ""}`}>
+        <select {...common} className={`${styles.select} ${invalid}`}>
           <option value="">Selecciona una opción</option>
           {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       );
+    }
+
+    if (f.type === "boolean") {
+      return (
+        <select {...common} className={`${styles.select} ${invalid}`}>
+          <option value="true">Activo</option>
+          <option value="false">Inactivo</option>
+        </select>
+      );
+    }
+
+    if (f.type === "date") {
+      return <input {...common} type="date" className={`${styles.input} ${invalid}`} />;
     }
 
     return (
@@ -458,7 +625,7 @@ export function CatalogFormModal({ open, item, items = [], config, onClose, onSa
         type={f.type === "number" ? "number" : "text"}
         min={f.type === "number" ? 0 : undefined}
         inputMode={f.type === "number" ? "numeric" : undefined}
-        className={`${styles.input} ${errors[f.name] ? styles.invalid : ""}`}
+        className={`${styles.input} ${invalid}`}
         placeholder={f.placeholder}
         autoComplete="off"
       />
@@ -519,6 +686,16 @@ export function CatalogFormModal({ open, item, items = [], config, onClose, onSa
 
 
 
+
+
+
+
+
+
+
+
+
+
 import { CatalogCrudPage } from "./CatalogCrudPage";
 import { CATALOG_CONFIGS } from "./catalogConfigs";
 
@@ -526,6 +703,12 @@ export const AreasPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.areas} /
 export const AgenciasPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.branches} />;
 export const UbicacionesPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.locations} />;
 export const PuestosPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.positions} />;
+export const PeriodosPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.periods} />;
+
+
+
+
+
 
 
 
@@ -560,30 +743,6 @@ export const catalogServices = {
   branches: createCatalogService(endpointsAPI.companyBranches),
   locations: createCatalogService(endpointsAPI.companyLocations),
   positions: createCatalogService(endpointsAPI.companyPositions),
+  periods: createCatalogService(endpointsAPI.periods),
 };
-
-
-
-
-Response del get
-{
-    "code": 200,
-    "message": "OK",
-    "data": [
-        {
-            "id": 2,
-            "description": "2026 - Periodo 1 ",
-            "startDate": "2026-11-01T00:00:00",
-            "endDate": "2026-11-30T00:00:00",
-            "status": true
-        },
-        {
-            "id": 3,
-            "description": "2026 - Periodo 2",
-            "startDate": "2026-12-01T00:00:00",
-            "endDate": "2026-12-31T00:00:00",
-            "status": true
-        }
-    ]
-}
 
