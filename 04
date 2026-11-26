@@ -1,19 +1,5 @@
-  // GET /api/logged-user/coaching/team-members?companyAreaId=&teamId=&companyPositionId=
-  // Los filtros vacíos no se envían. La respuesta viene agrupada por equipo y se aplana para la tabla.
-  // El backend no filtra por texto: la búsqueda por código o nombre se hace aquí.
-  loggedUserTeamsMembers: async ({ area, team, position, search } = {}) => {
-    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.loggedUserTeamMembers, {
-      params: {
-        companyAreaId: area || null,
-        teamId: team || null,
-        companyPositionId: position || null,
-      },
-    });
-    const members = (data.data ?? []).flatMap((t) =>
-      t.members.map((m) => ({ ...m, teamId: t.teamId, teamName: t.teamName }))
-    );
-    const text = search?.trim().toLowerCase();
-    return text
-      ? members.filter((m) => `${m.employeeId ?? ""} ${m.fullName ?? ""}`.toLowerCase().includes(text))
-      : members;
-  },
+GET https://apifeedbackcolaboradoresde.banpais.hn/api/logged-user/coaching/team-members?companyAreaId=3
+
+
+
+
