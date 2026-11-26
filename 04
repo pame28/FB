@@ -1,3 +1,70 @@
+import { useEffect, useState } from "react";
+import { catalogServices } from "../api/catalogService";
+
+/* =========================================================
+   Períodos del mantenimiento (Administración → Períodos).
+   Un solo lugar para cargarlos y mostrarlos en cualquier pantalla.
+   ========================================================= */
+
+// "2026-11-01T00:00:00" → "2026-11-01" (se compara como texto, sin desfase de zona horaria)
+const day = (value) => (value ? String(value).slice(0, 10) : "");
+const dmy = (value) => day(value).split("-").reverse().join("/");
+
+/** "2026 - Periodo 1" */
+export const periodName = (p) => p?.description?.trim() ?? "";
+
+/** "2026 - Periodo 1 (01/11/2026 – 30/11/2026)" */
+export const periodLabel = (p) => (p ? `${periodName(p)} (${dmy(p.startDate)} – ${dmy(p.endDate)})` : "");
+
+/** Fecha de inicio / fin del período en formato de <input type="date"> */
+export const periodDates = (p) => ({ start: day(p?.startDate), end: day(p?.endDate) });
+
+export const usePeriods = () => {
+  const [periods, setPeriods] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    catalogServices.periods
+      .list()
+      .then((list) => {
+        if (active) setPeriods([...list].sort((a, b) => day(b.startDate).localeCompare(day(a.startDate))));
+      })
+      .catch(() => { if (active) setError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  /** Período al que pertenece una fecha (prefiere el activo si hubiera más de uno) */
+  const findByDate = (date) => {
+    const d = day(date);
+    if (!d) return null;
+    const matches = periods.filter((p) => d >= day(p.startDate) && d <= day(p.endDate));
+    return matches.find((p) => p.status) ?? matches[0] ?? null;
+  };
+
+  const findById = (id) => periods.find((p) => String(p.id) === String(id)) ?? null;
+
+  return {
+    periods,
+    activePeriods: periods.filter((p) => p.status),
+    loading,
+    error,
+    findByDate,
+    findById,
+  };
+};
+
+
+
+
+
+
+
+
+
+
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Check, Eye, Info, Loader2 } from "lucide-react";
 import { Modal, useToast } from "../../../shared/components";
@@ -5,6 +72,7 @@ import { indicatorsService } from "../../../api/indicatorsService";
 import { templatesService } from "../../../api/templatesService";
 import { mapTemplate } from "../templates/templates/templateUtils";
 import { CalculationPanel } from "./CalculationPanel";
+import { usePeriods, periodLabel } from "../../../hooks/usePeriods";
 import {
   EMPTY_CALC, INDICATOR_STATUS, INDICATOR_TYPES, buildIndicatorBody, fieldError, fieldKind, fieldText,
   indicatorCode, mapCatalogItem, templateCode, toFormState, unitLabel, validateCalc,
@@ -19,7 +87,7 @@ const EMPTY_FORM = {
   type: "",
   templateId: "",
   status: INDICATOR_STATUS.ACTIVE,
-  periodId: null,
+  periodId: "",
   values: {},
   calc: EMPTY_CALC,
   calcConfigured: false,
@@ -34,6 +102,7 @@ const templateLabel = (t) => `${templateCode(t.id)} — ${t.markers.map((m) => `
 export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
   const toast = useToast();
   const isEdit = indicatorId != null;
+  const { periods, loading: loadingPeriods, error: periodsError } = usePeriods();
 
   // Catálogos
   const [templates, setTemplates] = useState([]);
@@ -82,6 +151,7 @@ export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
             ...state,
             type: String(state.type),
             templateId: String(state.templateId),
+            periodId: String(detail.periodId ?? detail.period?.id ?? ""),
             calcConfigured: Object.keys(validateCalc(state.calc)).length === 0,
           });
         }
@@ -105,6 +175,9 @@ export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
     () => templates.filter((t) => t.active || String(t.id) === form.templateId),
     [templates, form.templateId]
   );
+  // Solo períodos activos (y el actual, si se edita un indicador con período inactivo)
+  const periodOptions = periods.filter((p) => p.status || String(p.id) === form.periodId);
+
   const template = templates.find((t) => String(t.id) === form.templateId) ?? null;
   const markers = template?.markers ?? [];
   const catalogs = { verbs, units, unitId: form.calc.unitId };
@@ -115,10 +188,11 @@ export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
   const formErrors = {
     type: form.type === "" ? "Selecciona el tipo de indicador." : "",
     templateId: form.templateId === "" ? "Selecciona una plantilla." : "",
+    periodId: form.periodId === "" ? "Selecciona el período." : "",
     fields: Object.values(fieldErrors).some(Boolean),
     calc: !form.calcConfigured,
   };
-  const hasErrors = Boolean(formErrors.type || formErrors.templateId || formErrors.fields || formErrors.calc);
+  const hasErrors = Boolean(formErrors.type || formErrors.templateId || formErrors.periodId || formErrors.fields || formErrors.calc);
 
   const segments = markers.map((m) => ({
     key: m.position,
@@ -143,7 +217,7 @@ export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
 
     setSaving(true);
     setSubmitError("");
-    const body = buildIndicatorBody({ ...form, name: phrase, markers, verbs, units });
+    const body = { ...buildIndicatorBody({ ...form, name: phrase, markers, verbs, units }), periodId: Number(form.periodId) };
     try {
       if (isEdit) await indicatorsService.update(indicatorId, body);
       else await indicatorsService.create(body);
@@ -290,6 +364,23 @@ export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
             </div>
           </div>
 
+          {/* Período */}
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="ind-period">Período<span className={styles.required}>*</span></label>
+            <select id="ind-period" className={`${styles.select} ${submitted && formErrors.periodId ? styles.invalid : ""}`}
+              value={form.periodId} disabled={loadingPeriods} onChange={(e) => setField("periodId", e.target.value)}>
+              <option value="">{loadingPeriods ? "Cargando períodos..." : "— Selecciona —"}</option>
+              {periodOptions.map((p) => (
+                <option key={p.id} value={p.id}>{periodLabel(p)}{p.status ? "" : " · Inactivo"}</option>
+              ))}
+            </select>
+            {submitted && formErrors.periodId && <span className={styles.fieldError}>{formErrors.periodId}</span>}
+            {periodsError && <span className={styles.fieldError}>No se pudieron cargar los períodos.</span>}
+            {!loadingPeriods && !periodsError && periodOptions.length === 0 && (
+              <span className={styles.hint}>No hay períodos activos. Créalos en Administración → Períodos.</span>
+            )}
+          </div>
+
           {template && (
             <>
               <div className={s.templateExample}>
@@ -342,378 +433,6 @@ export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
 
 
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Eraser, ListFilter, Lock, Pencil, Plus, Search, SearchX, Trash2 } from "lucide-react";
-import { ConfirmDialog, Pagination, StatusSwitch, useToast } from "../../../shared/components";
-import { indicatorsService } from "../../../api/indicatorsService";
-import { IndicatorFormModal } from "./IndicatorFormModal";
-import { INDICATOR_TYPES, formatDate, mapIndicator } from "./indicatorUtils";
-import styles from "../../Pages.module.css";
-import s from "./Indicators.module.css";
-
-const EMPTY_FILTERS = { type: "all", name: "" };
-
-const TONES = {
-  number: s.toneNumber,
-  quality: s.toneQuality,
-  ops: s.toneOps,
-  attitude: s.toneAttitude,
-  sales: s.toneSales,
-};
-
-const TypeTag = ({ type }) =>
-  type ? <span className={`${s.typeTag} ${TONES[type.tone]}`}>{type.label}</span> : <span className={s.muted}>—</span>;
-
-export const IndicadoresPage = () => {
-  const toast = useToast();
-
-  // Resumen (tarjetas)
-  const [stats, setStats] = useState(null);
-
-  // Filtros: "draft" es lo que se escribe, "applied" lo que se buscó (null = aún no se busca)
-  const [draft, setDraft] = useState(EMPTY_FILTERS);
-  const [applied, setApplied] = useState(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  // Listado
-  const [rows, setRows] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const requestRef = useRef(0);
-
-  // Acciones
-  const [modal, setModal] = useState({ open: false, id: null });
-  const [toggling, setToggling] = useState(() => new Set());
-  const [toDelete, setToDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-
-  /* ---------- Resumen ---------- */
-  const loadStats = useCallback(async () => {
-    try {
-      const all = (await indicatorsService.list()).map(mapIndicator);
-      const active = all.filter((x) => x.active).length;
-      const templates = new Set(all.map((x) => x.templateId).filter((v) => v != null));
-      setStats({ total: all.length, active, inactive: all.length - active, templates: templates.size });
-    } catch {
-      setStats(null);
-    }
-  }, []);
-
-  useEffect(() => { loadStats(); }, [loadStats]);
-
-  /* ---------- Listado (solo después de buscar) ---------- */
-  const load = useCallback(async () => {
-    if (!applied) return;
-    const id = ++requestRef.current;
-    setLoading(true);
-    setError("");
-    try {
-      const { items, total: count } = await indicatorsService.filter({
-        name: applied.name || null,
-        type: applied.type === "all" ? null : Number(applied.type),
-        status: null,
-        templateId: null,
-        period: null,
-        pageNumber: page,
-        pageSize,
-      });
-      if (id !== requestRef.current) return;
-      setRows(items.map(mapIndicator));
-      setTotal(count);
-    } catch (err) {
-      if (id !== requestRef.current) return;
-      setError(err.noAccess
-        ? "No tienes permiso para ver los indicadores."
-        : "No se pudieron cargar los indicadores. Intenta de nuevo.");
-    } finally {
-      if (id === requestRef.current) setLoading(false);
-    }
-  }, [applied, page, pageSize]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const search = (e) => {
-    e.preventDefault();
-    setApplied({ type: draft.type, name: draft.name.trim() });
-    setPage(1);
-  };
-
-  const clear = () => {
-    requestRef.current++; // descarta respuestas pendientes
-    setDraft(EMPTY_FILTERS);
-    setApplied(null);
-    setRows([]);
-    setTotal(0);
-    setError("");
-    setLoading(false);
-    setPage(1);
-  };
-
-  /* ---------- Estatus ---------- */
-  const toggleStatus = async (row) => {
-    setToggling((set) => new Set(set).add(row.id));
-    try {
-      if (row.active) await indicatorsService.deactivate(row.id);
-      else await indicatorsService.activate(row.id);
-      setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, active: !r.active } : r)));
-      toast.success(
-        row.active ? "Indicador inactivado" : "Indicador activado",
-        row.active ? "Ya no estará disponible para asignación ni coaching." : "Ya está disponible para asignación y coaching."
-      );
-      loadStats();
-    } catch (err) {
-      toast.error(
-        "No se pudo cambiar el estatus",
-        err.noAccess ? "No tienes permiso para esta acción." : err.response?.data?.message ?? "Intenta de nuevo."
-      );
-    } finally {
-      setToggling((set) => { const n = new Set(set); n.delete(row.id); return n; });
-    }
-  };
-
-  /* ---------- Eliminar ---------- */
-  const confirmDelete = async () => {
-    setDeleting(true);
-    setDeleteError("");
-    try {
-      await indicatorsService.remove(toDelete.id);
-      toast.success("Indicador eliminado", toDelete.name);
-      setToDelete(null);
-      loadStats();
-      if (rows.length === 1 && page > 1) setPage((p) => p - 1);
-      else load();
-    } catch (err) {
-      setDeleteError(err.noAccess
-        ? "No tienes permiso para eliminar indicadores."
-        : err.response?.data?.message ?? "No se pudo eliminar el indicador. Intenta de nuevo.");
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  /* ---------- Modal ---------- */
-  const handleSaved = () => {
-    setModal({ open: false, id: null });
-    loadStats();
-    // Regresa al listado: si aún no se había buscado, muestra todos
-    if (!applied) { setApplied({ ...EMPTY_FILTERS }); setPage(1); }
-    else load();
-  };
-
-  const statCards = [
-    { label: "Total", value: stats?.total },
-    { label: "Activos", value: stats?.active, tone: s.statGreen },
-    { label: "Inactivos", value: stats?.inactive, tone: s.statGrey },
-    { label: "Plantillas usadas", value: stats?.templates, tone: s.statYellow },
-  ];
-
-  /* ---------- Render ---------- */
-  return (
-    <>
-      <header className={styles.pageHeader}>
-        <div>
-          <span className={styles.eyebrow}>Mantenimiento</span>
-          <h1 className={styles.title}>Mantenimiento de indicadores</h1>
-          <p className={styles.subtitle}>Indicadores construidos a partir de las plantillas.</p>
-        </div>
-        <div className={styles.actions}>
-          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setModal({ open: true, id: null })}>
-            <Plus size={18} /> Crear indicador
-          </button>
-        </div>
-      </header>
-
-      {/* ---------- Resumen ---------- */}
-      <div className={s.stats}>
-        {statCards.map((c) => (
-          <div key={c.label} className={`${s.stat} ${c.tone ?? ""}`}>
-            <span className={s.statLabel}>{c.label}</span>
-            <strong className={s.statValue}>{c.value ?? "—"}</strong>
-          </div>
-        ))}
-      </div>
-
-      {/* ---------- Filtros ---------- */}
-      <form className={s.filters} onSubmit={search}>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="f-type">Tipo</label>
-          <select id="f-type" className={styles.select} value={draft.type}
-            onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value }))}>
-            <option value="all">Todos</option>
-            {INDICATOR_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-        </div>
-
-        <div className={`${styles.field} ${s.filterName}`}>
-          <label className={styles.label} htmlFor="f-name">Nombre del indicador</label>
-          <div className={s.searchField}>
-            <Search size={16} />
-            <input id="f-name" className={styles.input} placeholder="Buscar..." value={draft.name}
-              onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} autoComplete="off" />
-          </div>
-        </div>
-
-        <div className={s.filterActions}>
-          <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`}>
-            <Search size={16} /> Buscar
-          </button>
-          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={clear}
-            disabled={!applied && draft.type === "all" && !draft.name}>
-            <Eraser size={16} /> Limpiar
-          </button>
-        </div>
-      </form>
-
-      {error && (
-        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
-          <AlertCircle size={18} />
-          <p>
-            {error}{" "}
-            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={load}>Reintentar</button>
-          </p>
-        </div>
-      )}
-
-      {/* ---------- Tabla ---------- */}
-      <div className={s.tableCard}>
-        <table className={s.table}>
-          <thead>
-            <tr>
-              <th className={s.colStatus}>Estatus</th>
-              <th>Indicador</th>
-              <th className={s.colType}>Tipo</th>
-              <th className={s.colDate}>Última modif.</th>
-              <th className={s.colActions}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!applied ? (
-              <tr>
-                <td colSpan={5} className={s.emptyCell}>
-                  <div className={s.empty}>
-                    <span className={s.emptyIcon}><ListFilter size={24} /></span>
-                    <h3>Aplica un filtro para ver los indicadores</h3>
-                    <p>Elige un tipo o escribe el nombre del indicador y presiona <strong>Buscar</strong>.</p>
-                  </div>
-                </td>
-              </tr>
-            ) : loading && rows.length === 0 ? (
-              Array.from({ length: 4 }, (_, i) => (
-                <tr key={i} aria-hidden="true">
-                  <td><span className={s.skel} style={{ width: 80 }} /></td>
-                  <td><span className={s.skel} style={{ width: `${80 - i * 8}%` }} /></td>
-                  <td><span className={s.skel} style={{ width: 70 }} /></td>
-                  <td><span className={s.skel} style={{ width: 76 }} /></td>
-                  <td><span className={s.skel} style={{ width: 56 }} /></td>
-                </tr>
-              ))
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className={s.emptyCell}>
-                  {!error && (
-                    <div className={s.empty}>
-                      <span className={`${s.emptyIcon} ${s.emptyIconGrey}`}><SearchX size={24} /></span>
-                      <h3>No se encontraron indicadores</h3>
-                      <p>Prueba con otro tipo o nombre.</p>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id} className={`${!row.active ? s.rowInactive : ""} ${loading ? s.rowLoading : ""}`}>
-                  <td className={s.cellStatus}>
-                    <StatusSwitch
-                      checked={row.active}
-                      disabled={toggling.has(row.id)}
-                      onChange={() => toggleStatus(row)}
-                      ariaLabel={`Estatus de ${row.code}`}
-                    />
-                  </td>
-                  <td className={s.cellName}>
-                    <p className={s.name}>{row.name}</p>
-                    <span className={s.code}>{row.code}</span>
-                  </td>
-                  <td className={s.cellType}><TypeTag type={row.type} /></td>
-                  <td className={s.cellDate}>{formatDate(row.updatedAt)}</td>
-                  <td className={s.cellActions}>
-                    <div className={s.actionBtns}>
-                      <button
-                        type="button"
-                        className={s.actBtn}
-                        disabled={!row.editable}
-                        title={row.editable ? "Editar" : "No se puede editar por reglas de negocio"}
-                        aria-label={`Editar ${row.code}`}
-                        onClick={() => setModal({ open: true, id: row.id })}
-                      >
-                        {row.editable ? <Pencil size={16} /> : <Lock size={16} />}
-                      </button>
-                      <button
-                        type="button"
-                        className={`${s.actBtn} ${s.actBtnDanger}`}
-                        title="Eliminar"
-                        aria-label={`Eliminar ${row.code}`}
-                        onClick={() => { setDeleteError(""); setToDelete(row); }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-
-        {applied && (
-          <Pagination
-            page={page}
-            pageSize={pageSize}
-            total={total}
-            onPageChange={setPage}
-            onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
-          />
-        )}
-      </div>
-
-      <IndicatorFormModal
-        open={modal.open}
-        indicatorId={modal.id}
-        onClose={() => setModal({ open: false, id: null })}
-        onSaved={handleSaved}
-      />
-
-      <ConfirmDialog
-        open={Boolean(toDelete)}
-        danger
-        title="Eliminar indicador"
-        message="Esta acción eliminará un indicador ¿Desea continuar?"
-        detail={toDelete && (
-          <div className={s.deleteDetail}>
-            <span className={s.code}>{toDelete.code}</span>
-            <p>{toDelete.name}</p>
-          </div>
-        )}
-        confirmText={deleting ? "Eliminando..." : "Sí"}
-        cancelText="No"
-        loading={deleting}
-        error={deleteError}
-        onConfirm={confirmDelete}
-        onCancel={() => setToDelete(null)}
-      />
-    </>
-  );
-};
-
-
-
-
-
-
-
 
 
 import { useEffect, useState } from "react";
@@ -727,33 +446,10 @@ import { useCatalogs } from "../../../hooks/useCatalogs";
 import { useDebounce } from "../../../hooks/useDebounce";
 import { coachService } from "../../../api/coachService";
 import { indicatorsService } from "../../../api/indicatorsService";
+import { usePeriods, periodDates, periodLabel, periodName } from "../../../hooks/usePeriods";
 
 
 const STEPS = ["Seleccionar equipo", "Seleccionar indicadores", "Definir vigencia", "Confirmar y enviar"];
-
-// Mock data - En una aplicación real esto vendría de una API
-const MOCK_TEAMS = {
-    "Agencia Centro": { leader: "Ana Rodríguez", location: "Matriz" },
-    "Agencia Norte": { leader: "Carlos Mendez", location: "Oficina" },
-    "Agencia Sur": { leader: "María López", location: "Centro" },
-};
-
-const MOCK_COLLABORATORS = [
-    { id: 1, code: "COL0001", name: "Jorge Flores", position: "Gerente", area: "Comercial", team: "Agencia Centro", location: "Matriz", status: "Activo", activeIndicators: 2 },
-    { id: 2, code: "COL0002", name: "Patricia Reyes", position: "Analista", area: "Operaciones", team: "Agencia Norte", location: "Oficina", status: "Activo", activeIndicators: 0 },
-    { id: 3, code: "COL0003", name: "Miguel Torres", position: "Especialista", area: "Riesgos", team: "Agencia Sur", location: "Matriz", status: "Activo", activeIndicators: 1 },
-    { id: 4, code: "COL0004", name: "Diana Cruz", position: "Coordinador", area: "Comercial", team: "Agencia Centro", location: "Centro", status: "Activo", activeIndicators: 3 },
-    { id: 5, code: "COL0005", name: "Roberto Silva", position: "Cajero", area: "Operaciones", team: "Agencia Norte", location: "Matriz", status: "Activo", activeIndicators: 2 },
-];
-
-// const MOCK_INDICATORS = [
-//     { id: 1, name: "Cumplimiento de metas", type: "Numérico", unit: "%", status: "Activo" },
-//     { id: 2, name: "Calidad de trabajo", type: "Cualitativo", unit: "puntos", status: "Activo" },
-//     { id: 3, name: "Puntualidad", type: "Operativo", unit: "%", status: "Activo" },
-//     { id: 4, name: "Eficiencia operativa", type: "Numérico", unit: "%", status: "Activo" },
-//     { id: 5, name: "Satisfacción del cliente", type: "Cualitativo", unit: "puntos", status: "Activo" },
-// ];
-
 const EMPTY_FILTERS = { area: "", team: "", position: "", search: "" };
 
 
@@ -765,6 +461,7 @@ const formatDate = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
 export const AssignmentCoachingPage = () => {
     const catalogs = useCatalogs();
     const toast = useToast();
+    const { activePeriods, findById } = usePeriods();
     const [currentStep, setCurrentStep] = useState(1);
 
     // Step 1: Seleccionar equipo
@@ -782,6 +479,7 @@ export const AssignmentCoachingPage = () => {
     const [indicatorWeights, setIndicatorWeights] = useState({});
 
     // Step 3: Definir vigencia y metas
+    const [periodId, setPeriodId] = useState("");
     const [vigencyStartDate, setVigencyStartDate] = useState("");
     const [vigencyEndDate, setVigencyEndDate] = useState("");
     const [teams, setTeams] = useState([]);
@@ -907,6 +605,15 @@ export const AssignmentCoachingPage = () => {
     };
 
     // Paso 3
+    // Al elegir un período, la vigencia toma sus fechas (se pueden ajustar dentro del período)
+    const selectedPeriod = findById(periodId);
+    const handlePeriodChange = (id) => {
+        setPeriodId(id);
+        const { start, end } = periodDates(findById(id));
+        setVigencyStartDate(start);
+        setVigencyEndDate(end);
+    };
+
     const handleMetaChange = (indicatorId, field, value) => {
         setIndicatorsMeta({
             ...indicatorsMeta,
@@ -915,8 +622,21 @@ export const AssignmentCoachingPage = () => {
     };
 
     const handleContinueToApproval = () => {
+        if (!periodId) {
+            toast.error("Selecciona el período de la asignación");
+            return;
+        }
         if (!vigencyStartDate || !vigencyEndDate) {
             toast.error("Por favor ingresa las fechas de vigencia");
+            return;
+        }
+        if (vigencyEndDate < vigencyStartDate) {
+            toast.error("La fecha fin de vigencia no puede ser anterior a la fecha inicio");
+            return;
+        }
+        const { start, end } = periodDates(selectedPeriod);
+        if (vigencyStartDate < start || vigencyEndDate > end) {
+            toast.error(`La vigencia debe estar dentro del período ${periodLabel(selectedPeriod)}`);
             return;
         }
         if (selectedIndicators.some((ind) => !indicatorsMeta[ind.id]?.meta)) {
@@ -934,6 +654,7 @@ export const AssignmentCoachingPage = () => {
         setSelectedCollaborators([]);
         setSelectedIndicators([]);
         setIndicatorWeights({});
+        setPeriodId("");
         setVigencyStartDate("");
         setVigencyEndDate("");
         setIndicatorsMeta({});
@@ -943,8 +664,9 @@ export const AssignmentCoachingPage = () => {
     };
 
     const handleConfirmAndSend = async () => {
-        const validFrom = new Date(vigencyStartDate).toISOString();
-        const validTo = new Date(vigencyEndDate).toISOString();
+        // Fechas sin hora ("yyyy-mm-dd"): así no hay desfase de zona horaria
+        const validFrom = vigencyStartDate;
+        const validTo = vigencyEndDate;
         const indicatorsPayload = selectedIndicators.map((ind) => ({
             indicatorId: ind.id,
             weight: indicatorWeights[ind.id] ?? 0,
@@ -1322,14 +1044,26 @@ export const AssignmentCoachingPage = () => {
                                 <h2 className={base.cardTitle}>Periodo de vigencia y metas</h2>
                             </div>
                             <div className={base.cardBody}>
+                                <div className={base.field}>
+                                    <label className={base.label} htmlFor="as-period">Período *</label>
+                                    <select id="as-period" className={base.select} value={periodId} onChange={(e) => handlePeriodChange(e.target.value)}>
+                                        <option value="">{activePeriods.length === 0 ? "No hay períodos activos" : "Selecciona el período"}</option>
+                                        {activePeriods.map((p) => <option key={p.id} value={p.id}>{periodLabel(p)}</option>)}
+                                    </select>
+                                </div>
+
                                 <div className={ui.dateGrid}>
                                     <div className={base.field}>
                                         <label className={base.label} htmlFor="as-start">Fecha inicio vigencia *</label>
-                                        <input id="as-start" type="date" className={base.input} value={vigencyStartDate} onChange={(e) => setVigencyStartDate(e.target.value)} />
+                                        <input id="as-start" type="date" className={base.input} value={vigencyStartDate}
+                                            min={periodDates(selectedPeriod).start || undefined} max={periodDates(selectedPeriod).end || undefined}
+                                            disabled={!periodId} onChange={(e) => setVigencyStartDate(e.target.value)} />
                                     </div>
                                     <div className={base.field}>
                                         <label className={base.label} htmlFor="as-end">Fecha fin vigencia *</label>
-                                        <input id="as-end" type="date" className={base.input} value={vigencyEndDate} onChange={(e) => setVigencyEndDate(e.target.value)} />
+                                        <input id="as-end" type="date" className={base.input} value={vigencyEndDate}
+                                            min={vigencyStartDate || periodDates(selectedPeriod).start || undefined} max={periodDates(selectedPeriod).end || undefined}
+                                            disabled={!periodId} onChange={(e) => setVigencyEndDate(e.target.value)} />
                                     </div>
                                 </div>
 
@@ -1414,7 +1148,9 @@ export const AssignmentCoachingPage = () => {
                                     </div>
                                     <div>
                                         <span className={base.statLabel}>Periodo de vigencia</span>
-                                        <div className={base.statBox}>{formatDate(vigencyStartDate)} — {formatDate(vigencyEndDate)}</div>
+                                        <div className={base.statBox}>
+                                            {periodName(selectedPeriod)} · {formatDate(vigencyStartDate)} — {formatDate(vigencyEndDate)}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1484,1411 +1220,6 @@ export const AssignmentCoachingPage = () => {
     );
 };
 
-
-
-
-
-import { useEffect, useState } from "react";
-import { ChevronRight, ChevronLeft, Check, Info, Clock, AlertCircle, Search } from "lucide-react";
-import styles from "../../Pages.module.css";
-import base from "./CollaboratorCoachingPage.module.css";
-import ui from "./AssignmentCoachingPage.module.css";
-import { Modal } from "../../../shared/components/Modal";
-import { useToast } from "../../../shared/components";
-import { useCatalogs } from "../../../hooks/useCatalogs";
-import { useDebounce } from "../../../hooks/useDebounce";
-import { coachService } from "../../../api/coachService";
-import { indicatorsService } from "../../../api/indicatorsService";
-
-
-const STEPS = ["Seleccionar equipo", "Seleccionar indicadores", "Definir vigencia", "Confirmar y enviar"];
-const EMPTY_FILTERS = { area: "", team: "", position: "", search: "" };
-
-
-
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const sameMember = (a, b) => a.id === b.id && a.teamId === b.teamId;
-const formatDate = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
-
-export const AssignmentCoachingPage = () => {
-    const catalogs = useCatalogs();
-    const toast = useToast();
-    const [currentStep, setCurrentStep] = useState(1);
-
-    // Step 1: Seleccionar equipo
-    const [filters, setFilters] = useState(EMPTY_FILTERS);
-    const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS);
-    const [selectedCollaborators, setSelectedCollaborators] = useState([]);
-    const [filteredCollaborators, setfilteredCollaborators] = useState([]);
-    const [filteredIndicators, setfilteredIndicators] = useState([]);
-
-
-
-    // Step 2: Seleccionar indicadores
-    const [indicatorSearch, setIndicatorSearch] = useState("");
-    const [selectedIndicators, setSelectedIndicators] = useState([]);
-    const [indicatorWeights, setIndicatorWeights] = useState({});
-
-    // Step 3: Definir vigencia y metas
-    const [vigencyStartDate, setVigencyStartDate] = useState("");
-    const [vigencyEndDate, setVigencyEndDate] = useState("");
-    const [teams, setTeams] = useState([]);
-
-    const [indicatorsMeta, setIndicatorsMeta] = useState({});
-
-    // Step 4: Summary
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
-
-
-    // Recarga los colaboradores al aplicar filtros y descarta de la selección los que ya no aparecen
-    useEffect(() => {
-        let cancelled = false;
-        coachService.loggedUserTeamsMembers(appliedFilters)
-            .then((members) => {
-                if (cancelled) return;
-                setfilteredCollaborators(members);
-                setSelectedCollaborators((prev) => prev.filter((s) => members.some((m) => sameMember(m, s))));
-            })
-            .catch((error) => {
-                if (!cancelled) toast.error(error.noAccess ? "No tienes permiso para consultar tus equipos." : "No se pudieron cargar los colaboradores.");
-            });
-        return () => { cancelled = true; };
-    }, [appliedFilters]);
-
-    // Solo indicadores activos con su unidad de medida; la búsqueda por nombre se resuelve en el backend
-    const debouncedIndicatorSearch = useDebounce(indicatorSearch, 400);
-    useEffect(() => {
-        let cancelled = false;
-        indicatorsService.assignable(debouncedIndicatorSearch)
-            .then((indicators) => { if (!cancelled) setfilteredIndicators(indicators); })
-            .catch(() => { if (!cancelled) toast.error("No se pudieron cargar los indicadores."); });
-        return () => { cancelled = true; };
-    }, [debouncedIndicatorSearch]);
-
-    useEffect(() => {
-        coachService.loggedUserTeams().then(setTeams).catch(() => toast.error("No se pudieron cargar los equipos."));
-    }, []);
-
-    const groupedByTeam = Object.values(
-        filteredCollaborators.reduce((groups, c) => {
-            (groups[c.teamId] ||= { teamId: c.teamId, teamName: c.teamName, members: [] }).members.push(c);
-            return groups;
-        }, {})
-    );
-
-    const getTeamSelectedCount = (teamId) => selectedCollaborators.filter((c) => c.teamId === teamId).length;
-    const isCollaboratorSelected = (collaborator) => selectedCollaborators.some((c) => sameMember(c, collaborator));
-
-    const totalWeight = Object.values(indicatorWeights).reduce((sum, w) => sum + (parseInt(w) || 0), 0);
-    const isWeightValid = totalWeight === 100 && selectedIndicators.length > 0;
-
-    // const filteredIndicators = filterIndicators.filter((ind) =>
-    //     ind.name.toLowerCase().includes(indicatorSearch.trim().toLowerCase())
-    // );
-
-    // Paso 1
-    const handleSearch = () => setAppliedFilters(filters);
-
-    const handleClearFilters = () => {
-        setFilters(EMPTY_FILTERS);
-        setAppliedFilters(EMPTY_FILTERS);
-        setSelectedCollaborators([]);
-    };
-
-    const handleSelectCollaborator = (collaborator) => {
-        setSelectedCollaborators((prev) =>
-            prev.some((c) => sameMember(c, collaborator)) ? prev.filter((c) => !sameMember(c, collaborator)) : [...prev, collaborator]
-        );
-    };
-
-    const handleSelectTeamCollaborators = (teamId) => {
-        const teamCollaborators = filteredCollaborators.filter((c) => c.teamId === teamId);
-        const allSelected = teamCollaborators.length > 0 && getTeamSelectedCount(teamId) === teamCollaborators.length;
-
-        if (allSelected) {
-            setSelectedCollaborators(selectedCollaborators.filter((c) => c.teamId !== teamId));
-        } else {
-            const next = [...selectedCollaborators];
-            teamCollaborators.forEach((c) => {
-                if (!next.some((s) => sameMember(s, c))) next.push(c);
-            });
-            setSelectedCollaborators(next);
-        }
-    };
-
-    const handleContinueToIndicators = () => {
-        if (selectedCollaborators.length === 0) {
-            toast.error("Por favor selecciona al menos un colaborador");
-            return;
-        }
-        setCurrentStep(2);
-    };
-
-    // Paso 2
-    const handleToggleIndicator = (indicatorId) => {
-        if (selectedIndicators.some((i) => i.id === indicatorId)) {
-            setSelectedIndicators(selectedIndicators.filter((i) => i.id !== indicatorId));
-            const { [indicatorId]: _removed, ...rest } = indicatorWeights;
-            setIndicatorWeights(rest);
-        } else {
-            setSelectedIndicators([...selectedIndicators, filteredIndicators.find((i) => i.id === indicatorId)]);
-        }
-    };
-
-    const handleWeightChange = (indicatorId, value) => {
-        const weight = parseInt(value) || 0;
-        if (weight >= 0 && weight <= 100) {
-            setIndicatorWeights({ ...indicatorWeights, [indicatorId]: weight });
-        }
-    };
-
-    const handleContinueToVigency = () => {
-        if (selectedIndicators.length === 0) {
-            toast.error("Por favor selecciona al menos un indicador");
-            return;
-        }
-        if (!isWeightValid) {
-            toast.error("La suma de los pesos debe ser exactamente 100%");
-            return;
-        }
-        setCurrentStep(3);
-    };
-
-    // Paso 3
-    const handleMetaChange = (indicatorId, field, value) => {
-        setIndicatorsMeta({
-            ...indicatorsMeta,
-            [indicatorId]: { ...indicatorsMeta[indicatorId], [field]: value },
-        });
-    };
-
-    const handleContinueToApproval = () => {
-        if (!vigencyStartDate || !vigencyEndDate) {
-            toast.error("Por favor ingresa las fechas de vigencia");
-            return;
-        }
-        if (selectedIndicators.some((ind) => !indicatorsMeta[ind.id]?.meta)) {
-            toast.error("Por favor completa la meta de todos los indicadores");
-            return;
-        }
-
-
-        setCurrentStep(4);
-    };
-
-    // Paso 4
-    const handleResetFlow = () => {
-        setCurrentStep(1);
-        setSelectedCollaborators([]);
-        setSelectedIndicators([]);
-        setIndicatorWeights({});
-        setVigencyStartDate("");
-        setVigencyEndDate("");
-        setIndicatorsMeta({});
-        setIndicatorSearch("");
-        setFilters(EMPTY_FILTERS);
-        setAppliedFilters(EMPTY_FILTERS);
-    };
-
-    const handleConfirmAndSend = async () => {
-        const validFrom = new Date(vigencyStartDate).toISOString();
-        const validTo = new Date(vigencyEndDate).toISOString();
-        const indicatorsPayload = selectedIndicators.map((ind) => ({
-            indicatorId: ind.id,
-            weight: indicatorWeights[ind.id] ?? 0,
-            targetValue: Number(indicatorsMeta[ind.id]?.meta) || 0,
-            targetUnitId: ind.targetUnitId ?? null,
-            validFrom,
-            validTo,
-        }));
-
-        // Agrupa los colaboradores seleccionados por equipo, como lo exige el backend
-        const teamsPayload = Object.values(
-            selectedCollaborators.reduce((acc, c) => {
-                (acc[c.teamId] ??= { teamId: c.teamId, members: [] }).members.push({ memberUserId: c.id, indicators: indicatorsPayload });
-                return acc;
-            }, {})
-        );
-
-        try {
-            await coachService.createAssignments(teamsPayload);
-            setShowConfirmModal(false);
-            toast.success("Solicitud enviada - indicadores en estado Pendiente de aceptación");
-            handleResetFlow();
-        } catch (error) {
-            toast.error(
-                error.noAccess
-                    ? "No tienes permiso para asignar indicadores."
-                    : error.response?.data?.message ?? "No se pudo enviar la solicitud. Intenta de nuevo."
-            );
-        }
-    };
-
-    const handleBack = () => setCurrentStep((s) => Math.max(1, s - 1));
-
-    const onRowKey = (e, fn) => {
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            fn();
-        }
-    };
-
-    return (
-        <>
-            <header className={styles.pageHeader}>
-                <div>
-                    <h1 className={styles.title}>Asignación de indicadores</h1>
-                    <p className={styles.subtitle}>
-                        Asigna indicadores a colaboradores y solicita su aceptación para habilitarlos en el proceso de coaching.
-                    </p>
-                </div>
-            </header>
-
-            <div className={base.page}>
-                {/* Stepper */}
-                <nav className={base.stepper} aria-label="Progreso de la asignación">
-                    {STEPS.map((label, i) => {
-                        const step = i + 1;
-                        const state = step < currentStep ? "done" : step === currentStep ? "current" : "";
-                        return (
-                            <div key={label} style={{ display: "contents" }}>
-                                <div className={`${base.step} ${state ? base[state] : ""}`} aria-current={step === currentStep ? "step" : undefined}>
-                                    <span className={base.stepCircle}>{step}</span>
-                                    <span className={base.stepLabel}>{label}</span>
-                                </div>
-                                {step < STEPS.length && <span className={`${base.stepLine} ${step < currentStep ? base.done : ""}`} />}
-                            </div>
-                        );
-                    })}
-                </nav>
-
-                {/* PASO 1 */}
-                {currentStep === 1 && (
-                    <>
-                        <div className={base.infoBanner}>
-                            <Info size={16} />
-                            <span>
-                                Selecciona el equipo de trabajo al que deseas asignar indicadores. Solo se muestran los equipos que tienes asignados como coach. Los miembros del equipo aparecerán para selección individual.
-                            </span>
-                        </div>
-
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Filtrar equipo</h2>
-                            </div>
-                            <div className={base.cardBody}>
-                                <form
-                                    onSubmit={(e) => {
-                                        e.preventDefault();
-                                        handleSearch();
-                                    }}
-                                >
-                                    <div className={ui.filterGrid}>
-                                        <div className={base.field}>
-                                            <label className={base.label} htmlFor="as-area">Área</label>
-                                            <select id="as-area" className={base.select} value={filters.area} onChange={(e) => setFilters({ ...filters, area: e.target.value })}>
-                                                <option value="">Todas las áreas</option>
-                                                {catalogs.areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className={base.field}>
-                                            <label className={base.label} htmlFor="as-team">Equipo</label>
-                                            <select id="as-team" className={base.select} value={filters.team} onChange={(e) => setFilters({ ...filters, team: e.target.value })}>
-                                                <option value="">Todos mis equipos</option>
-                                                {/* {Object.keys(MOCK_TEAMS).map((t) => <option key={t} value={t}>{t}</option>)} */}
-                                                {teams.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-
-                                            </select>
-                                        </div>
-                                        <div className={base.field}>
-                                            <label className={base.label} htmlFor="as-position">Perfil de puesto</label>
-                                            <select id="as-position" className={base.select} value={filters.position} onChange={(e) => setFilters({ ...filters, position: e.target.value })}>
-                                                <option value="">Todos los perfiles</option>
-                                                {/* {MOCK_POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)} */}
-                                                {catalogs.positions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className={`${base.field} ${ui.searchRow}`}>
-                                        <label className={base.label} htmlFor="as-search">Buscar</label>
-                                        <div className={base.inputIcon}>
-                                            <Search size={16} />
-                                            <input
-                                                id="as-search"
-                                                type="text"
-                                                className={base.input}
-                                                placeholder="Código o nombre del colaborador..."
-                                                value={filters.search}
-                                                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className={base.searchActions}>
-                                        <button type="submit" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`}>Buscar</button>
-                                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleClearFilters}>Limpiar</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </section>
-
-                        <span className={ui.selectionInfo}>
-                            {selectedCollaborators.length} de {plural(filteredCollaborators.length, "colaborador", "colaboradores")} {selectedCollaborators.length === 1 ? "seleccionado" : "seleccionados"}
-                        </span>
-
-                        {filteredCollaborators.length > 0 ? (
-                            <div className={ui.groups}>
-                                {groupedByTeam.map((team) => {
-                                    const members = team.members;
-                                    const selectedCount = getTeamSelectedCount(team.teamId);
-                                    const allSelected = selectedCount === members.length;
-
-                                    return (
-                                        <section key={team.teamId} className={ui.group}>
-                                            <div className={ui.groupHeader}>
-                                                <div>
-                                                    <div className={ui.groupName}>{team.teamName}</div>
-                                                    <div className={ui.groupMeta}>
-                                                        {plural(members.length, "miembro activo", "miembros activos")}
-                                                    </div>
-                                                </div>
-                                                <div className={ui.groupRight}>
-                                                    <label className={ui.selectAll} htmlFor={`selectTeam-${team.teamId}`}>
-                                                        <input
-                                                            id={`selectTeam-${team.teamId}`}
-                                                            type="checkbox"
-                                                            className={ui.checkbox}
-                                                            checked={allSelected}
-                                                            onChange={() => handleSelectTeamCollaborators(team.teamId)}
-                                                        />
-                                                        Seleccionar todos
-                                                    </label>
-                                                    <span className={ui.groupCounter}>{plural(selectedCount, "seleccionado", "seleccionados")}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className={base.tableScroll}>
-                                                <table className={base.table}>
-                                                    <thead>
-                                                        <tr>
-                                                            <th className={ui.checkCell} />
-                                                            <th>Código</th>
-                                                            <th>Nombre</th>
-                                                            <th>Puesto</th>
-                                                            <th>Área</th>
-                                                            <th>Ubicación</th>
-                                                            <th>Estado</th>
-                                                            <th>Indicadores activos</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {members.map((c) => {
-                                                            const selected = isCollaboratorSelected(c);
-                                                            return (
-                                                                <tr
-                                                                    key={`${c.teamId}-${c.id}`}
-                                                                    className={selected ? base.selected : ""}
-                                                                    onClick={() => handleSelectCollaborator(c)}
-                                                                    onKeyDown={(e) => onRowKey(e, () => handleSelectCollaborator(c))}
-                                                                    tabIndex={0}
-                                                                    aria-selected={selected}
-                                                                >
-                                                                    <td className={ui.checkCell}>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            className={ui.checkbox}
-                                                                            checked={selected}
-                                                                            onChange={() => handleSelectCollaborator(c)}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            aria-label={`Seleccionar a ${c.fullName}`}
-                                                                        />
-                                                                    </td>
-                                                                    <td className={base.code}>{c.employeeId || '-----'}</td>
-                                                                    <td className={base.name}>{c.fullName}</td>
-                                                                    <td>{c.companyPosition}</td>
-                                                                    <td><span className={base.chip}>{c.companyArea}</span></td>
-                                                                    <td className={base.muted}>{c.companyLocation}</td>
-                                                                    <td><span className={base.statusActive}>{c.status}</span></td>
-                                                                    <td className={base.muted}>
-                                                                        {c.totalIndicators === 0 ? "Sin indicadores" : plural(c.totalIndicators, "indicador", "indicadores")}
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </section>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div className={base.emptyState}>No se encontraron colaboradores con los filtros aplicados</div>
-                        )}
-
-                        <div className={base.actions}>
-                            <button
-                                type="button"
-                                className={`${base.btn} ${base.btnPrimary}`}
-                                onClick={handleContinueToIndicators}
-                                disabled={selectedCollaborators.length === 0}
-                            >
-                                Siguiente — Seleccionar indicadores <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 2 */}
-                {currentStep === 2 && (
-                    <>
-                        <div className={base.infoBanner}>
-                            <Info size={16} />
-                            <span>
-                                Solo se muestran indicadores activos configurados para el perfil de puesto de los colaboradores seleccionados. Define el peso (%) de cada indicador — la suma debe ser exactamente 100%.
-                            </span>
-                        </div>
-
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Indicadores disponibles</h2>
-                                <span className={ui.indicatorsHint}>
-                                    Filtrados para {plural(selectedCollaborators.length, "colaborador seleccionado", "colaboradores seleccionados")}
-                                    {appliedFilters.area && <> · Área: <strong>{catalogs.areas.find((a) => String(a.value) === String(appliedFilters.area))?.label}</strong></>}
-                                    {appliedFilters.team && <> · Equipo: <strong>{teams.find((t) => String(t.id) === String(appliedFilters.team))?.name}</strong></>}
-                                    {appliedFilters.position && <> · Perfil: <strong>{catalogs.positions.find((p) => String(p.value) === String(appliedFilters.position))?.label}</strong></>}
-                                </span>
-                            </div>
-                            <div className={base.cardBody}>
-                                <div className={base.inputIcon}>
-                                    <Search size={16} />
-                                    <input
-                                        type="text"
-                                        className={base.input}
-                                        placeholder="Buscar indicador..."
-                                        value={indicatorSearch}
-                                        onChange={(e) => setIndicatorSearch(e.target.value)}
-                                    />
-                                </div>
-
-                                <div className={ui.indicatorsHead}>
-                                    <span />
-                                    <span>Indicador</span>
-                                    <span className={ui.colCenter}>Tipo de valor</span>
-                                    <span className={ui.colCenter}>Peso (%)</span>
-                                </div>
-
-                                <div className={ui.indicatorsList}>
-                                    {filteredIndicators.map((ind) => {
-                                        const isSelected = selectedIndicators.some((i) => i.id === ind.id);
-                                        return (
-                                            <div
-                                                key={ind.id}
-                                                className={`${ui.indicatorRow} ${isSelected ? ui.selected : ""}`}
-                                                onClick={() => handleToggleIndicator(ind.id)}
-                                                onKeyDown={(e) => onRowKey(e, () => handleToggleIndicator(ind.id))}
-                                                tabIndex={0}
-                                                role="checkbox"
-                                                aria-checked={isSelected}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    className={ui.checkbox}
-                                                    checked={isSelected}
-                                                    onChange={() => handleToggleIndicator(ind.id)}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    tabIndex={-1}
-                                                    aria-label={`Seleccionar ${ind.name}`}
-                                                />
-                                                <div>
-                                                    <div className={ui.indicatorRowName}>{ind.name}</div>
-                                                    {/* <div className={ui.indicatorRowSub}>Familia: Atención al cliente</div> */}
-                                                </div>
-                                                <div className={ui.typeCell}>
-                                                    <span className={ui.valueTypePill}>{ind.typeName}</span>
-                                                </div>
-                                                <div className={`${ui.weightField} ${isSelected ? "" : ui.disabled}`} onClick={(e) => e.stopPropagation()}>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        max="100"
-                                                        value={isSelected ? indicatorWeights[ind.id] ?? 0 : 0}
-                                                        // value={ind.weight}
-                                                        disabled={!isSelected}
-                                                        onChange={(e) => handleWeightChange(ind.id, e.target.value)}
-                                                        aria-label={`Peso de ${ind.name}`}
-                                                    />
-                                                    <span>%</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <div className={ui.weightSummary}>
-                                    <div className={ui.weightBar}>
-                                        <div className={ui.weightTop}>
-                                            <span>Peso total asignado</span>
-                                            <strong>{totalWeight}%</strong>
-                                        </div>
-                                        <div className={ui.weightTrack}>
-                                            <div
-                                                className={`${ui.weightFill} ${isWeightValid ? "" : ui.incomplete}`}
-                                                style={{ width: `${Math.min(totalWeight, 100)}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <span className={`${ui.weightStatus} ${isWeightValid ? "" : ui.incomplete}`}>
-                                        {isWeightValid ? (
-                                            <><Check size={14} /> Completo</>
-                                        ) : (
-                                            <><AlertCircle size={14} /> {totalWeight > 100 ? `Sobran ${totalWeight - 100}%` : `Falta ${100 - totalWeight}%`}</>
-                                        )}
-                                    </span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <div className={`${base.actions} ${base.actionsSplit}`}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={handleContinueToVigency} disabled={!isWeightValid}>
-                                Siguiente — Definir vigencia <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 3 */}
-                {currentStep === 3 && (
-                    <>
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Periodo de vigencia y metas</h2>
-                            </div>
-                            <div className={base.cardBody}>
-                                <div className={ui.dateGrid}>
-                                    <div className={base.field}>
-                                        <label className={base.label} htmlFor="as-start">Fecha inicio vigencia *</label>
-                                        <input id="as-start" type="date" className={base.input} value={vigencyStartDate} onChange={(e) => setVigencyStartDate(e.target.value)} />
-                                    </div>
-                                    <div className={base.field}>
-                                        <label className={base.label} htmlFor="as-end">Fecha fin vigencia *</label>
-                                        <input id="as-end" type="date" className={base.input} value={vigencyEndDate} onChange={(e) => setVigencyEndDate(e.target.value)} />
-                                    </div>
-                                </div>
-
-                                <div className={ui.divider}>Meta por indicador seleccionado</div>
-
-                                <div className={ui.metaList}>
-                                    {selectedIndicators.map((ind) => {
-                                        const meta = indicatorsMeta[ind.id] || {};
-                                        return (
-                                            <div key={ind.id} className={ui.metaCard}>
-                                                <div className={ui.metaHead}>
-                                                    <h3 className={ui.metaName}>{ind.name}</h3>
-                                                    <div className={ui.metaHeadRight}>
-                                                        <span className={ui.valueTypePill}>{ind.typeName}</span>
-                                                        <span className={ui.metaWeight}>Peso: {indicatorWeights[ind.id]}%</span>
-                                                    </div>
-                                                </div>
-                                                <div className={ui.metaGrid}>
-                                                    <div className={base.field}>
-                                                        <label className={base.label} htmlFor={`as-meta-${ind.id}`}>Meta *</label>
-                                                        <input
-                                                            id={`as-meta-${ind.id}`}
-                                                            type="number"
-                                                            className={base.input}
-                                                            placeholder="Ej. 95"
-                                                            value={meta.meta || ""}
-                                                            onChange={(e) => handleMetaChange(ind.id, "meta", e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className={base.field}>
-                                                        <label className={base.label} htmlFor={`as-unit-${ind.id}`}>Unidad de medida</label>
-                                                        <input
-                                                            id={`as-unit-${ind.id}`}
-                                                            className={base.input}
-                                                            value={ind.targetUnitName ?? "Sin unidad"}
-                                                            disabled
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className={ui.metaHelp}>Valor numérico objetivo</div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </section>
-
-                        <div className={`${base.actions} ${base.actionsSplit}`}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={handleContinueToApproval}>
-                                Siguiente — Confirmar y enviar <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 4 */}
-                {currentStep === 4 && (
-                    <>
-                        <div className={ui.successBanner}>
-                            <Clock size={16} />
-                            <span>
-                                Revisa el resumen antes de confirmar. Al enviar, los indicadores pasarán a estado <strong>Pendiente de aceptación</strong> y los colaboradores recibirán una notificación.
-                            </span>
-                        </div>
-
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Resumen de asignación</h2>
-                            </div>
-                            <div className={base.cardBody}>
-                                <div className={base.statsGrid}>
-                                    <div>
-                                        <span className={base.statLabel}>Equipo</span>
-                                        <div className={base.statBox}>{Array.from(new Set(selectedCollaborators.map((c) => c.teamName))).join(", ")}</div>
-                                    </div>
-                                    <div>
-                                        <span className={base.statLabel}>Colaboradores seleccionados</span>
-                                        <div className={base.statBox}>{plural(selectedCollaborators.length, "usuario", "usuarios")}</div>
-                                    </div>
-                                    <div>
-                                        <span className={base.statLabel}>Periodo de vigencia</span>
-                                        <div className={base.statBox}>{formatDate(vigencyStartDate)} — {formatDate(vigencyEndDate)}</div>
-                                    </div>
-                                </div>
-
-                                <div className={ui.divider}>Indicadores y pesos confirmados</div>
-
-                                <div className={ui.reviewList}>
-                                    {selectedIndicators.map((ind) => (
-                                        <div key={ind.id} className={ui.reviewRow}>
-                                            <Check size={16} className={ui.reviewCheck} />
-                                            <div className={ui.reviewInfo}>
-                                                <div className={ui.reviewName}>{ind.name}</div>
-                                                <div className={ui.reviewSub}>
-                                                    {ind.typeName} · Meta: {indicatorsMeta[ind.id]?.meta || "-"} {ind.targetUnitName ?? ""}
-                                                </div>
-                                            </div>
-                                            <div className={ui.reviewRight}>
-                                                <span className={ui.reviewWeight}>{indicatorWeights[ind.id]}%</span>
-                                                <span className={ui.pendingPill}>Pendiente de aceptación</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className={ui.totalBox}>
-                                    <span>Peso total asignado</span>
-                                    <strong>{totalWeight}%</strong>
-                                    <Check size={18} />
-                                </div>
-                            </div>
-                        </section>
-
-                        <div className={`${base.actions} ${base.actionsSplit}`}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={() => setShowConfirmModal(true)}>
-                                <Check size={16} /> Confirmar y enviar solicitud
-                            </button>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            <Modal
-                open={showConfirmModal}
-                title="Confirmar asignación de indicadores"
-                onClose={() => setShowConfirmModal(false)}
-                footer={
-                    <div className={base.modalFooter}>
-                        <button type="button" className={`${base.btn} ${base.btnOutline}`} onClick={() => setShowConfirmModal(false)}>
-                            Cancelar
-                        </button>
-                        <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={handleConfirmAndSend}>
-                            Sí, enviar solicitud
-                        </button>
-                    </div>
-                }
-            >
-                <p className={base.modalText}>
-                    ¿Confirmas el envío de esta asignación de indicadores a {plural(selectedCollaborators.length, "colaborador", "colaboradores")}?
-                </p>
-                <p className={ui.modalNote}>
-                    Una vez enviados, los indicadores quedarán en estado <strong>Pendiente de aceptación</strong> y los colaboradores recibirán una notificación para que los acepten.
-                </p>
-            </Modal>
-        </>
-    );
-};
-
-
-
-
-
-
-
-
-
-
-
-
-import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, ChevronLeft, Plus, Check, Info, Search, Save, X, TriangleAlert } from "lucide-react";
-import styles from "../../Pages.module.css";
-import ui from "./CollaboratorCoachingPage.module.css";
-import { Modal } from "../../../shared/components/Modal";
-import { useToast } from "../../../shared/components";
-import { useDebounce } from "../../../hooks/useDebounce";
-import { coachService } from "../../../api/coachService";
-import { profileService } from "../../../api/profileService";
-
-const STEPS = ["Seleccionar colaborador", "Registrar indicadores", "Plan de acción", "Aprobar"];
-const MEASURE_TYPES = [
-    { value: 1, label: "Cumplimiento" },
-    { value: 2, label: "Comportamiento" },
-    { value: 3, label: "Conocimiento" },
-];
-
-const round2 = (n) => Number(n.toFixed(2));
-
-// Meta textual a partir de los límites que entrega el backend
-const goalLabel = (ind) => {
-    if (ind.minimumValue != null && ind.maximumValue != null) return `${ind.minimumValue} - ${ind.maximumValue}`;
-    return `${ind.targetValue ?? "—"}`;
-};
-
-const todayISO = () => new Date().toLocaleDateString("en-CA");
-
-const emptyAction = (commitDate = "") => ({ id: `${Date.now()}-${Math.random()}`, type: "", commitDate, opportunity: "", action: "" });
-
-const isActionBlank = (a) => !a.type && !a.opportunity.trim() && !a.action.trim();
-const isActionComplete = (a) => a.type && a.commitDate && a.opportunity.trim() && a.action.trim();
-
-export const CollaboratorCoachingPage = () => {
-    const toast = useToast();
-    const [currentStep, setCurrentStep] = useState(1);
-    const [filters, setFilters] = useState({ code: "", name: "" });
-    const [appliedFilters, setAppliedFilters] = useState({ code: "", name: "" });
-    const [collaborators, setCollaborators] = useState([]);
-    const [selectedCollaborator, setSelectedCollaborator] = useState(null);
-    const [indicators, setIndicators] = useState([]);
-    const [indicatorValues, setIndicatorValues] = useState({});
-    const [indicatorResults, setIndicatorResults] = useState({});
-    const [actionPlan, setActionPlan] = useState(() => [emptyAction(todayISO())]);
-    const [approvalStamp, setApprovalStamp] = useState(null);
-    const [showApprovalConfirmModal, setShowApprovalConfirmModal] = useState(false);
-    const [isApproved, setIsApproved] = useState(false);
-    const [coachName, setCoachName] = useState("");
-
-    useEffect(() => {
-        profileService.get()
-            .then((u) => setCoachName(u.fullName?.trim() || `${u.firstName} ${u.lastName}`))
-            .catch(() => setCoachName(""));
-    }, []);
-
-    // Paso 1: colaboradores con asignaciones aprobadas en curso (GET ongoing-assignments)
-    const loadAssignments = useCallback(async () => {
-        try {
-            const members = await coachService.ongoingAssignments({ name: appliedFilters.name, employeeCode: appliedFilters.code });
-            setCollaborators(members);
-        } catch (error) {
-            toast.error(error.noAccess ? "No tienes permiso para ver tus colaboradores." : "No se pudieron cargar los colaboradores.");
-        }
-    }, [appliedFilters]);
-
-    useEffect(() => { loadAssignments(); }, [loadAssignments]);
-
-    // Paso 2: indicadores asignados al colaborador seleccionado (POST members/indicators)
-    const loadIndicators = useCallback(async () => {
-        if (!selectedCollaborator) return;
-        try {
-            const data = await coachService.memberIndicators(selectedCollaborator.id);
-            setIndicators(data);
-        } catch (error) {
-            toast.error(error.noAccess ? "No tienes permiso para ver estos indicadores." : "No se pudieron cargar los indicadores.");
-        }
-    }, [selectedCollaborator]);
-
-    useEffect(() => { loadIndicators(); }, [loadIndicators]);
-
-    const sessionId = indicators[0]?.coachingSessionId ?? null;
-
-    // El filtro por nombre/código ya se aplica en el backend (ongoingAssignments)
-    const filteredCollaborators = collaborators;
-
-    const results = indicators.map((ind) => {
-        const result = indicatorResults[ind.assignmentId] ?? null;
-        return { ...ind, result, points: result == null ? 0 : round2((result * ind.weight) / 100) };
-    });
-    const finalScore = round2(results.reduce((acc, r) => acc + r.points, 0));
-    const registeredCount = results.filter((r) => r.result != null).length;
-    const validActionsCount = actionPlan.filter(isActionComplete).length;
-
-    // Previsualiza el % logrado con /api/coaching/calculate (debounced por indicador editado)
-    const debouncedValues = useDebounce(indicatorValues, 400);
-    useEffect(() => {
-        indicators.forEach((ind) => {
-            const raw = debouncedValues[ind.assignmentId];
-            if (raw === undefined || raw === "") return;
-            const achievedValue = parseFloat(raw);
-            if (Number.isNaN(achievedValue)) return;
-            coachService
-                .calculate({
-                    achievedValue,
-                    targetValue: ind.targetValue,
-                    minimumValue: ind.minimumValue,
-                    maximumValue: ind.maximumValue,
-                    rule: ind.rule,
-                    formula: ind.formula,
-                })
-                .then((pct) => setIndicatorResults((prev) => ({ ...prev, [ind.assignmentId]: round2(pct) })))
-                .catch(() => toast.error("No se pudo calcular el indicador."));
-        });
-    }, [debouncedValues, indicators]);
-
-    const coachingDate = new Date().toLocaleDateString("es-ES");
-
-    const handleSearch = () => setAppliedFilters(filters);
-
-    const handleClearSearch = () => {
-        setFilters({ code: "", name: "" });
-        setAppliedFilters({ code: "", name: "" });
-    };
-
-    const handleSelectCollaborator = (collaborator) => {
-        if (selectedCollaborator?.id !== collaborator.id) {
-            setIndicatorValues({});
-            setIndicatorResults({});
-        }
-        setSelectedCollaborator(collaborator);
-    };
-
-    const handleUpdateAction = (id, field, value) => {
-        setActionPlan((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
-    };
-
-    const handleContinueToIndicators = () => {
-        if (selectedCollaborator) setCurrentStep(2);
-    };
-
-    const handleContinueToActionPlan = () => {
-        if (registeredCount < indicators.length) {
-            toast.error("Completa el valor registrado de todos los indicadores");
-            return;
-        }
-        setCurrentStep(3);
-    };
-
-    const handleContinueToApproval = () => {
-        const filled = actionPlan.filter((a) => !isActionBlank(a));
-        if (filled.some((a) => !isActionComplete(a))) {
-            toast.error("Completa todos los campos de cada acción");
-            return;
-        }
-        if (filled.length === 0) {
-            toast.error("Agrega al menos una acción al plan");
-            return;
-        }
-        setActionPlan(filled);
-        setApprovalStamp(new Date().toLocaleString("es-ES"));
-        setCurrentStep(4);
-    };
-
-    const handleConfirmApprove = async () => {
-        try {
-            await coachService.saveSessionResults(sessionId, {
-                results: indicators.map((ind) => ({
-                    assignmentId: ind.assignmentId,
-                    achievedValue: parseFloat(indicatorValues[ind.assignmentId]),
-                })),
-                actions: actionPlan.map((a) => ({
-                    measurementType: Number(a.type),
-                    commitmentDate: a.commitDate,
-                    improvementOpportunity: a.opportunity,
-                    actionDescription: a.action,
-                })),
-            });
-            setIsApproved(true);
-            setShowApprovalConfirmModal(false);
-            toast.success("Coaching aprobado correctamente");
-        } catch (error) {
-            toast.error(
-                error.noAccess
-                    ? "No tienes permiso para aprobar este coaching."
-                    : error.response?.data?.message ?? "No se pudo guardar el proceso. Intenta de nuevo."
-            );
-        }
-    };
-
-    const handleSaveDraft = () => toast.success("Borrador guardado correctamente");
-
-    const handleBack = () => setCurrentStep((s) => Math.max(1, s - 1));
-
-    const initials = selectedCollaborator?.fullName.split(" ").map((n) => n[0]).join("");
-
-    return (
-        <>
-            <header className={styles.pageHeader}>
-                <div>
-                    <h1 className={styles.title}>Coaching a colaborador</h1>
-                    <p className={styles.subtitle}>
-                        Registra el proceso de coaching, indicadores y plan de acción para tus colaboradores asignados.
-                    </p>
-                </div>
-            </header>
-
-            <div className={ui.page}>
-                {/* Stepper */}
-                <nav className={ui.stepper} aria-label="Progreso del coaching">
-                    {STEPS.map((label, i) => {
-                        const step = i + 1;
-                        const state = step < currentStep ? "done" : step === currentStep ? "current" : "";
-                        return (
-                            <div key={label} style={{ display: "contents" }}>
-                                <div className={`${ui.step} ${state ? ui[state] : ""}`} aria-current={step === currentStep ? "step" : undefined}>
-                                    <span className={ui.stepCircle}>{step}</span>
-                                    <span className={ui.stepLabel}>{label}</span>
-                                </div>
-                                {step < STEPS.length && <span className={`${ui.stepLine} ${step < currentStep ? ui.done : ""}`} />}
-                            </div>
-                        );
-                    })}
-                </nav>
-
-                {/* Tarjeta del colaborador (pasos 2-4) */}
-                {selectedCollaborator && currentStep > 1 && (
-                    <div className={ui.collabCard}>
-                        <div className={ui.avatar}>{initials}</div>
-                        <div className={ui.collabInfo}>
-                            <div className={ui.collabName}>{selectedCollaborator.fullName}</div>
-                            <div className={ui.collabMeta}>
-                                <span className={ui.chip}>{selectedCollaborator.companyArea}</span>
-                                <span>{selectedCollaborator.companyPosition}</span>
-                                <span>{selectedCollaborator.companyUbication}</span>
-                            </div>
-                        </div>
-                        <div className={ui.collabDate}>
-                            <span className={ui.collabDateLabel}>Fecha coaching</span>
-                            <span className={ui.collabDateValue}>{coachingDate}</span>
-                        </div>
-                    </div>
-                )}
-
-                {/* PASO 1 */}
-                {currentStep === 1 && (
-                    <>
-                        <div className={ui.infoBanner}>
-                            <Info size={16} />
-                            <span>Solo puedes ver y gestionar los colaboradores que tienes asignados como coach.</span>
-                        </div>
-
-                        <section className={ui.card}>
-                            <div className={ui.cardHeader}>
-                                <h2 className={ui.cardTitle}>Buscar colaborador</h2>
-                            </div>
-                            <div className={ui.cardBody}>
-                                <form
-                                    onSubmit={(e) => {
-                                        e.preventDefault();
-                                        handleSearch();
-                                    }}
-                                >
-                                    <div className={ui.searchGrid}>
-                                        <div className={ui.field}>
-                                            <label className={ui.label} htmlFor="cc-code">Código</label>
-                                            <div className={ui.inputIcon}>
-                                                <Search size={16} />
-                                                <input
-                                                    id="cc-code"
-                                                    type="text"
-                                                    className={ui.input}
-                                                    placeholder="Código del colaborador..."
-                                                    value={filters.code}
-                                                    onChange={(e) => setFilters({ ...filters, code: e.target.value })}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className={ui.field}>
-                                            <label className={ui.label} htmlFor="cc-name">Nombre</label>
-                                            <div className={ui.inputIcon}>
-                                                <Search size={16} />
-                                                <input
-                                                    id="cc-name"
-                                                    type="text"
-                                                    className={ui.input}
-                                                    placeholder="Nombre del colaborador..."
-                                                    value={filters.name}
-                                                    onChange={(e) => setFilters({ ...filters, name: e.target.value })}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className={ui.searchActions}>
-                                        <button type="submit" className={`${ui.btn} ${ui.btnPrimary} ${ui.btnSm}`}>
-                                            <Search size={15} /> Buscar
-                                        </button>
-                                        <button type="button" className={`${ui.btn} ${ui.btnOutline} ${ui.btnSm}`} onClick={handleClearSearch}>
-                                            Limpiar
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-                        </section>
-
-                        <section className={ui.card}>
-                            <div className={ui.tableScroll}>
-                                <table className={ui.table}>
-                                    <thead>
-                                        <tr>
-                                            <th>Código</th>
-                                            <th>Nombre completo</th>
-                                            <th>Puesto</th>
-                                            <th>Área / Unidad</th>
-                                            <th>Ubicación</th>
-                                            <th>Estado</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredCollaborators.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={6} className={ui.empty}>No se encontraron colaboradores.</td>
-                                            </tr>
-                                        ) : (
-                                            filteredCollaborators.map((c) => (
-                                                <tr
-                                                    key={c.id}
-                                                    className={selectedCollaborator?.id === c.id ? ui.selected : ""}
-                                                    onClick={() => handleSelectCollaborator(c)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === "Enter" || e.key === " ") {
-                                                            e.preventDefault();
-                                                            handleSelectCollaborator(c);
-                                                        }
-                                                    }}
-                                                    tabIndex={0}
-                                                    aria-selected={selectedCollaborator?.id === c.id}
-                                                >
-                                                    <td className={ui.code}>{c.employeeCode}</td>
-                                                    <td className={ui.name}>{c.fullName}</td>
-                                                    <td>{c.companyPosition}</td>
-                                                    <td><span className={ui.chip}>{c.companyArea}</span></td>
-                                                    <td className={ui.muted}>{c.companyUbication}</td>
-                                                    <td><span className={ui.statusActive}>{c.status}</span></td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
-
-                        <div className={ui.actions}>
-                            <button
-                                type="button"
-                                className={`${ui.btn} ${ui.btnPrimary}`}
-                                onClick={handleContinueToIndicators}
-                                disabled={!selectedCollaborator}
-                            >
-                                Siguiente — Registrar indicadores <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 2 */}
-                {currentStep === 2 && (
-                    <>
-                        <div className={ui.infoBanner}>
-                            <Info size={16} />
-                            <span>
-                                Solo se muestran los indicadores asignados y aceptados por el colaborador. Los resultados se calculan automáticamente.
-                            </span>
-                        </div>
-
-                        {results.map((ind, idx) => (
-                            <section key={ind.assignmentId} className={ui.indicator}>
-                                <div className={ui.indicatorHeader}>
-                                    <span className={ui.indicatorNumber}>{idx + 1}</span>
-                                    <h3 className={ui.indicatorName}>{ind.indicatorName}</h3>
-                                    <span className={ui.typePill}>{ind.typeName}</span>
-                                </div>
-                                <div className={ui.indicatorGrid}>
-                                    <div className={ui.field}>
-                                        <label className={ui.label}>Meta</label>
-                                        <input type="text" className={`${ui.input} ${ui.inputReadonly}`} value={goalLabel(ind)} readOnly />
-                                    </div>
-                                    <div className={ui.field}>
-                                        <label className={ui.label} htmlFor={`cc-ind-${ind.assignmentId}`}>Valor registrado</label>
-                                        <input
-                                            id={`cc-ind-${ind.assignmentId}`}
-                                            type="number"
-                                            min="0"
-                                            step="any"
-                                            className={ui.input}
-                                            placeholder="Ej. 90"
-                                            value={indicatorValues[ind.assignmentId] ?? ""}
-                                            onChange={(e) => setIndicatorValues({ ...indicatorValues, [ind.assignmentId]: e.target.value })}
-                                        />
-                                    </div>
-                                    <div className={ui.field}>
-                                        <label className={ui.label}>Resultado</label>
-                                        <input
-                                            type="text"
-                                            className={`${ui.input} ${ui.inputResult}`}
-                                            value={ind.result == null ? "—" : `${ind.result}%`}
-                                            readOnly
-                                        />
-                                    </div>
-                                </div>
-                            </section>
-                        ))}
-
-                        <div className={`${ui.actions} ${ui.actionsSplit}`}>
-                            <button type="button" className={`${ui.btn} ${ui.btnOutline} ${ui.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <div className={ui.actionsGroup}>
-                                <button type="button" className={`${ui.btn} ${ui.btnOutline}`} onClick={handleSaveDraft}>
-                                    <Save size={15} /> Guardar borrador
-                                </button>
-                                <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} onClick={handleContinueToActionPlan}>
-                                    Siguiente — Plan de acción <ChevronRight size={16} />
-                                </button>
-                            </div>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 3 */}
-                {currentStep === 3 && (
-                    <>
-                        <section className={ui.card}>
-                            <div className={ui.cardHeader}>
-                                <h2 className={ui.cardTitle}>Plan de acción</h2>
-                                <button
-                                    type="button"
-                                    className={`${ui.btn} ${ui.btnOutline} ${ui.btnSm}`}
-                                    onClick={() => setActionPlan([...actionPlan, emptyAction()])}
-                                >
-                                    <Plus size={15} /> Agregar acción
-                                </button>
-                            </div>
-                            <div className={ui.cardBody}>
-                                {actionPlan.length === 0 ? (
-                                    <div className={ui.emptyState}>No hay acciones definidas aún.</div>
-                                ) : (
-                                    <div className={ui.actionList}>
-                                        {actionPlan.map((a, idx) => (
-                                            <div key={a.id} className={ui.actionCard}>
-                                                <div className={ui.actionHead}>
-                                                    <span className={ui.actionNumber}>Acción #{idx + 1}</span>
-                                                    <button
-                                                        type="button"
-                                                        className={ui.removeBtn}
-                                                        onClick={() => setActionPlan(actionPlan.filter((x) => x.id !== a.id))}
-                                                        aria-label={`Eliminar acción ${idx + 1}`}
-                                                        title="Eliminar acción"
-                                                    >
-                                                        <X size={16} />
-                                                    </button>
-                                                </div>
-                                                <div className={ui.actionGrid}>
-                                                    <div className={ui.field}>
-                                                        <label className={ui.label} htmlFor={`cc-type-${a.id}`}>Tipo de medición</label>
-                                                        <select
-                                                            id={`cc-type-${a.id}`}
-                                                            className={ui.select}
-                                                            value={a.type}
-                                                            onChange={(e) => handleUpdateAction(a.id, "type", e.target.value)}
-                                                        >
-                                                            <option value="">Selecciona</option>
-                                                            {MEASURE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div className={ui.field}>
-                                                        <label className={ui.label} htmlFor={`cc-date-${a.id}`}>Fecha compromiso</label>
-                                                        <input
-                                                            id={`cc-date-${a.id}`}
-                                                            type="date"
-                                                            className={ui.input}
-                                                            value={a.commitDate}
-                                                            onChange={(e) => handleUpdateAction(a.id, "commitDate", e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className={`${ui.field} ${ui.fullRow}`}>
-                                                        <label className={ui.label} htmlFor={`cc-opp-${a.id}`}>Oportunidad de mejora</label>
-                                                        <textarea
-                                                            id={`cc-opp-${a.id}`}
-                                                            className={ui.textarea}
-                                                            placeholder="Describe la oportunidad de mejora identificada..."
-                                                            maxLength={500}
-                                                            value={a.opportunity}
-                                                            onChange={(e) => handleUpdateAction(a.id, "opportunity", e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className={`${ui.field} ${ui.fullRow}`}>
-                                                        <label className={ui.label} htmlFor={`cc-act-${a.id}`}>Acción a realizar</label>
-                                                        <textarea
-                                                            id={`cc-act-${a.id}`}
-                                                            className={ui.textarea}
-                                                            placeholder="Describe la acción concreta que se llevará a cabo..."
-                                                            maxLength={500}
-                                                            value={a.action}
-                                                            onChange={(e) => handleUpdateAction(a.id, "action", e.target.value)}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </section>
-
-                        <div className={`${ui.actions} ${ui.actionsSplit}`}>
-                            <button type="button" className={`${ui.btn} ${ui.btnOutline} ${ui.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <div className={ui.actionsGroup}>
-                                <button type="button" className={`${ui.btn} ${ui.btnOutline}`} onClick={handleSaveDraft}>
-                                    <Save size={15} /> Guardar borrador
-                                </button>
-                                <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} onClick={handleContinueToApproval}>
-                                    Siguiente — Aprobar <ChevronRight size={16} />
-                                </button>
-                            </div>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 4 */}
-                {currentStep === 4 && (
-                    <>
-                        <section className={ui.approvalBox}>
-                            <h2 className={ui.approvalTitle}>Aprobación del proceso de coaching</h2>
-                            <p className={ui.approvalText}>
-                                Al aprobar, el proceso quedará protegido contra modificaciones y pasará al estado{" "}
-                                <strong>Pendiente de aprobación del colaborador</strong>. Cualquier modificación posterior invalidará esta aprobación.
-                            </p>
-                            <div className={ui.approvalMeta}>
-                                <div>
-                                    <span className={ui.approvalMetaLabel}>Coach</span>
-                                    <span className={ui.approvalMetaValue}>{coachName || "—"}</span>
-                                </div>
-                                <div>
-                                    <span className={ui.approvalMetaLabel}>Fecha y hora</span>
-                                    <span className={ui.approvalMetaValue}>{approvalStamp}</span>
-                                </div>
-                                <div>
-                                    <span className={ui.approvalMetaLabel}>Estado resultado</span>
-                                    <span className={ui.approvalMetaValue}>{isApproved ? "Pendiente de aprobación" : "En proceso"}</span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section className={ui.card}>
-                            <div className={ui.cardHeader}>
-                                <h2 className={ui.cardTitle}>Resumen del proceso</h2>
-                            </div>
-                            <div className={ui.cardBody}>
-                                <div className={ui.statsGrid}>
-                                    <div>
-                                        <span className={ui.statLabel}>Indicadores registrados</span>
-                                        <div className={ui.statBox}>{registeredCount} de {indicators.length}</div>
-                                    </div>
-                                    <div>
-                                        <span className={ui.statLabel}>Acciones de plan</span>
-                                        <div className={ui.statBox}>{validActionsCount} {validActionsCount === 1 ? "acción" : "acciones"}</div>
-                                    </div>
-                                    <div>
-                                        <span className={ui.statLabel}>Estado</span>
-                                        <div className={ui.statBox}>
-                                            <span className={ui.statusProcess}>{isApproved ? "Pendiente de aprobación" : "En proceso"}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className={ui.scoreBox}>
-                                    <div className={ui.scoreLeft}>
-                                        <span className={ui.scoreHeading}>Desglose de la nota general</span>
-                                        <div className={ui.scoreList}>
-                                            {results.map((r) => (
-                                                <div key={r.assignmentId} className={ui.scoreItem}>
-                                                    <span className={ui.scoreItemLabel}>{r.indicatorName} · {r.weight}%</span>
-                                                    <span className={ui.scoreItemValue}>
-                                                        {r.result ?? 0}% × {r.weight}% = <em>{r.points} pts</em>
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className={ui.scoreFinal}>
-                                        <span className={ui.scoreFinalLabel}>Nota general</span>
-                                        <span className={ui.scoreFinalValue}>{finalScore}%</span>
-                                        <span className={ui.scoreFinalNote}>Σ (Resultado × Peso)</span>
-                                    </div>
-                                </div>
-
-                                <div className={ui.warningBanner}>
-                                    <TriangleAlert size={16} />
-                                    <span>
-                                        Solo el coach autorizado puede aprobar este proceso. La aprobación valida tu identidad mediante la sesión activa.
-                                    </span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <div className={`${ui.actions} ${ui.actionsSplit}`}>
-                            <button type="button" className={`${ui.btn} ${ui.btnOutline} ${ui.btnSm}`} onClick={handleBack} disabled={isApproved}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <button
-                                type="button"
-                                className={`${ui.btn} ${ui.btnPrimary}`}
-                                onClick={() => setShowApprovalConfirmModal(true)}
-                                disabled={isApproved}
-                            >
-                                <Check size={16} /> {isApproved ? "Proceso aprobado" : "Aprobar proceso de coaching"}
-                            </button>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            <Modal
-                open={showApprovalConfirmModal}
-                title="Confirmar aprobación"
-                onClose={() => setShowApprovalConfirmModal(false)}
-                footer={
-                    <div className={ui.modalFooter}>
-                        <button type="button" className={`${ui.btn} ${ui.btnOutline}`} onClick={() => setShowApprovalConfirmModal(false)}>
-                            Cancelar
-                        </button>
-                        <button type="button" className={`${ui.btn} ${ui.btnPrimary}`} onClick={handleConfirmApprove}>
-                            Sí, aprobar coaching
-                        </button>
-                    </div>
-                }
-            >
-                <p className={ui.modalText}>¿Estás seguro que deseas aprobar este proceso de coaching?</p>
-                <p className={ui.modalText}>
-                    Una vez aprobado no podrás modificar el proceso. Cualquier cambio invalidará esta aprobación.
-                </p>
-            </Modal>
-        </>
-    );
-};
 
 
 
@@ -2906,6 +1237,7 @@ import { displayName } from "../../../helpers/format";
 import { exportPdf } from "../../../shared/reports";
 import { buildCoachingFormatPdf, coachingFileName } from "./coachingFormatReport";
 import { coachService } from "../../../api/coachService";
+import { usePeriods, periodName } from "../../../hooks/usePeriods";
 import styles from "../../Pages.module.css";
 import base from "./CollaboratorCoachingPage.module.css";
 import ui from "./HistoryCoachingPage.module.css";
@@ -2921,8 +1253,6 @@ const STATUS_PILL = {
     [STATUS.pending]: { label: "Pend. aprobación", className: ui.pillPending },
     [STATUS.approved]: { label: "Aprobado", className: ui.pillApproved },
 };
-
-const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
 const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -2981,6 +1311,7 @@ export const HistoryCoachingPage = () => {
     const { user } = useAuthStore();
     const [downloadingId, setDownloadingId] = useState(null);
     const toast = useToast();
+    const { periods, findByDate } = usePeriods();
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("todos");
     const [selectedPeriod, setSelectedPeriod] = useState("todos");
@@ -3003,16 +1334,17 @@ export const HistoryCoachingPage = () => {
         approved: history.filter((c) => c.status === STATUS.approved).length,
     };
 
-    const PERIODS = [...new Set(history.map((c) => c.date.slice(0, 7)))].sort().reverse().map((value) => {
-        const [year, month] = value.split("-");
-        return { value, label: `${MONTHS[Number(month) - 1]} ${year}` };
-    });
+    // Períodos del mantenimiento que tienen al menos un proceso en el historial
+    const periodIdOf = (c) => findByDate(c.date)?.id;
+    const PERIODS = periods
+        .filter((p) => history.some((c) => periodIdOf(c) === p.id))
+        .map((p) => ({ value: String(p.id), label: periodName(p) }));
 
     const filteredCoachings = history.filter((c) => {
         const q = searchQuery.trim().toLowerCase();
         const matchSearch = !q || c.collaboratorName.toLowerCase().includes(q) || c.collaboratorCode.toLowerCase().includes(q);
         const matchStatus = selectedStatus === "todos" || c.status === selectedStatus;
-        const matchPeriod = selectedPeriod === "todos" || c.date.startsWith(selectedPeriod);
+        const matchPeriod = selectedPeriod === "todos" || String(periodIdOf(c)) === selectedPeriod;
         return matchSearch && matchStatus && matchPeriod;
     });
 
@@ -3233,6 +1565,12 @@ export const HistoryCoachingPage = () => {
 
 
 
+
+
+
+
+
+
 import { useCallback, useEffect, useState } from "react";
 import { Download, Check, X, Info, ChevronLeft, TriangleAlert, Clock } from "lucide-react";
 import { Modal, useToast } from "../../../shared/components";
@@ -3241,6 +1579,7 @@ import { useAuthStore } from "../../../hooks/useAuthStore";
 import { exportDocument } from "../../../shared/reports";
 import { displayName } from "../../../helpers/format";
 import { buildCoachingReport } from "./coachingReport";
+import { usePeriods, periodName } from "../../../hooks/usePeriods";
 import styles from "../../Pages.module.css";
 import base from "../coach/CollaboratorCoachingPage.module.css";
 import ui from "./ConsultaCoachingPage.module.css";
@@ -3269,7 +1608,9 @@ const periodOf = (p) => {
     return { year: String(d.getFullYear()), month: d.getMonth() };
 };
 
-const processTitle = (p) => {
+// Título del proceso: nombre del período del mantenimiento; si no se encuentra, mes y año
+const buildTitle = (p, period) => {
+    if (period) return `Coaching — ${periodName(period)}`;
     const { year, month } = periodOf(p);
     return `Coaching — ${MONTHS[month]} ${year}`;
 };
@@ -3286,6 +1627,8 @@ function StatCard({ value, label, tone }) {
 export const ConsultaCoachingPage = () => {
     const toast = useToast();
     const { user } = useAuthStore();
+    const { findByDate } = usePeriods();
+    const processTitle = (p) => buildTitle(p, findByDate(p.startDate));
     const [exporting, setExporting] = useState(null); // "excel-2", "pdf-2"... o null
     const [processes, setProcesses] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -3722,315 +2065,3 @@ export const ConsultaCoachingPage = () => {
         </>
     );
 };
-
-
-
-
-
-
-
-
-
-
-import { useCallback, useEffect, useState } from "react";
-import { Check, X, Info, ChevronLeft, TriangleAlert } from "lucide-react";
-import { Modal, useToast } from "../../../shared/components";
-import { coachService } from "../../../api/coachService";
-import styles from "../../Pages.module.css";
-import base from "../coach/CollaboratorCoachingPage.module.css";
-import ui from "./ConsultaCoachingPage.module.css";
-
-const STATUS_LABEL = { Pending: "Pendiente de aprobación", Accepted: "Aprobado", Rejected: "Rechazado" };
-const STATUS_PILL = { Pending: ui.pillPending, Accepted: ui.pillApproved, Rejected: ui.pillRejected };
-
-const RULE_SYMBOL = { HigherIsBetter: "≥", LowerIsBetter: "≤" };
-
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString("es-ES") : "—");
-
-const formatNumber = (n) => Number(n).toLocaleString("es-ES", { maximumFractionDigits: 2 });
-
-const goalText = (ind) =>
-  ind.ruleName === "InRangeIsBetter"
-    ? `${formatNumber(ind.minimunValue)} – ${formatNumber(ind.maximunValue)} ${ind.targetUnitName}`
-    : `${RULE_SYMBOL[ind.ruleName] ?? ""} ${formatNumber(ind.targetValue)} ${ind.targetUnitName}`.trim();
-
-const getInitials = (name = "") =>
-  name.split(" ").filter(Boolean).map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-
-const sessionTitle = (s) => `Indicadores — ${s.teamName}`;
-
-const apiMessage = (err, fallback) => err.response?.data?.message ?? fallback;
-
-function StatCard({ value, label, tone }) {
-  return (
-    <div className={`${ui.statCard} ${tone ?? ""}`}>
-      <div className={ui.statValue}>{value}</div>
-      <div className={ui.statLabel}>{label}</div>
-    </div>
-  );
-}
-
-export const ConsultaIndicadoresPage = () => {
-  const toast = useToast();
-
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [selectedId, setSelectedId] = useState(null);
-  const [statusFilter, setStatusFilter] = useState("todos");
-  const [modal, setModal] = useState(null); // "approve" | "reject" | null
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setSessions(await coachService.mySessions());
-    } catch (err) {
-      setError(err.noAccess ? "No tienes permiso para consultar tus indicadores." : "No se pudieron cargar los indicadores asignados.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const selected = sessions.find((s) => s.sessionId === selectedId) ?? null;
-  const filtered = sessions.filter((s) => statusFilter === "todos" || s.acceptanceStatus === statusFilter);
-
-  const closeModal = () => {
-    setModal(null);
-    setReason("");
-  };
-
-  const handleConfirm = async () => {
-    if (modal === "reject" && !reason.trim()) {
-      toast.warning("Debes indicar el motivo del rechazo");
-      return;
-    }
-    setSaving(true);
-    try {
-      if (modal === "approve") {
-        await coachService.acceptSession(selectedId);
-        toast.success("Indicadores aprobados correctamente");
-      } else {
-        await coachService.rejectSession(selectedId, reason.trim());
-        toast.success("Indicadores rechazados correctamente");
-      }
-      closeModal();
-      await load();
-    } catch (err) {
-      toast.error("No se pudo registrar la respuesta", apiMessage(err, "Intenta nuevamente."));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const onRowKey = (e, fn) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      fn();
-    }
-  };
-
-  /* ===================== DETALLE ===================== */
-  if (selected) {
-    const s = selected;
-    const pending = s.acceptanceStatus === "Pending";
-
-    return (
-      <div className={base.page}>
-        <div className={ui.topBar}>
-          <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setSelectedId(null)}>
-            <ChevronLeft size={15} /> Volver al listado
-          </button>
-          {pending && (
-            <div className={ui.topActions}>
-              <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setModal("reject")}>
-                <X size={15} /> Rechazar
-              </button>
-              <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => setModal("approve")}>
-                <Check size={15} /> Aprobar indicadores
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <h1 className={ui.detailTitle}>{sessionTitle(s)}</h1>
-          <p className={ui.detailSub}>Revisa los indicadores asignados para tu proceso de coaching.</p>
-        </div>
-
-        <section className={ui.hero}>
-          <div className={ui.heroAvatar}>{getInitials(s.coachName)}</div>
-          <div className={ui.heroInfo}>
-            <div className={ui.heroName}>Coach: {s.coachName ?? "—"}</div>
-            <div className={ui.heroMeta}>Equipo: {s.teamName}</div>
-          </div>
-          <div className={ui.heroField}>
-            <span className={ui.heroLabel}>Estado</span>
-            <span className={`${ui.pill} ${STATUS_PILL[s.acceptanceStatus]}`}>{STATUS_LABEL[s.acceptanceStatus]}</span>
-          </div>
-          <div className={ui.heroField}>
-            <span className={ui.heroLabel}>Asignado el</span>
-            <span className={ui.heroValue}>{formatDate(s.createdAt)}</span>
-          </div>
-        </section>
-
-        {pending && (
-          <div className={ui.warning}>
-            <TriangleAlert size={16} />
-            <span>
-              Estos indicadores están <strong>Pendientes de tu aprobación</strong>. Revísalos y presiona <strong>Aprobar indicadores</strong> o <strong>Rechazar</strong>.
-            </span>
-          </div>
-        )}
-
-        {s.acceptanceStatus === "Rejected" && (
-          <div className={ui.warning}>
-            <TriangleAlert size={16} />
-            <span>
-              Rechazaste estos indicadores el {formatDate(s.acceptanceRejectedAt)}. Motivo: {s.acceptanceRejectionReason}
-            </span>
-          </div>
-        )}
-
-        <section className={base.card}>
-          <div className={base.cardHeader}>
-            <h2 className={base.cardTitle}>Indicadores asignados</h2>
-          </div>
-          <div className={base.cardBody}>
-            <div className={ui.indicatorList}>
-              {s.indicators.map((ind) => (
-                <div key={ind.assignmentId} className={ui.indicatorItem}>
-                  <div>
-                    <div>{ind.indicatorName}</div>
-                    <div className={ui.goal} style={{ textAlign: "left" }}>
-                      Vigencia: {formatDate(ind.validFrom)} – {formatDate(ind.validTo)}
-                    </div>
-                  </div>
-                  <div className={ui.indicatorRight}>
-                    <span className={ui.goal}>Meta: {goalText(ind)}</span>
-                    <span className={`${ui.result} ${ui.pass}`}>Peso {formatNumber(ind.weight)}%</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <Modal
-          open={modal !== null}
-          title={modal === "approve" ? "Aprobar indicadores" : "Rechazar indicadores"}
-          onClose={closeModal}
-          footer={
-            <div className={ui.modalFooter}>
-              <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={closeModal} disabled={saving}>
-                Cancelar
-              </button>
-              <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleConfirm} disabled={saving}>
-                {modal === "approve" ? <><Check size={15} /> Sí, aprobar</> : <><X size={15} /> Sí, rechazar</>}
-              </button>
-            </div>
-          }
-        >
-          {modal === "approve" ? (
-            <p className={base.modalText}>
-              Al aprobar confirmas que revisaste y aceptas los indicadores asignados para tu proceso de coaching. Esta decisión no se puede modificar.
-            </p>
-          ) : (
-            <div className={base.field}>
-              <label className={base.label} htmlFor="ci-reason">Motivo del rechazo</label>
-              <textarea
-                id="ci-reason"
-                className={base.textarea}
-                rows={4}
-                maxLength={500}
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-              />
-            </div>
-          )}
-        </Modal>
-      </div>
-    );
-  }
-
-  /* ===================== LISTADO ===================== */
-  const count = (status) => sessions.filter((s) => s.acceptanceStatus === status).length;
-
-  return (
-    <>
-      <header className={styles.pageHeader}>
-        <div>
-          <h1 className={styles.title}>Mis indicadores asignados</h1>
-          <p className={styles.subtitle}>Consulta los indicadores que te asignaron y apruébalos para iniciar tu proceso de coaching.</p>
-        </div>
-      </header>
-
-      <div className={base.page}>
-        <div className={base.infoBanner}>
-          <Info size={16} />
-          <span>Solo puedes ver y responder los indicadores asignados a tu usuario.</span>
-        </div>
-
-        <div className={ui.stats}>
-          <StatCard value={sessions.length} label="Total asignaciones" />
-          <StatCard value={count("Pending")} label="Pend. aprobación" tone={ui.pending} />
-          <StatCard value={count("Accepted")} label="Aprobadas" tone={ui.approved} />
-        </div>
-
-        <section className={base.card}>
-          <div className={base.cardHeader}>
-            <h2 className={base.cardTitle}>Filtrar</h2>
-          </div>
-          <div className={base.cardBody}>
-            <div className={base.field}>
-              <label className={base.label} htmlFor="ci-status">Estado</label>
-              <select id="ci-status" className={base.select} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="todos">Todos los estados</option>
-                {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-            </div>
-          </div>
-        </section>
-
-        <div className={ui.list}>
-          {loading ? (
-            <div className={ui.empty}>Cargando indicadores...</div>
-          ) : error ? (
-            <div className={ui.empty}>{error}</div>
-          ) : filtered.length === 0 ? (
-            <div className={ui.empty}>No hay indicadores asignados que coincidan con el filtro.</div>
-          ) : (
-            filtered.map((s) => (
-              <div
-                key={s.sessionId}
-                className={ui.row}
-                onClick={() => setSelectedId(s.sessionId)}
-                onKeyDown={(e) => e.target === e.currentTarget && onRowKey(e, () => setSelectedId(s.sessionId))}
-                tabIndex={0}
-                role="button"
-                aria-label={`Ver ${sessionTitle(s)}`}
-              >
-                <div className={ui.rowAvatar}>{getInitials(s.coachName)}</div>
-                <div className={ui.rowInfo}>
-                  <div className={ui.rowTitle}>{sessionTitle(s)}</div>
-                  <div className={ui.rowSub}>Coach: {s.coachName ?? "—"} · {s.indicators.length} indicadores asignados</div>
-                </div>
-                <div className={ui.rowRight}>
-                  <span className={`${ui.pill} ${STATUS_PILL[s.acceptanceStatus]}`}>{STATUS_LABEL[s.acceptanceStatus]}</span>
-                  <span className={ui.rowDate}>{formatDate(s.createdAt)}</span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </>
-  );
-};
-
