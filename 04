@@ -1,427 +1,203 @@
-import { useEffect, useState } from "react";
-import { catalogServices } from "../api/catalogService";
+import pdfMake from "pdfmake/build/pdfmake";
+import vfsFonts from "pdfmake/build/vfs_fonts";
+import { cellTone, cellValue, columnAlign, displayValue, formatDateTime } from "./reportFormat";
 
-/* =========================================================
-   Períodos del mantenimiento (Administración → Períodos).
-   Un solo lugar para cargarlos y mostrarlos en cualquier pantalla.
-   ========================================================= */
+pdfMake.addVirtualFileSystem(vfsFonts);
 
-// "2026-11-01T00:00:00" → "2026-11-01" (se compara como texto, sin desfase de zona horaria)
-const day = (value) => (value ? String(value).slice(0, 10) : "");
-const dmy = (value) => day(value).split("-").reverse().join("/");
-
-/** "2026 - Periodo 1" */
-export const periodName = (p) => p?.description?.trim() ?? "";
-
-/** "2026 - Periodo 1 (01/11/2026 – 30/11/2026)" */
-export const periodLabel = (p) => (p ? `${periodName(p)} (${dmy(p.startDate)} – ${dmy(p.endDate)})` : "");
-
-/** Fecha de inicio / fin del período en formato de <input type="date"> */
-export const periodDates = (p) => ({ start: day(p?.startDate), end: day(p?.endDate) });
-
-export const usePeriods = () => {
-  const [periods, setPeriods] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    catalogServices.periods
-      .list()
-      .then((list) => {
-        if (active) setPeriods([...list].sort((a, b) => day(b.startDate).localeCompare(day(a.startDate))));
-      })
-      .catch(() => { if (active) setError(true); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  /** Período al que pertenece una fecha (prefiere el activo si hubiera más de uno) */
-  const findByDate = (date) => {
-    const d = day(date);
-    if (!d) return null;
-    const matches = periods.filter((p) => d >= day(p.startDate) && d <= day(p.endDate));
-    return matches.find((p) => p.status) ?? matches[0] ?? null;
-  };
-
-  const findById = (id) => periods.find((p) => String(p.id) === String(id)) ?? null;
-
-  return {
-    periods,
-    activePeriods: periods.filter((p) => p.status),
-    loading,
-    error,
-    findByDate,
-    findById,
-  };
-};
-
-
-
-
-
-
-
-
-
-import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Check, Eye, Info, Loader2 } from "lucide-react";
-import { Modal, useToast } from "../../../shared/components";
-import { indicatorsService } from "../../../api/indicatorsService";
-import { templatesService } from "../../../api/templatesService";
-import { mapTemplate } from "../templates/templates/templateUtils";
-import { CalculationPanel } from "./CalculationPanel";
-import { usePeriods, periodLabel } from "../../../hooks/usePeriods";
-import {
-  EMPTY_CALC, INDICATOR_STATUS, INDICATOR_TYPES, buildIndicatorBody, fieldError, fieldKind, fieldText,
-  indicatorCode, mapCatalogItem, templateCode, toFormState, unitLabel, validateCalc,
-} from "./indicatorUtils";
-import styles from "../../Pages.module.css";
-import s from "./Indicators.module.css";
-
-const FORM_ID = "indicator-form";
-const MAX_TEXT = 200;
-
-const EMPTY_FORM = {
-  type: "",
-  templateId: "",
-  status: INDICATOR_STATUS.ACTIVE,
-  periodId: "",
-  values: {},
-  calc: EMPTY_CALC,
-  calcConfigured: false,
-};
-
-const templateLabel = (t) => `${templateCode(t.id)} — ${t.markers.map((m) => `{ ${m.value} }`).join(" ")}`;
+const GREY = "#6B7A8F";
+const LIGHT = "#F4F8FD";
+const LINE = "#E6EBF1";
+const MARGIN_X = 36;
+const CELL_PADDING = 5;
+const PAGE_SIZES = { LETTER: [612, 792], LEGAL: [612, 1008], A4: [595.28, 841.89] };
 
 /**
- * Modal para crear / editar un indicador.
- * indicatorId: null = crear
+ * Anchos de la tabla en puntos, para que siempre quepa en la página.
+ * Las columnas con pdfWidth numérico lo conservan; el resto se reparte el espacio libre
+ * según pdfWeight (1 por defecto).
  */
-export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
-  const toast = useToast();
-  const isEdit = indicatorId != null;
-  const { periods, loading: loadingPeriods, error: periodsError } = usePeriods();
+const fitWidths = (columns, pageSize, landscape) => {
+  const [w, h] = PAGE_SIZES[pageSize] ?? PAGE_SIZES.LETTER;
+  const available = (landscape ? Math.max(w, h) : Math.min(w, h)) - MARGIN_X * 2 - columns.length * CELL_PADDING * 2;
+  const isFixed = (c) => typeof c.pdfWidth === "number";
+  const fixed = columns.reduce((sum, c) => sum + (isFixed(c) ? c.pdfWidth : 0), 0);
+  const weights = columns.reduce((sum, c) => sum + (isFixed(c) ? 0 : c.pdfWeight ?? 1), 0);
+  const free = Math.max(available - fixed, 0);
+  return columns.map((c) => (isFixed(c) ? c.pdfWidth : Math.floor((free * (c.pdfWeight ?? 1) * 100) / weights) / 100));
+};
 
-  // Catálogos
-  const [templates, setTemplates] = useState([]);
-  const [verbs, setVerbs] = useState([]);
-  const [units, setUnits] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState("");
-
-  // Formulario
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [submitted, setSubmitted] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-
-  /* ---------- Carga al abrir ---------- */
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-
-    setForm(EMPTY_FORM);
-    setSubmitted(false);
-    setSubmitError("");
-    setLoadError("");
-    setLoading(true);
-
-    (async () => {
-      try {
-        const [tpl, vb, un, detail] = await Promise.all([
-          templatesService.list(),
-          indicatorsService.verbs(),
-          indicatorsService.units(),
-          isEdit ? indicatorsService.getById(indicatorId) : Promise.resolve(null),
-        ]);
-        if (cancelled) return;
-
-        const mappedTemplates = tpl.map(mapTemplate);
-        setTemplates(mappedTemplates);
-        setVerbs(vb.map(mapCatalogItem));
-        setUnits(un.map(mapCatalogItem));
-
-        if (detail) {
-          const template = mappedTemplates.find((t) => String(t.id) === String(detail.templateId ?? detail.template?.id));
-          const state = toFormState(detail, template?.markers ?? []);
-          setForm({
-            ...EMPTY_FORM,
-            ...state,
-            type: String(state.type),
-            templateId: String(state.templateId),
-            periodId: String(detail.periodId ?? detail.period?.id ?? ""),
-            calcConfigured: Object.keys(validateCalc(state.calc)).length === 0,
-          });
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(err.noAccess
-            ? "No tienes permiso para esta acción."
-            : isEdit ? "No se pudo cargar el indicador." : "No se pudieron cargar las plantillas y catálogos.");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [open, indicatorId, isEdit]);
-
-  /* ---------- Derivados ---------- */
-  // Solo plantillas activas (y la actual, si se edita una con plantilla inactiva)
-  const templateOptions = useMemo(
-    () => templates.filter((t) => t.active || String(t.id) === form.templateId),
-    [templates, form.templateId]
+/** Permite partir palabras muy largas (correos, códigos) para que no se salgan de la celda */
+const breakable = (text) =>
+  String(text).replace(/\S{16,}/g, (word) =>
+    word.replace(/([@._/])/g, "$1\u200B").replace(/([^\u200B]{12})(?=[^\u200B])/g, "$1\u200B")
   );
-  // Solo períodos activos (y el actual, si se edita un indicador con período inactivo)
-  const periodOptions = periods.filter((p) => p.status || String(p.id) === form.periodId);
 
-  const template = templates.find((t) => String(t.id) === form.templateId) ?? null;
-  const markers = template?.markers ?? [];
-  const catalogs = { verbs, units, unitId: form.calc.unitId };
+/** Definición del documento (pdfmake). Encabezado y pie se repiten en cada página. */
+export const buildPdfDefinition = (config, report) => {
+  const { title, subtitle, columns, rows, filters = [], summary = [], generatedBy, generatedAt } = report;
+  const landscape = report.orientation ? report.orientation === "landscape" : columns.length > 5;
 
-  const fieldErrors = Object.fromEntries(
-    markers.map((m) => [m.position, fieldError(m, form.values[m.position], form.calc.unitId)])
-  );
-  const formErrors = {
-    type: form.type === "" ? "Selecciona el tipo de indicador." : "",
-    templateId: form.templateId === "" ? "Selecciona una plantilla." : "",
-    periodId: form.periodId === "" ? "Selecciona el período." : "",
-    fields: Object.values(fieldErrors).some(Boolean),
-    calc: !form.calcConfigured,
-  };
-  const hasErrors = Boolean(formErrors.type || formErrors.templateId || formErrors.periodId || formErrors.fields || formErrors.calc);
+  /* ---------- Encabezado de cada página ---------- */
+  const header = (currentPage, pageCount, pageSize) => ({
+    margin: [MARGIN_X, 18, MARGIN_X, 0],
+    stack: [
+      {
+        columns: [
+          config.logo ? { image: config.logo.dataUrl, fit: [130, 34], width: "auto" } : { text: "", width: "auto" },
+          {
+            width: "*",
+            alignment: "right",
+            margin: [0, 4, 0, 0],
+            stack: [
+              { text: config.organization ?? "", bold: true, fontSize: 10, color: config.primaryColor },
+              { text: config.system ?? "", fontSize: 8, color: GREY, margin: [0, 1, 0, 0] },
+            ],
+          },
+        ],
+      },
+      {
+        margin: [0, 8, 0, 0],
+        canvas: [{ type: "rect", x: 0, y: 0, w: pageSize.width - MARGIN_X * 2, h: 3, color: config.accentColor }],
+      },
+    ],
+  });
 
-  const segments = markers.map((m) => ({
-    key: m.position,
-    label: m.value,
-    text: fieldText(m, form.values[m.position], catalogs),
+  /* ---------- Pie de cada página ---------- */
+  const footer = (currentPage, pageCount, pageSize) => ({
+    margin: [MARGIN_X, 10, MARGIN_X, 0],
+    stack: [
+      { canvas: [{ type: "line", x1: 0, y1: 0, x2: pageSize.width - MARGIN_X * 2, y2: 0, lineWidth: 0.6, lineColor: LINE }] },
+      {
+        margin: [0, 6, 0, 0],
+        fontSize: 7.5,
+        color: "#A3ADBB",
+        columns: [
+          { text: config.footerText ?? "", width: "*" },
+          { text: title, width: "*", alignment: "center" },
+          { text: `Página ${currentPage} de ${pageCount}`, width: "*", alignment: "right", color: GREY },
+        ],
+      },
+    ],
+  });
+
+  /* ---------- Ficha: fecha, usuario y totales ---------- */
+  const facts = [
+    { label: "Generado el", value: formatDateTime(generatedAt) },
+    ...(config.showGeneratedBy && generatedBy ? [{ label: "Generado por", value: generatedBy }] : []),
+    { label: "Total de registros", value: String(rows.length) },
+    ...summary.map((s) => ({ label: s.label, value: String(s.value), tone: s.tone })),
+  ];
+
+  const factCard = (f) => ({
+    fillColor: LIGHT,
+    margin: [8, 7, 8, 7],
+    stack: [
+      { text: f.label.toUpperCase(), fontSize: 6.5, bold: true, color: GREY, characterSpacing: 0.4 },
+      { text: f.value, fontSize: 9.5, bold: true, color: f.tone ? f.tone.fg : config.primaryColor, margin: [0, 3, 0, 0] },
+    ],
+  });
+
+  const content = [
+    { text: title, fontSize: 18, bold: true, color: config.primaryColor },
+    ...(subtitle ? [{ text: subtitle, fontSize: 9, color: GREY, margin: [0, 2, 0, 0] }] : []),
+    {
+      margin: [0, 12, 0, 0],
+      table: { widths: facts.map((f, i) => (i === 0 ? 118 : "*")), body: [facts.map(factCard)] },
+      layout: {
+        hLineWidth: () => 0,
+        vLineWidth: (i, node) => (i === 0 || i === node.table.widths.length ? 0 : 5),
+        vLineColor: () => "#FFFFFF",
+        paddingLeft: () => 0,
+        paddingRight: () => 0,
+        paddingTop: () => 0,
+        paddingBottom: () => 0,
+      },
+    },
+  ];
+
+  /* ---------- Filtros aplicados ---------- */
+  if (config.showFilters) {
+    content.push({
+      margin: [0, 8, 0, 0],
+      fontSize: 8,
+      lineHeight: 1.4,
+      text: [
+        { text: "FILTROS   ", bold: true, color: GREY, fontSize: 6.5, characterSpacing: 0.4 },
+        ...(filters.length
+          ? filters.flatMap((f) => [
+              { text: `  ${f.label}: `, color: GREY, background: "#E8F1FB" },
+              { text: `${f.value}  `, bold: true, color: config.primaryColor, background: "#E8F1FB" },
+              { text: "   " },
+            ])
+          : [{ text: "Sin filtros (todos los registros)", color: GREY, italics: true }]),
+      ],
+    });
+  }
+
+  /* ---------- Tabla ---------- */
+  const headerCells = columns.map((c) => ({
+    text: c.header,
+    bold: true,
+    color: "#FFFFFF",
+    fontSize: 7.5,
+    alignment: columnAlign(c),
   }));
-  const phrase = segments.map((x) => x.text).filter(Boolean).join(" ");
 
-  /* ---------- Cambios ---------- */
-  const setField = (name, value) => setForm((f) => ({ ...f, [name]: value }));
-
-  const changeTemplate = (templateId) => setForm((f) => ({ ...f, templateId, values: {} }));
-
-  const setValue = (position, value) =>
-    setForm((f) => ({ ...f, values: { ...f.values, [position]: value } }));
-
-  /* ---------- Guardar ---------- */
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitted(true);
-    if (hasErrors) return;
-
-    setSaving(true);
-    setSubmitError("");
-    const body = { ...buildIndicatorBody({ ...form, name: phrase, markers, verbs, units }), periodId: Number(form.periodId) };
-    try {
-      if (isEdit) await indicatorsService.update(indicatorId, body);
-      else await indicatorsService.create(body);
-      toast.success("¡Indicador guardado exitosamente!", phrase);
-      onSaved();
-    } catch (err) {
-      setSubmitError(err.noAccess
-        ? `No tienes permiso para ${isEdit ? "editar" : "crear"} indicadores.`
-        : err.response?.data?.message ?? "No se pudo guardar el indicador. Intenta de nuevo.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleClose = () => { if (!saving) onClose(); };
-
-  /* ---------- Controles de cada campo ---------- */
-  const renderField = (m) => {
-    const kind = fieldKind(m);
-    const id = `ind-field-${m.position}`;
-    const value = form.values[m.position] ?? "";
-    const error = submitted ? fieldErrors[m.position] : "";
-    const invalid = error ? styles.invalid : "";
-
-    let control;
-    if (kind === "verb") {
-      control = (
-        <select id={id} className={`${styles.select} ${invalid}`} value={value} onChange={(e) => setValue(m.position, e.target.value)}>
-          <option value="">— Selecciona —</option>
-          {verbs.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-        </select>
-      );
-    } else if (kind === "unit") {
-      const unit = units.find((u) => String(u.id) === String(form.calc.unitId));
-      control = (
-        <div id={id} className={`${s.linkedField} ${error ? s.linkedFieldInvalid : ""}`}>
-          {unit ? <strong>{unitLabel(unit)}</strong> : <span>Sin definir</span>}
-          <small>Se define en Forma de cálculo</small>
-        </div>
-      );
-    } else if (kind === "bool") {
-      control = (
-        <select id={id} className={`${styles.select} ${invalid}`} value={value} onChange={(e) => setValue(m.position, e.target.value)}>
-          <option value="">— Selecciona —</option>
-          <option value="true">Sí</option>
-          <option value="false">No</option>
-        </select>
-      );
-    } else if (kind === "date") {
-      control = (
-        <input id={id} type="date" className={`${styles.input} ${invalid}`} value={value}
-          onChange={(e) => setValue(m.position, e.target.value)} />
-      );
-    } else {
-      control = (
-        <input id={id} className={`${styles.input} ${invalid}`} value={value} maxLength={MAX_TEXT} autoComplete="off"
-          inputMode={kind === "number" ? "decimal" : undefined}
-          placeholder={kind === "number" ? "0" : ""}
-          onChange={(e) => setValue(m.position, e.target.value)} />
-      );
-    }
-
-    return (
-      <div key={m.position} className={styles.field}>
-        <label className={styles.label} htmlFor={id}>
-          {m.value}<span className={styles.required}>*</span>
-        </label>
-        {control}
-        {error ? (
-          <span className={styles.fieldError}>{error}</span>
-        ) : kind === "text" ? (
-          <span className={s.counter}>{value.length}/{MAX_TEXT}</span>
-        ) : null}
-      </div>
-    );
-  };
-
-  /* ---------- Render ---------- */
-  return (
-    <Modal
-      open={open}
-      size="lg"
-      title={isEdit ? `Editar indicador — ${indicatorCode(indicatorId)}` : "Crear indicador"}
-      onClose={handleClose}
-      footer={
-        <>
-          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving || loading || !!loadError}>
-            {saving ? <Loader2 size={16} className={styles.spin} /> : <Check size={16} />}
-            {saving ? "Guardando..." : "Guardar indicador"}
-          </button>
-        </>
-      }
-    >
-      {loading ? (
-        <div className={s.modalLoading}><Loader2 size={22} className={styles.spin} /> Cargando...</div>
-      ) : loadError ? (
-        <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: 0 }}>
-          <AlertCircle size={18} /><p>{loadError}</p>
-        </div>
-      ) : (
-        <form id={FORM_ID} onSubmit={handleSubmit} noValidate className={s.form}>
-          <p className={s.formIntro}>
-            Completa los campos obligatorios. La frase se construye únicamente con los campos de la plantilla.
-          </p>
-
-          {submitError && (
-            <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: 0 }}>
-              <AlertCircle size={18} /><p>{submitError}</p>
-            </div>
-          )}
-          {submitted && hasErrors && !submitError && (
-            <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ margin: 0 }}>
-              <AlertCircle size={18} />
-              <p>Faltan datos obligatorios. Revisa los campos marcados en rojo.</p>
-            </div>
-          )}
-
-          {/* Tipo y plantilla */}
-          <div className={s.grid2}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="ind-type">Tipo de indicador<span className={styles.required}>*</span></label>
-              <select id="ind-type" className={`${styles.select} ${submitted && formErrors.type ? styles.invalid : ""}`}
-                value={form.type} onChange={(e) => setField("type", e.target.value)}>
-                <option value="">— Selecciona —</option>
-                {INDICATOR_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-              {submitted && formErrors.type && <span className={styles.fieldError}>{formErrors.type}</span>}
-            </div>
-
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="ind-template">Plantilla<span className={styles.required}>*</span></label>
-              <select id="ind-template" className={`${styles.select} ${submitted && formErrors.templateId ? styles.invalid : ""}`}
-                value={form.templateId} disabled={form.type === ""} onChange={(e) => changeTemplate(e.target.value)}>
-                <option value="">{form.type === "" ? "— Primero selecciona el tipo —" : "— Selecciona —"}</option>
-                {templateOptions.map((t) => <option key={t.id} value={t.id}>{templateLabel(t)}</option>)}
-              </select>
-              {submitted && formErrors.templateId && <span className={styles.fieldError}>{formErrors.templateId}</span>}
-              {form.type !== "" && templateOptions.length === 0 && (
-                <span className={styles.hint}>No hay plantillas activas. Créalas en Mantenimiento de plantillas.</span>
-              )}
-            </div>
-          </div>
-
-          {/* Período */}
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="ind-period">Período<span className={styles.required}>*</span></label>
-            <select id="ind-period" className={`${styles.select} ${submitted && formErrors.periodId ? styles.invalid : ""}`}
-              value={form.periodId} disabled={loadingPeriods} onChange={(e) => setField("periodId", e.target.value)}>
-              <option value="">{loadingPeriods ? "Cargando períodos..." : "— Selecciona —"}</option>
-              {periodOptions.map((p) => (
-                <option key={p.id} value={p.id}>{periodLabel(p)}{p.status ? "" : " · Inactivo"}</option>
-              ))}
-            </select>
-            {submitted && formErrors.periodId && <span className={styles.fieldError}>{formErrors.periodId}</span>}
-            {periodsError && <span className={styles.fieldError}>No se pudieron cargar los períodos.</span>}
-            {!loadingPeriods && !periodsError && periodOptions.length === 0 && (
-              <span className={styles.hint}>No hay períodos activos. Créalos en Administración → Períodos.</span>
-            )}
-          </div>
-
-          {template && (
-            <>
-              <div className={s.templateExample}>
-                <Info size={16} />
-                <div>
-                  <span className={s.kicker}>Ejemplo de plantilla</span>
-                  <p>{template.example}</p>
-                </div>
-              </div>
-
-              {/* Campos de la plantilla */}
-              <div className={s.grid2}>{markers.map(renderField)}</div>
-
-              {/* Previsualización */}
-              <div className={s.preview} aria-live="polite">
-                <span className={s.kicker}><Eye size={13} /> Previsualización · solo lectura</span>
-                <p className={s.previewText}>
-                  {segments.map((seg, i) => (
-                    <span key={seg.key}>
-                      {i > 0 && " "}
-                      {seg.text ? <span>{seg.text}</span> : <span className={s.previewMissing}>{`{${seg.label}}`}</span>}
-                    </span>
-                  ))}
-                </p>
-              </div>
-            </>
-          )}
-
-          {/* Forma de cálculo */}
-          <CalculationPanel
-            value={form.calc}
-            configured={form.calcConfigured}
-            units={units}
-            invalid={submitted && formErrors.calc}
-            onSave={(calc) => setForm((f) => ({ ...f, calc, calcConfigured: true }))}
-          />
-        </form>
-      )}
-    </Modal>
+  const bodyRows = rows.map((row) =>
+    columns.map((c) => {
+      const raw = cellValue(c, row);
+      const tone = cellTone(c, raw);
+      const text = breakable(displayValue(c, raw));
+      return tone
+        ? { text: ` ${text} `, bold: true, color: tone.fg, background: tone.bg, alignment: columnAlign(c), fontSize: 7 }
+        : { text, alignment: columnAlign(c), color: text === "—" ? "#A3ADBB" : undefined };
+    })
   );
+
+  content.push(
+    rows.length > 0
+      ? {
+          margin: [0, 12, 0, 0],
+          table: {
+            headerRows: 1, // el encabezado de la tabla se repite en cada página
+            dontBreakRows: true,
+            widths: fitWidths(columns, config.pageSize ?? "LETTER", landscape),
+            body: [headerCells, ...bodyRows],
+          },
+          layout: {
+            fillColor: (i) => (i === 0 ? config.primaryColor : i % 2 === 0 ? "#F8FAFC" : null),
+            hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0 : 0.5),
+            vLineWidth: () => 0,
+            hLineColor: () => LINE,
+            paddingTop: (i) => (i === 0 ? 6 : 4),
+            paddingBottom: (i) => (i === 0 ? 6 : 4),
+            paddingLeft: () => CELL_PADDING,
+            paddingRight: () => CELL_PADDING,
+          },
+        }
+      : {
+          margin: [0, 24, 0, 0],
+          text: "No hay registros para los filtros seleccionados.",
+          alignment: "center",
+          italics: true,
+          color: GREY,
+        }
+  );
+
+  return {
+    pageSize: config.pageSize ?? "LETTER",
+    pageOrientation: landscape ? "landscape" : "portrait",
+    pageMargins: [MARGIN_X, 78, MARGIN_X, 44],
+    info: { title, author: config.organization, creator: config.system },
+    header,
+    footer,
+    content,
+    defaultStyle: { fontSize: 7.5, color: "#22303F" },
+  };
 };
 
+/** Devuelve el PDF como Blob */
+export const buildPdf = (config, report) => pdfMake.createPdf(buildPdfDefinition(config, report)).getBlob();
 
 
 
@@ -435,1643 +211,67 @@ export const IndicatorFormModal = ({ open, indicatorId, onClose, onSaved }) => {
 
 
 
-import { useEffect, useState } from "react";
-import { ChevronRight, ChevronLeft, Check, Info, Clock, AlertCircle, Search } from "lucide-react";
-import styles from "../../Pages.module.css";
-import base from "./CollaboratorCoachingPage.module.css";
-import ui from "./AssignmentCoachingPage.module.css";
-import { Modal } from "../../../shared/components/Modal";
-import { useToast } from "../../../shared/components";
-import { useCatalogs } from "../../../hooks/useCatalogs";
-import { useDebounce } from "../../../hooks/useDebounce";
-import { coachService } from "../../../api/coachService";
-import { indicatorsService } from "../../../api/indicatorsService";
-import { usePeriods, periodDates, periodLabel, periodName } from "../../../hooks/usePeriods";
 
 
-const STEPS = ["Seleccionar equipo", "Seleccionar indicadores", "Definir vigencia", "Confirmar y enviar"];
-const EMPTY_FILTERS = { area: "", team: "", position: "", search: "" };
 
 
 
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-const sameMember = (a, b) => a.id === b.id && a.teamId === b.teamId;
-const formatDate = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
 
-export const AssignmentCoachingPage = () => {
-    const catalogs = useCatalogs();
-    const toast = useToast();
-    const { activePeriods, findById } = usePeriods();
-    const [currentStep, setCurrentStep] = useState(1);
+import { toTitleCase } from "../../../../helpers/format";
+import { statusLabelFromValue } from "../../../../api/usersService";
 
-    // Step 1: Seleccionar equipo
-    const [filters, setFilters] = useState(EMPTY_FILTERS);
-    const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS);
-    const [selectedCollaborators, setSelectedCollaborators] = useState([]);
-    const [filteredCollaborators, setfilteredCollaborators] = useState([]);
-    const [filteredIndicators, setfilteredIndicators] = useState([]);
+/* =========================================================
+   Reporte de usuarios: columnas, filtros y resumen.
+   Lo usa exportReport() para Excel y PDF.
+   ========================================================= */
 
+// Color de la etiqueta de estado
+const STATUS_TONES = {
+  "activo": "green",
+  "inactivo": "red",
+  "de vacaciones": "pink",
+  "maternidad": "teal",
+  "incapacitado(a)": "blue",
+};
+const statusTone = (value) => STATUS_TONES[String(value).toLowerCase()] ?? "grey";
 
+const title = (v) => (v ? toTitleCase(v) : "");
 
-    // Step 2: Seleccionar indicadores
-    const [indicatorSearch, setIndicatorSearch] = useState("");
-    const [selectedIndicators, setSelectedIndicators] = useState([]);
-    const [indicatorWeights, setIndicatorWeights] = useState({});
+/** Columnas (mismo orden que tenía el reporte del backend) */
+export const userReportColumns = [
+  { header: "Nombre", value: (u) => title(u.firstName) },
+  { header: "Apellido", value: (u) => title(u.lastName) },
+  { header: "Usuario de red", key: "userName" },
+  { header: "Correo electrónico", key: "email", pdfWeight: 2.2 },
+  { header: "Estado", key: "status", tone: statusTone, pdfWidth: 58 },
+  { header: "Código de cajero", key: "tellerCode", align: "center", pdfWidth: 40 },
+  { header: "Puesto", key: "companyPosition", wrap: true, pdfWeight: 1.2 },
+  { header: "Agencia / Zona", key: "companyLocation", pdfWeight: 0.9 },
+  { header: "Nombre de agencia", value: (u) => title(u.companyBranch), pdfWeight: 1.25 },
+  { header: "Área", key: "companyArea", pdfWeight: 1.1 },
+  { header: "Rol asignado", key: "role" },
+];
 
-    // Step 3: Definir vigencia y metas
-    const [periodId, setPeriodId] = useState("");
-    const [vigencyStartDate, setVigencyStartDate] = useState("");
-    const [vigencyEndDate, setVigencyEndDate] = useState("");
-    const [teams, setTeams] = useState([]);
-
-    const [indicatorsMeta, setIndicatorsMeta] = useState({});
-
-    // Step 4: Summary
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
-
-
-    // Recarga los colaboradores al aplicar filtros y descarta de la selección los que ya no aparecen
-    useEffect(() => {
-        let cancelled = false;
-        coachService.loggedUserTeamsMembers(appliedFilters)
-            .then((members) => {
-                if (cancelled) return;
-                setfilteredCollaborators(members);
-                setSelectedCollaborators((prev) => prev.filter((s) => members.some((m) => sameMember(m, s))));
-            })
-            .catch((error) => {
-                if (!cancelled) toast.error(error.noAccess ? "No tienes permiso para consultar tus equipos." : "No se pudieron cargar los colaboradores.");
-            });
-        return () => { cancelled = true; };
-    }, [appliedFilters]);
-
-    // Solo indicadores activos con su unidad de medida; la búsqueda por nombre se resuelve en el backend
-    const debouncedIndicatorSearch = useDebounce(indicatorSearch, 400);
-    useEffect(() => {
-        let cancelled = false;
-        indicatorsService.assignable(debouncedIndicatorSearch)
-            .then((indicators) => { if (!cancelled) setfilteredIndicators(indicators); })
-            .catch(() => { if (!cancelled) toast.error("No se pudieron cargar los indicadores."); });
-        return () => { cancelled = true; };
-    }, [debouncedIndicatorSearch]);
-
-    useEffect(() => {
-        coachService.loggedUserTeams().then(setTeams).catch(() => toast.error("No se pudieron cargar los equipos."));
-    }, []);
-
-    const groupedByTeam = Object.values(
-        filteredCollaborators.reduce((groups, c) => {
-            (groups[c.teamId] ||= { teamId: c.teamId, teamName: c.teamName, members: [] }).members.push(c);
-            return groups;
-        }, {})
-    );
-
-    const getTeamSelectedCount = (teamId) => selectedCollaborators.filter((c) => c.teamId === teamId).length;
-    const isCollaboratorSelected = (collaborator) => selectedCollaborators.some((c) => sameMember(c, collaborator));
-
-    const totalWeight = Object.values(indicatorWeights).reduce((sum, w) => sum + (parseInt(w) || 0), 0);
-    const isWeightValid = totalWeight === 100 && selectedIndicators.length > 0;
-
-    // const filteredIndicators = filterIndicators.filter((ind) =>
-    //     ind.name.toLowerCase().includes(indicatorSearch.trim().toLowerCase())
-    // );
-
-    // Paso 1
-    const handleSearch = () => setAppliedFilters(filters);
-
-    const handleClearFilters = () => {
-        setFilters(EMPTY_FILTERS);
-        setAppliedFilters(EMPTY_FILTERS);
-        setSelectedCollaborators([]);
-    };
-
-    const handleSelectCollaborator = (collaborator) => {
-        setSelectedCollaborators((prev) =>
-            prev.some((c) => sameMember(c, collaborator)) ? prev.filter((c) => !sameMember(c, collaborator)) : [...prev, collaborator]
-        );
-    };
-
-    const handleSelectTeamCollaborators = (teamId) => {
-        const teamCollaborators = filteredCollaborators.filter((c) => c.teamId === teamId);
-        const allSelected = teamCollaborators.length > 0 && getTeamSelectedCount(teamId) === teamCollaborators.length;
-
-        if (allSelected) {
-            setSelectedCollaborators(selectedCollaborators.filter((c) => c.teamId !== teamId));
-        } else {
-            const next = [...selectedCollaborators];
-            teamCollaborators.forEach((c) => {
-                if (!next.some((s) => sameMember(s, c))) next.push(c);
-            });
-            setSelectedCollaborators(next);
-        }
-    };
-
-    const handleContinueToIndicators = () => {
-        if (selectedCollaborators.length === 0) {
-            toast.error("Por favor selecciona al menos un colaborador");
-            return;
-        }
-        setCurrentStep(2);
-    };
-
-    // Paso 2
-    const handleToggleIndicator = (indicatorId) => {
-        if (selectedIndicators.some((i) => i.id === indicatorId)) {
-            setSelectedIndicators(selectedIndicators.filter((i) => i.id !== indicatorId));
-            const { [indicatorId]: _removed, ...rest } = indicatorWeights;
-            setIndicatorWeights(rest);
-        } else {
-            setSelectedIndicators([...selectedIndicators, filteredIndicators.find((i) => i.id === indicatorId)]);
-        }
-    };
-
-    const handleWeightChange = (indicatorId, value) => {
-        const weight = parseInt(value) || 0;
-        if (weight >= 0 && weight <= 100) {
-            setIndicatorWeights({ ...indicatorWeights, [indicatorId]: weight });
-        }
-    };
-
-    const handleContinueToVigency = () => {
-        if (selectedIndicators.length === 0) {
-            toast.error("Por favor selecciona al menos un indicador");
-            return;
-        }
-        if (!isWeightValid) {
-            toast.error("La suma de los pesos debe ser exactamente 100%");
-            return;
-        }
-        setCurrentStep(3);
-    };
-
-    // Paso 3
-    // Al elegir un período, la vigencia toma sus fechas (se pueden ajustar dentro del período)
-    const selectedPeriod = findById(periodId);
-    const handlePeriodChange = (id) => {
-        setPeriodId(id);
-        const { start, end } = periodDates(findById(id));
-        setVigencyStartDate(start);
-        setVigencyEndDate(end);
-    };
-
-    const handleMetaChange = (indicatorId, field, value) => {
-        setIndicatorsMeta({
-            ...indicatorsMeta,
-            [indicatorId]: { ...indicatorsMeta[indicatorId], [field]: value },
-        });
-    };
-
-    const handleContinueToApproval = () => {
-        if (!periodId) {
-            toast.error("Selecciona el período de la asignación");
-            return;
-        }
-        if (!vigencyStartDate || !vigencyEndDate) {
-            toast.error("Por favor ingresa las fechas de vigencia");
-            return;
-        }
-        if (vigencyEndDate < vigencyStartDate) {
-            toast.error("La fecha fin de vigencia no puede ser anterior a la fecha inicio");
-            return;
-        }
-        const { start, end } = periodDates(selectedPeriod);
-        if (vigencyStartDate < start || vigencyEndDate > end) {
-            toast.error(`La vigencia debe estar dentro del período ${periodLabel(selectedPeriod)}`);
-            return;
-        }
-        if (selectedIndicators.some((ind) => !indicatorsMeta[ind.id]?.meta)) {
-            toast.error("Por favor completa la meta de todos los indicadores");
-            return;
-        }
-
-
-        setCurrentStep(4);
-    };
-
-    // Paso 4
-    const handleResetFlow = () => {
-        setCurrentStep(1);
-        setSelectedCollaborators([]);
-        setSelectedIndicators([]);
-        setIndicatorWeights({});
-        setPeriodId("");
-        setVigencyStartDate("");
-        setVigencyEndDate("");
-        setIndicatorsMeta({});
-        setIndicatorSearch("");
-        setFilters(EMPTY_FILTERS);
-        setAppliedFilters(EMPTY_FILTERS);
-    };
-
-    const handleConfirmAndSend = async () => {
-        // Fechas sin hora ("yyyy-mm-dd"): así no hay desfase de zona horaria
-        const validFrom = vigencyStartDate;
-        const validTo = vigencyEndDate;
-        const indicatorsPayload = selectedIndicators.map((ind) => ({
-            indicatorId: ind.id,
-            weight: indicatorWeights[ind.id] ?? 0,
-            targetValue: Number(indicatorsMeta[ind.id]?.meta) || 0,
-            targetUnitId: ind.targetUnitId ?? null,
-            validFrom,
-            validTo,
-        }));
-
-        // Agrupa los colaboradores seleccionados por equipo, como lo exige el backend
-        const teamsPayload = Object.values(
-            selectedCollaborators.reduce((acc, c) => {
-                (acc[c.teamId] ??= { teamId: c.teamId, members: [] }).members.push({ memberUserId: c.id, indicators: indicatorsPayload });
-                return acc;
-            }, {})
-        );
-
-        try {
-            await coachService.createAssignments(teamsPayload);
-            setShowConfirmModal(false);
-            toast.success("Solicitud enviada - indicadores en estado Pendiente de aceptación");
-            handleResetFlow();
-        } catch (error) {
-            toast.error(
-                error.noAccess
-                    ? "No tienes permiso para asignar indicadores."
-                    : error.response?.data?.message ?? "No se pudo enviar la solicitud. Intenta de nuevo."
-            );
-        }
-    };
-
-    const handleBack = () => setCurrentStep((s) => Math.max(1, s - 1));
-
-    const onRowKey = (e, fn) => {
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            fn();
-        }
-    };
-
-    return (
-        <>
-            <header className={styles.pageHeader}>
-                <div>
-                    <h1 className={styles.title}>Asignación de indicadores</h1>
-                    <p className={styles.subtitle}>
-                        Asigna indicadores a colaboradores y solicita su aceptación para habilitarlos en el proceso de coaching.
-                    </p>
-                </div>
-            </header>
-
-            <div className={base.page}>
-                {/* Stepper */}
-                <nav className={base.stepper} aria-label="Progreso de la asignación">
-                    {STEPS.map((label, i) => {
-                        const step = i + 1;
-                        const state = step < currentStep ? "done" : step === currentStep ? "current" : "";
-                        return (
-                            <div key={label} style={{ display: "contents" }}>
-                                <div className={`${base.step} ${state ? base[state] : ""}`} aria-current={step === currentStep ? "step" : undefined}>
-                                    <span className={base.stepCircle}>{step}</span>
-                                    <span className={base.stepLabel}>{label}</span>
-                                </div>
-                                {step < STEPS.length && <span className={`${base.stepLine} ${step < currentStep ? base.done : ""}`} />}
-                            </div>
-                        );
-                    })}
-                </nav>
-
-                {/* PASO 1 */}
-                {currentStep === 1 && (
-                    <>
-                        <div className={base.infoBanner}>
-                            <Info size={16} />
-                            <span>
-                                Selecciona el equipo de trabajo al que deseas asignar indicadores. Solo se muestran los equipos que tienes asignados como coach. Los miembros del equipo aparecerán para selección individual.
-                            </span>
-                        </div>
-
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Filtrar equipo</h2>
-                            </div>
-                            <div className={base.cardBody}>
-                                <form
-                                    onSubmit={(e) => {
-                                        e.preventDefault();
-                                        handleSearch();
-                                    }}
-                                >
-                                    <div className={ui.filterGrid}>
-                                        <div className={base.field}>
-                                            <label className={base.label} htmlFor="as-area">Área</label>
-                                            <select id="as-area" className={base.select} value={filters.area} onChange={(e) => setFilters({ ...filters, area: e.target.value })}>
-                                                <option value="">Todas las áreas</option>
-                                                {catalogs.areas.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className={base.field}>
-                                            <label className={base.label} htmlFor="as-team">Equipo</label>
-                                            <select id="as-team" className={base.select} value={filters.team} onChange={(e) => setFilters({ ...filters, team: e.target.value })}>
-                                                <option value="">Todos mis equipos</option>
-                                                {/* {Object.keys(MOCK_TEAMS).map((t) => <option key={t} value={t}>{t}</option>)} */}
-                                                {teams.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-
-                                            </select>
-                                        </div>
-                                        <div className={base.field}>
-                                            <label className={base.label} htmlFor="as-position">Perfil de puesto</label>
-                                            <select id="as-position" className={base.select} value={filters.position} onChange={(e) => setFilters({ ...filters, position: e.target.value })}>
-                                                <option value="">Todos los perfiles</option>
-                                                {/* {MOCK_POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)} */}
-                                                {catalogs.positions.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <div className={`${base.field} ${ui.searchRow}`}>
-                                        <label className={base.label} htmlFor="as-search">Buscar</label>
-                                        <div className={base.inputIcon}>
-                                            <Search size={16} />
-                                            <input
-                                                id="as-search"
-                                                type="text"
-                                                className={base.input}
-                                                placeholder="Código o nombre del colaborador..."
-                                                value={filters.search}
-                                                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className={base.searchActions}>
-                                        <button type="submit" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`}>Buscar</button>
-                                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleClearFilters}>Limpiar</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </section>
-
-                        <span className={ui.selectionInfo}>
-                            {selectedCollaborators.length} de {plural(filteredCollaborators.length, "colaborador", "colaboradores")} {selectedCollaborators.length === 1 ? "seleccionado" : "seleccionados"}
-                        </span>
-
-                        {filteredCollaborators.length > 0 ? (
-                            <div className={ui.groups}>
-                                {groupedByTeam.map((team) => {
-                                    const members = team.members;
-                                    const selectedCount = getTeamSelectedCount(team.teamId);
-                                    const allSelected = selectedCount === members.length;
-
-                                    return (
-                                        <section key={team.teamId} className={ui.group}>
-                                            <div className={ui.groupHeader}>
-                                                <div>
-                                                    <div className={ui.groupName}>{team.teamName}</div>
-                                                    <div className={ui.groupMeta}>
-                                                        {plural(members.length, "miembro activo", "miembros activos")}
-                                                    </div>
-                                                </div>
-                                                <div className={ui.groupRight}>
-                                                    <label className={ui.selectAll} htmlFor={`selectTeam-${team.teamId}`}>
-                                                        <input
-                                                            id={`selectTeam-${team.teamId}`}
-                                                            type="checkbox"
-                                                            className={ui.checkbox}
-                                                            checked={allSelected}
-                                                            onChange={() => handleSelectTeamCollaborators(team.teamId)}
-                                                        />
-                                                        Seleccionar todos
-                                                    </label>
-                                                    <span className={ui.groupCounter}>{plural(selectedCount, "seleccionado", "seleccionados")}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className={base.tableScroll}>
-                                                <table className={base.table}>
-                                                    <thead>
-                                                        <tr>
-                                                            <th className={ui.checkCell} />
-                                                            <th>Código</th>
-                                                            <th>Nombre</th>
-                                                            <th>Puesto</th>
-                                                            <th>Área</th>
-                                                            <th>Ubicación</th>
-                                                            <th>Estado</th>
-                                                            <th>Indicadores activos</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {members.map((c) => {
-                                                            const selected = isCollaboratorSelected(c);
-                                                            return (
-                                                                <tr
-                                                                    key={`${c.teamId}-${c.id}`}
-                                                                    className={selected ? base.selected : ""}
-                                                                    onClick={() => handleSelectCollaborator(c)}
-                                                                    onKeyDown={(e) => onRowKey(e, () => handleSelectCollaborator(c))}
-                                                                    tabIndex={0}
-                                                                    aria-selected={selected}
-                                                                >
-                                                                    <td className={ui.checkCell}>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            className={ui.checkbox}
-                                                                            checked={selected}
-                                                                            onChange={() => handleSelectCollaborator(c)}
-                                                                            onClick={(e) => e.stopPropagation()}
-                                                                            aria-label={`Seleccionar a ${c.fullName}`}
-                                                                        />
-                                                                    </td>
-                                                                    <td className={base.code}>{c.employeeId || '-----'}</td>
-                                                                    <td className={base.name}>{c.fullName}</td>
-                                                                    <td>{c.companyPosition}</td>
-                                                                    <td><span className={base.chip}>{c.companyArea}</span></td>
-                                                                    <td className={base.muted}>{c.companyLocation}</td>
-                                                                    <td><span className={base.statusActive}>{c.status}</span></td>
-                                                                    <td className={base.muted}>
-                                                                        {c.totalIndicators === 0 ? "Sin indicadores" : plural(c.totalIndicators, "indicador", "indicadores")}
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </section>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div className={base.emptyState}>No se encontraron colaboradores con los filtros aplicados</div>
-                        )}
-
-                        <div className={base.actions}>
-                            <button
-                                type="button"
-                                className={`${base.btn} ${base.btnPrimary}`}
-                                onClick={handleContinueToIndicators}
-                                disabled={selectedCollaborators.length === 0}
-                            >
-                                Siguiente — Seleccionar indicadores <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 2 */}
-                {currentStep === 2 && (
-                    <>
-                        <div className={base.infoBanner}>
-                            <Info size={16} />
-                            <span>
-                                Solo se muestran indicadores activos configurados para el perfil de puesto de los colaboradores seleccionados. Define el peso (%) de cada indicador — la suma debe ser exactamente 100%.
-                            </span>
-                        </div>
-
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Indicadores disponibles</h2>
-                                <span className={ui.indicatorsHint}>
-                                    Filtrados para {plural(selectedCollaborators.length, "colaborador seleccionado", "colaboradores seleccionados")}
-                                    {appliedFilters.area && <> · Área: <strong>{catalogs.areas.find((a) => String(a.value) === String(appliedFilters.area))?.label}</strong></>}
-                                    {appliedFilters.team && <> · Equipo: <strong>{teams.find((t) => String(t.id) === String(appliedFilters.team))?.name}</strong></>}
-                                    {appliedFilters.position && <> · Perfil: <strong>{catalogs.positions.find((p) => String(p.value) === String(appliedFilters.position))?.label}</strong></>}
-                                </span>
-                            </div>
-                            <div className={base.cardBody}>
-                                <div className={base.inputIcon}>
-                                    <Search size={16} />
-                                    <input
-                                        type="text"
-                                        className={base.input}
-                                        placeholder="Buscar indicador..."
-                                        value={indicatorSearch}
-                                        onChange={(e) => setIndicatorSearch(e.target.value)}
-                                    />
-                                </div>
-
-                                <div className={ui.indicatorsHead}>
-                                    <span />
-                                    <span>Indicador</span>
-                                    <span className={ui.colCenter}>Tipo de valor</span>
-                                    <span className={ui.colCenter}>Peso (%)</span>
-                                </div>
-
-                                <div className={ui.indicatorsList}>
-                                    {filteredIndicators.map((ind) => {
-                                        const isSelected = selectedIndicators.some((i) => i.id === ind.id);
-                                        return (
-                                            <div
-                                                key={ind.id}
-                                                className={`${ui.indicatorRow} ${isSelected ? ui.selected : ""}`}
-                                                onClick={() => handleToggleIndicator(ind.id)}
-                                                onKeyDown={(e) => onRowKey(e, () => handleToggleIndicator(ind.id))}
-                                                tabIndex={0}
-                                                role="checkbox"
-                                                aria-checked={isSelected}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    className={ui.checkbox}
-                                                    checked={isSelected}
-                                                    onChange={() => handleToggleIndicator(ind.id)}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    tabIndex={-1}
-                                                    aria-label={`Seleccionar ${ind.name}`}
-                                                />
-                                                <div>
-                                                    <div className={ui.indicatorRowName}>{ind.name}</div>
-                                                    {/* <div className={ui.indicatorRowSub}>Familia: Atención al cliente</div> */}
-                                                </div>
-                                                <div className={ui.typeCell}>
-                                                    <span className={ui.valueTypePill}>{ind.typeName}</span>
-                                                </div>
-                                                <div className={`${ui.weightField} ${isSelected ? "" : ui.disabled}`} onClick={(e) => e.stopPropagation()}>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        max="100"
-                                                        value={isSelected ? indicatorWeights[ind.id] ?? 0 : 0}
-                                                        // value={ind.weight}
-                                                        disabled={!isSelected}
-                                                        onChange={(e) => handleWeightChange(ind.id, e.target.value)}
-                                                        aria-label={`Peso de ${ind.name}`}
-                                                    />
-                                                    <span>%</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <div className={ui.weightSummary}>
-                                    <div className={ui.weightBar}>
-                                        <div className={ui.weightTop}>
-                                            <span>Peso total asignado</span>
-                                            <strong>{totalWeight}%</strong>
-                                        </div>
-                                        <div className={ui.weightTrack}>
-                                            <div
-                                                className={`${ui.weightFill} ${isWeightValid ? "" : ui.incomplete}`}
-                                                style={{ width: `${Math.min(totalWeight, 100)}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <span className={`${ui.weightStatus} ${isWeightValid ? "" : ui.incomplete}`}>
-                                        {isWeightValid ? (
-                                            <><Check size={14} /> Completo</>
-                                        ) : (
-                                            <><AlertCircle size={14} /> {totalWeight > 100 ? `Sobran ${totalWeight - 100}%` : `Falta ${100 - totalWeight}%`}</>
-                                        )}
-                                    </span>
-                                </div>
-                            </div>
-                        </section>
-
-                        <div className={`${base.actions} ${base.actionsSplit}`}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={handleContinueToVigency} disabled={!isWeightValid}>
-                                Siguiente — Definir vigencia <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 3 */}
-                {currentStep === 3 && (
-                    <>
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Periodo de vigencia y metas</h2>
-                            </div>
-                            <div className={base.cardBody}>
-                                <div className={base.field}>
-                                    <label className={base.label} htmlFor="as-period">Período *</label>
-                                    <select id="as-period" className={base.select} value={periodId} onChange={(e) => handlePeriodChange(e.target.value)}>
-                                        <option value="">{activePeriods.length === 0 ? "No hay períodos activos" : "Selecciona el período"}</option>
-                                        {activePeriods.map((p) => <option key={p.id} value={p.id}>{periodLabel(p)}</option>)}
-                                    </select>
-                                </div>
-
-                                <div className={ui.dateGrid}>
-                                    <div className={base.field}>
-                                        <label className={base.label} htmlFor="as-start">Fecha inicio vigencia *</label>
-                                        <input id="as-start" type="date" className={base.input} value={vigencyStartDate}
-                                            min={periodDates(selectedPeriod).start || undefined} max={periodDates(selectedPeriod).end || undefined}
-                                            disabled={!periodId} onChange={(e) => setVigencyStartDate(e.target.value)} />
-                                    </div>
-                                    <div className={base.field}>
-                                        <label className={base.label} htmlFor="as-end">Fecha fin vigencia *</label>
-                                        <input id="as-end" type="date" className={base.input} value={vigencyEndDate}
-                                            min={vigencyStartDate || periodDates(selectedPeriod).start || undefined} max={periodDates(selectedPeriod).end || undefined}
-                                            disabled={!periodId} onChange={(e) => setVigencyEndDate(e.target.value)} />
-                                    </div>
-                                </div>
-
-                                <div className={ui.divider}>Meta por indicador seleccionado</div>
-
-                                <div className={ui.metaList}>
-                                    {selectedIndicators.map((ind) => {
-                                        const meta = indicatorsMeta[ind.id] || {};
-                                        return (
-                                            <div key={ind.id} className={ui.metaCard}>
-                                                <div className={ui.metaHead}>
-                                                    <h3 className={ui.metaName}>{ind.name}</h3>
-                                                    <div className={ui.metaHeadRight}>
-                                                        <span className={ui.valueTypePill}>{ind.typeName}</span>
-                                                        <span className={ui.metaWeight}>Peso: {indicatorWeights[ind.id]}%</span>
-                                                    </div>
-                                                </div>
-                                                <div className={ui.metaGrid}>
-                                                    <div className={base.field}>
-                                                        <label className={base.label} htmlFor={`as-meta-${ind.id}`}>Meta *</label>
-                                                        <input
-                                                            id={`as-meta-${ind.id}`}
-                                                            type="number"
-                                                            className={base.input}
-                                                            placeholder="Ej. 95"
-                                                            value={meta.meta || ""}
-                                                            onChange={(e) => handleMetaChange(ind.id, "meta", e.target.value)}
-                                                        />
-                                                    </div>
-                                                    <div className={base.field}>
-                                                        <label className={base.label} htmlFor={`as-unit-${ind.id}`}>Unidad de medida</label>
-                                                        <input
-                                                            id={`as-unit-${ind.id}`}
-                                                            className={base.input}
-                                                            value={ind.targetUnitName ?? "Sin unidad"}
-                                                            disabled
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className={ui.metaHelp}>Valor numérico objetivo</div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </section>
-
-                        <div className={`${base.actions} ${base.actionsSplit}`}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={handleContinueToApproval}>
-                                Siguiente — Confirmar y enviar <ChevronRight size={16} />
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                {/* PASO 4 */}
-                {currentStep === 4 && (
-                    <>
-                        <div className={ui.successBanner}>
-                            <Clock size={16} />
-                            <span>
-                                Revisa el resumen antes de confirmar. Al enviar, los indicadores pasarán a estado <strong>Pendiente de aceptación</strong> y los colaboradores recibirán una notificación.
-                            </span>
-                        </div>
-
-                        <section className={base.card}>
-                            <div className={base.cardHeader}>
-                                <h2 className={base.cardTitle}>Resumen de asignación</h2>
-                            </div>
-                            <div className={base.cardBody}>
-                                <div className={base.statsGrid}>
-                                    <div>
-                                        <span className={base.statLabel}>Equipo</span>
-                                        <div className={base.statBox}>{Array.from(new Set(selectedCollaborators.map((c) => c.teamName))).join(", ")}</div>
-                                    </div>
-                                    <div>
-                                        <span className={base.statLabel}>Colaboradores seleccionados</span>
-                                        <div className={base.statBox}>{plural(selectedCollaborators.length, "usuario", "usuarios")}</div>
-                                    </div>
-                                    <div>
-                                        <span className={base.statLabel}>Periodo de vigencia</span>
-                                        <div className={base.statBox}>
-                                            {periodName(selectedPeriod)} · {formatDate(vigencyStartDate)} — {formatDate(vigencyEndDate)}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className={ui.divider}>Indicadores y pesos confirmados</div>
-
-                                <div className={ui.reviewList}>
-                                    {selectedIndicators.map((ind) => (
-                                        <div key={ind.id} className={ui.reviewRow}>
-                                            <Check size={16} className={ui.reviewCheck} />
-                                            <div className={ui.reviewInfo}>
-                                                <div className={ui.reviewName}>{ind.name}</div>
-                                                <div className={ui.reviewSub}>
-                                                    {ind.typeName} · Meta: {indicatorsMeta[ind.id]?.meta || "-"} {ind.targetUnitName ?? ""}
-                                                </div>
-                                            </div>
-                                            <div className={ui.reviewRight}>
-                                                <span className={ui.reviewWeight}>{indicatorWeights[ind.id]}%</span>
-                                                <span className={ui.pendingPill}>Pendiente de aceptación</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className={ui.totalBox}>
-                                    <span>Peso total asignado</span>
-                                    <strong>{totalWeight}%</strong>
-                                    <Check size={18} />
-                                </div>
-                            </div>
-                        </section>
-
-                        <div className={`${base.actions} ${base.actionsSplit}`}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={handleBack}>
-                                <ChevronLeft size={15} /> Volver
-                            </button>
-                            <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={() => setShowConfirmModal(true)}>
-                                <Check size={16} /> Confirmar y enviar solicitud
-                            </button>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            <Modal
-                open={showConfirmModal}
-                title="Confirmar asignación de indicadores"
-                onClose={() => setShowConfirmModal(false)}
-                footer={
-                    <div className={base.modalFooter}>
-                        <button type="button" className={`${base.btn} ${base.btnOutline}`} onClick={() => setShowConfirmModal(false)}>
-                            Cancelar
-                        </button>
-                        <button type="button" className={`${base.btn} ${base.btnPrimary}`} onClick={handleConfirmAndSend}>
-                            Sí, enviar solicitud
-                        </button>
-                    </div>
-                }
-            >
-                <p className={base.modalText}>
-                    ¿Confirmas el envío de esta asignación de indicadores a {plural(selectedCollaborators.length, "colaborador", "colaboradores")}?
-                </p>
-                <p className={ui.modalNote}>
-                    Una vez enviados, los indicadores quedarán en estado <strong>Pendiente de aceptación</strong> y los colaboradores recibirán una notificación para que los acepten.
-                </p>
-            </Modal>
-        </>
-    );
+/** Filtros aplicados con sus nombres (no los IDs) */
+export const userReportFilters = (filters, catalogs) => {
+  const labelOf = (list, value) => list.find((x) => String(x.value) === String(value))?.label ?? value;
+  const result = [];
+  if (filters.search?.trim()) result.push({ label: "Búsqueda", value: filters.search.trim() });
+  if (filters.roleId !== "") result.push({ label: "Rol", value: labelOf(catalogs.roles, filters.roleId) });
+  if (filters.companyAreaId !== "") result.push({ label: "Área", value: labelOf(catalogs.areas, filters.companyAreaId) });
+  if (filters.companyPositionId !== "") result.push({ label: "Puesto", value: labelOf(catalogs.positions, filters.companyPositionId) });
+  if (filters.status !== "") result.push({ label: "Estado", value: statusLabelFromValue(filters.status) });
+  return result;
 };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { useEffect, useState } from "react";
-import { Download, Check, X, Search } from "lucide-react";
-import { Modal, useToast } from "../../../shared/components";
-import { useAuthStore } from "../../../hooks/useAuthStore";
-import { displayName } from "../../../helpers/format";
-import { exportPdf } from "../../../shared/reports";
-import { buildCoachingFormatPdf, coachingFileName } from "./coachingFormatReport";
-import { coachService } from "../../../api/coachService";
-import { usePeriods, periodName } from "../../../hooks/usePeriods";
-import styles from "../../Pages.module.css";
-import base from "./CollaboratorCoachingPage.module.css";
-import ui from "./HistoryCoachingPage.module.css";
-
-const STATUS = {
-    process: "En proceso",
-    pending: "Pendiente de aprobación",
-    approved: "Aprobado",
-};
-
-const STATUS_PILL = {
-    [STATUS.process]: { label: "En proceso", className: ui.pillProcess },
-    [STATUS.pending]: { label: "Pend. aprobación", className: ui.pillPending },
-    [STATUS.approved]: { label: "Aprobado", className: ui.pillApproved },
-};
-
-const MONTHS_SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-
-const API_STATUS = { Process: STATUS.process, Pending: STATUS.pending, Approved: STATUS.approved };
-
-const formatNumber = (n) => Number(n).toLocaleString("es-ES", { maximumFractionDigits: 2 });
-
-const formatDateTime = (value) => {
-    const d = new Date(value);
-    return `${d.toLocaleDateString("es-ES")} ${d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}`;
-};
-
-// Adapta la respuesta de /api/coaching/history a la forma que usa la pantalla
-const mapCoaching = (c) => ({
-    id: c.sessionId,
-    collaboratorName: c.collaboratorName,
-    collaboratorCode: c.collaboratorCode ?? "-----",
-    coachName: c.coachName ?? "—",
-    date: new Date(c.date).toLocaleDateString("en-CA"),
-    status: API_STATUS[c.status] ?? STATUS.process,
-    position: c.position ?? "—",
-    location: c.location ?? "—",
-    indicators: c.indicators.map((ind) => ({
-        name: ind.indicatorName,
-        result: ind.achievedValue != null ? `${formatNumber(ind.achievedValue)} ${ind.targetUnitName}` : "—",
-        passed: ind.passed,
-    })),
-    approvals: c.approvals.map((a) => ({ role: a.role, name: a.name, date: formatDateTime(a.date) })),
-});
-
-const getInitials = (name) =>
-    name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2);
-
-const formatPeriod = (iso) => {
-    const [year, month] = iso.split("-");
-    return `${MONTHS_SHORT[Number(month) - 1]} ${year}`;
-};
-
-const formatDate = (iso) => iso.split("-").reverse().join("/");
-
-function StatCard({ value, label, tone }) {
-    return (
-        <div className={`${ui.statCard} ${tone ?? ""}`}>
-            <div className={ui.statValue}>{value ?? "—"}</div>
-            <div className={ui.statLabel}>{label}</div>
-        </div>
-    );
-}
-
-export const HistoryCoachingPage = () => {
-    const { user } = useAuthStore();
-    const [downloadingId, setDownloadingId] = useState(null);
-    const toast = useToast();
-    const { periods, findByDate } = usePeriods();
-    const [searchQuery, setSearchQuery] = useState("");
-    const [selectedStatus, setSelectedStatus] = useState("todos");
-    const [selectedPeriod, setSelectedPeriod] = useState("todos");
-    const [selectedCoachingModal, setSelectedCoachingModal] = useState(null);
-    const [showDetailModal, setShowDetailModal] = useState(false);
-    const [history, setHistory] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        coachService.history()
-            .then((data) => setHistory(data.map(mapCoaching)))
-            .catch((error) => toast.error(error.noAccess ? "No tienes permiso para ver el historial." : "No se pudo cargar el historial de coaching."))
-            .finally(() => setLoading(false));
-    }, []);
-
-    const STATS = {
-        total: history.length,
-        process: history.filter((c) => c.status === STATUS.process).length,
-        pending: history.filter((c) => c.status === STATUS.pending).length,
-        approved: history.filter((c) => c.status === STATUS.approved).length,
-    };
-
-    // Períodos del mantenimiento que tienen al menos un proceso en el historial
-    const periodIdOf = (c) => findByDate(c.date)?.id;
-    const PERIODS = periods
-        .filter((p) => history.some((c) => periodIdOf(c) === p.id))
-        .map((p) => ({ value: String(p.id), label: periodName(p) }));
-
-    const filteredCoachings = history.filter((c) => {
-        const q = searchQuery.trim().toLowerCase();
-        const matchSearch = !q || c.collaboratorName.toLowerCase().includes(q) || c.collaboratorCode.toLowerCase().includes(q);
-        const matchStatus = selectedStatus === "todos" || c.status === selectedStatus;
-        const matchPeriod = selectedPeriod === "todos" || String(periodIdOf(c)) === selectedPeriod;
-        return matchSearch && matchStatus && matchPeriod;
-    });
-
-    const handleDownloadPDF = async (coaching) => {
-        if (coaching.status !== STATUS.approved) {
-            toast.error("El PDF solo está disponible para procesos aprobados");
-            return;
-        }
-        setDownloadingId(coaching.id);
-        try {
-            const data = await coachService.exportSession(coaching.id);
-            const fileName = coachingFileName(data);
-            await exportPdf(
-                buildCoachingFormatPdf(data, { generatedBy: displayName(user) || data.coachName }),
-                fileName
-            );
-            toast.success("PDF generado", fileName);
-        } catch (err) {
-            console.error(err);
-            toast.error("No se pudo generar el PDF", "Intenta de nuevo en unos momentos.");
-        } finally {
-            setDownloadingId(null);
-        }
-    };
-
-
-    const handleViewDetails = (coaching) => {
-        setSelectedCoachingModal(coaching);
-        setShowDetailModal(true);
-    };
-
-    const isApproved = (c) => c.status === STATUS.approved;
-
-    return (
-        <>
-            <header className={styles.pageHeader}>
-                <div>
-                    <h1 className={styles.title}>Historial de coaching</h1>
-                    <p className={styles.subtitle}>Consulta los procesos de coaching aplicados y descarga el PDF de cada uno.</p>
-                </div>
-            </header>
-
-            <div className={base.page}>
-                <div className={ui.stats}>
-                    <StatCard value={STATS.total} label="Total procesos" />
-                    <StatCard value={STATS.process} label="En proceso" tone={ui.process} />
-                    <StatCard value={STATS.pending} label="Pend. aprobación" tone={ui.pending} />
-                    <StatCard value={STATS.approved} label="Aprobados" tone={ui.approved} />
-                </div>
-
-                <div className={ui.filters}>
-                    <div className={`${base.inputIcon} ${ui.searchBox}`}>
-                        <Search size={16} />
-                        <input
-                            type="text"
-                            placeholder="Buscar por colaborador..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className={base.input}
-                            aria-label="Buscar por colaborador"
-                        />
-                    </div>
-                    <select
-                        value={selectedStatus}
-                        onChange={(e) => setSelectedStatus(e.target.value)}
-                        className={`${base.select} ${ui.filterSelect}`}
-                        aria-label="Filtrar por estado"
-                    >
-                        <option value="todos">Todos los estados</option>
-                        {Object.values(STATUS).map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <select
-                        value={selectedPeriod}
-                        onChange={(e) => setSelectedPeriod(e.target.value)}
-                        className={`${base.select} ${ui.filterSelect}`}
-                        aria-label="Filtrar por período"
-                    >
-                        <option value="todos">Todos los períodos</option>
-                        {PERIODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                    </select>
-                </div>
-
-                <div className={ui.list}>
-                    {loading ? (
-                        <div className={ui.empty}>Cargando historial...</div>
-                    ) : filteredCoachings.length === 0 ? (
-                        <div className={ui.empty}>No hay registros de coaching que coincidan con la búsqueda.</div>
-                    ) : (
-                        filteredCoachings.map((c) => {
-                            const pill = STATUS_PILL[c.status];
-                            return (
-                                <div
-                                    key={c.id}
-                                    className={ui.row}
-                                    onClick={() => handleViewDetails(c)}
-                                    onKeyDown={(e) => e.key === "Enter" && handleViewDetails(c)}
-                                    tabIndex={0}
-                                    title="Doble clic o Enter para ver el detalle"
-                                >
-                                    <span className={ui.rowDate}>{formatPeriod(c.date)}</span>
-                                    <div className={ui.avatar}>{getInitials(c.collaboratorName)}</div>
-                                    <div className={ui.rowInfo}>
-                                        <div className={ui.rowName}>{c.collaboratorName} — {c.collaboratorCode}</div>
-                                        <div className={ui.rowSub}>
-                                            {c.position} · {c.location} · {c.indicators.length} indicadores
-                                        </div>
-                                    </div>
-                                    <div className={ui.rowActions}>
-                                        <span className={`${ui.pill} ${pill.className}`}>{pill.label}</span>
-                                        <button
-                                            type="button"
-                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm}`}
-                                            disabled={!isApproved(c) || downloadingId !== null}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDownloadPDF(c);
-                                            }}
-                                        >
-                                            <Download size={15} /> {downloadingId === c.id ? "Generando..." : "Descargar PDF"}
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </div>
-
-            <Modal
-                open={showDetailModal}
-                title={selectedCoachingModal ? `Detalle del proceso — ${selectedCoachingModal.collaboratorName}` : ""}
-                onClose={() => setShowDetailModal(false)}
-                footer={
-                    selectedCoachingModal && (
-                        <div className={ui.modalFooter}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setShowDetailModal(false)}>
-                                Cerrar
-                            </button>
-                            <button
-                                type="button"
-                                className={`${base.btn} ${base.btnOutline} ${base.btnSm}`}
-                                disabled={!isApproved(selectedCoachingModal) || downloadingId !== null}
-                                onClick={async () => {
-                                    await handleDownloadPDF(selectedCoachingModal);
-                                    setShowDetailModal(false);
-                                }}
-                            >
-                                <Download size={15} /> Descargar PDF
-                            </button>
-                        </div>
-                    )
-                }
-            >
-                {selectedCoachingModal && (
-                    <div className={ui.modalBody}>
-                        <div className={ui.modalGrid}>
-                            <div>
-                                <span className={base.statLabel}>Colaborador</span>
-                                <div className={base.statBox}>{selectedCoachingModal.collaboratorName} — {selectedCoachingModal.collaboratorCode}</div>
-                            </div>
-                            <div>
-                                <span className={base.statLabel}>Coach</span>
-                                <div className={base.statBox}>{selectedCoachingModal.coachName}</div>
-                            </div>
-                            <div>
-                                <span className={base.statLabel}>Fecha del proceso</span>
-                                <div className={base.statBox}>{formatDate(selectedCoachingModal.date)}</div>
-                            </div>
-                            <div>
-                                <span className={base.statLabel}>Estado</span>
-                                <div className={base.statBox}>
-                                    <span className={`${ui.pill} ${STATUS_PILL[selectedCoachingModal.status].className}`}>
-                                        {STATUS_PILL[selectedCoachingModal.status].label}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className={ui.divider}>Indicadores evaluados</div>
-                        <div className={ui.indicatorList}>
-                            {selectedCoachingModal.indicators.map((ind) => (
-                                <div key={ind.name} className={ui.indicatorItem}>
-                                    <span>{ind.name}</span>
-                                    <span className={`${ui.result} ${ind.passed ? ui.pass : ui.fail}`}>
-                                        {ind.result} {ind.passed ? <Check size={12} /> : <X size={12} />}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className={ui.approvals}>
-                            <h3 className={ui.approvalsTitle}>Aprobaciones digitales</h3>
-                            {selectedCoachingModal.approvals.length > 0 ? (
-                                <div className={ui.approvalsGrid}>
-                                    {selectedCoachingModal.approvals.map((a) => (
-                                        <div key={a.role}>
-                                            <span className={ui.approvalLabel}>{a.role}</span>
-                                            <span className={ui.approvalValue}>{a.name} · {a.date}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className={ui.noApprovals}>No hay aprobaciones registradas aún</p>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </Modal>
-        </>
-    );
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { useCallback, useEffect, useState } from "react";
-import { Download, Check, X, Info, ChevronLeft, TriangleAlert, Clock } from "lucide-react";
-import { Modal, useToast } from "../../../shared/components";
-import { coachService } from "../../../api/coachService";
-import { useAuthStore } from "../../../hooks/useAuthStore";
-import { exportDocument } from "../../../shared/reports";
-import { displayName } from "../../../helpers/format";
-import { buildCoachingReport } from "./coachingReport";
-import { usePeriods, periodName } from "../../../hooks/usePeriods";
-import styles from "../../Pages.module.css";
-import base from "../coach/CollaboratorCoachingPage.module.css";
-import ui from "./ConsultaCoachingPage.module.css";
-
-const STATUS_LABEL = { Pending: "Pendiente de aprobación", Approved: "Aprobado", Rejected: "Rechazado" };
-const STATUS_PILL = { Pending: ui.pillPending, Approved: ui.pillApproved, Rejected: ui.pillRejected };
-const MEASUREMENT_LABEL = { 1: "Cumplimiento", 2: "Comportamiento", 3: "Conocimiento" };
-const RULE_SYMBOL = { HigherIsBetter: "≥", LowerIsBetter: "≤" };
-
-const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-
-const formatDate = (value) => (value ? new Date(value).toLocaleDateString("es-ES") : "—");
-const formatDateTime = (value) => (value ? new Date(value).toLocaleString("es-ES") : "—");
-const formatNumber = (n) => Number(n).toLocaleString("es-ES", { maximumFractionDigits: 2 });
-
-const goalText = (ind) =>
-    ind.ruleName === "InRangeIsBetter"
-        ? `${formatNumber(ind.minimunValue)} – ${formatNumber(ind.maximunValue)} ${ind.targetUnitName}`
-        : `${RULE_SYMBOL[ind.ruleName] ?? ""} ${formatNumber(ind.targetValue)} ${ind.targetUnitName}`.trim();
-
-const getInitials = (name = "") =>
-    name.split(" ").filter(Boolean).map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-
-const periodOf = (p) => {
-    const d = new Date(p.startDate);
-    return { year: String(d.getFullYear()), month: d.getMonth() };
-};
-
-// Título del proceso: nombre del período del mantenimiento; si no se encuentra, mes y año
-const buildTitle = (p, period) => {
-    if (period) return `Coaching — ${periodName(period)}`;
-    const { year, month } = periodOf(p);
-    return `Coaching — ${MONTHS[month]} ${year}`;
-};
-
-function StatCard({ value, label, tone }) {
-    return (
-        <div className={`${ui.statCard} ${tone ?? ""}`}>
-            <div className={ui.statValue}>{value}</div>
-            <div className={ui.statLabel}>{label}</div>
-        </div>
-    );
-}
-
-export const ConsultaCoachingPage = () => {
-    const toast = useToast();
-    const { user } = useAuthStore();
-    const { findByDate } = usePeriods();
-    const processTitle = (p) => buildTitle(p, findByDate(p.startDate));
-    const [exporting, setExporting] = useState(null); // "excel-2", "pdf-2"... o null
-    const [processes, setProcesses] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [selectedId, setSelectedId] = useState(null);
-    const [filters, setFilters] = useState({ year: "todos", month: "todos", status: "todos" });
-    const [modal, setModal] = useState(null); // "approve" | "reject" | null
-    const [reason, setReason] = useState("");
-    const [saving, setSaving] = useState(false);
-    const [approveStamp, setApproveStamp] = useState("");
-
-    const load = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            setProcesses(await coachService.myProcesses());
-        } catch (err) {
-            setError(err.noAccess ? "No tienes permiso para consultar tus procesos." : "No se pudieron cargar los procesos de coaching.");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        load();
-    }, [load]);
-
-    const selected = processes.find((p) => p.sessionId === selectedId) ?? null;
-    const years = [...new Set(processes.map((p) => periodOf(p).year))].sort().reverse();
-
-    const filtered = processes.filter((p) => {
-        const { year, month } = periodOf(p);
-        return (
-            (filters.year === "todos" || year === filters.year) &&
-            (filters.month === "todos" || String(month) === filters.month) &&
-            (filters.status === "todos" || p.reviewStatus === filters.status)
-        );
-    });
-
-    const isApproved = (p) => p.reviewStatus === "Approved";
-
-    const download = async (type, p) => {
-        const label = type === "excel" ? "Excel" : "PDF";
-        setExporting(`${type}-${p.sessionId}`);
-        try {
-            const data = await coachService.exportSession(p.sessionId);
-            await exportDocument(type, buildCoachingReport(data, { generatedBy: displayName(user) || p.memberFullName }));
-            toast.success(`${label} generado`, processTitle(p));
-        } catch (err) {
-            console.error(err);
-            toast.error(`No se pudo generar el ${label}`, "Intenta de nuevo en unos momentos.");
-        } finally {
-            setExporting(null);
-        }
-    };
-
-    const handleDownloadExcel = (p) => download("excel", p);
-    const handleDownloadPDF = (p) => download("pdf", p);
-
-    const closeModal = () => {
-        setModal(null);
-        setReason("");
-    };
-
-    const handleConfirm = async () => {
-        if (modal === "reject" && !reason.trim()) {
-            toast.warning("Debes indicar el motivo del rechazo");
-            return;
-        }
-        setSaving(true);
-        try {
-            if (modal === "approve") {
-                await coachService.approveProcess(selectedId);
-                toast.success("Coaching aprobado correctamente");
-            } else {
-                await coachService.rejectProcess(selectedId, reason.trim());
-                toast.success("Coaching rechazado correctamente");
-            }
-            closeModal();
-            await load();
-        } catch (err) {
-            toast.error("No se pudo registrar la respuesta", err.response?.data?.message ?? "Intenta nuevamente.");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const onRowKey = (e, fn) => {
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            fn();
-        }
-    };
-
-    /* ===================== DETALLE ===================== */
-    if (selected) {
-        const p = selected;
-        const approved = isApproved(p);
-        const pending = p.reviewStatus === "Pending";
-
-        return (
-            <div className={base.page}>
-                <div className={ui.topBar}>
-                    <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setSelectedId(null)}>
-                        <ChevronLeft size={15} /> Volver al listado
-                    </button>
-                    <div className={ui.topActions}>
-                        <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadExcel(p)}>
-                            <Download size={15} /> Excel
-                        </button>
-                        {approved && (
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadPDF(p)}>
-                                <Download size={15} /> Descargar PDF
-                            </button>
-                        )}
-                        {pending && (
-                            <>
-                                <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={() => setModal("reject")}>
-                                    <X size={15} /> Rechazar
-                                </button>
-                                <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={() => {
-                                    setApproveStamp(new Date().toLocaleString("es-ES"));
-                                    setModal("approve");
-                                }}>
-                                    <Check size={15} /> Aprobar coaching
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                <div>
-                    <h1 className={ui.detailTitle}>{processTitle(p)}</h1>
-                    <p className={ui.detailSub}>Información en modo solo lectura. No es posible modificar datos desde esta sección.</p>
-                </div>
-
-                <section className={ui.hero}>
-                    <div className={ui.heroAvatar}>{getInitials(p.coachName)}</div>
-                    <div className={ui.heroInfo}>
-                        <div className={ui.heroName}>Coach: {p.coachName ?? "—"}</div>
-                        <div className={ui.heroMeta}>{[p.position, p.area, p.location].filter(Boolean).join(" · ")}</div>
-                    </div>
-                    <div className={ui.heroField}>
-                        <span className={ui.heroLabel}>Estado</span>
-                        <span className={`${ui.pill} ${STATUS_PILL[p.reviewStatus]}`}>{STATUS_LABEL[p.reviewStatus]}</span>
-                    </div>
-                    <div className={ui.heroField}>
-                        <span className={ui.heroLabel}>Fecha de inicio</span>
-                        <span className={ui.heroValue}>{formatDate(p.startDate)}</span>
-                    </div>
-                    <div className={ui.heroField}>
-                        <span className={ui.heroLabel}>Fecha de fin</span>
-                        <span className={ui.heroValue}>{formatDate(p.endDate)}</span>
-                    </div>
-                </section>
-
-                {pending && (
-                    <div className={ui.warning}>
-                        <TriangleAlert size={16} />
-                        <span>
-                            Este proceso está <strong>Pendiente de tu aprobación</strong>. Revisa los indicadores y el plan de acción, luego presiona <strong>Aprobar coaching</strong> para confirmar.
-                        </span>
-                    </div>
-                )}
-
-                {p.reviewStatus === "Rejected" && (
-                    <div className={ui.warning}>
-                        <TriangleAlert size={16} />
-                        <span>Rechazaste este proceso el {formatDate(p.reviewedAt)}. Motivo: {p.reviewRejectionReason}</span>
-                    </div>
-                )}
-
-                <section className={base.card}>
-                    <div className={base.cardHeader}>
-                        <h2 className={base.cardTitle}>Indicadores evaluados</h2>
-                    </div>
-                    <div className={base.cardBody}>
-                        <div className={ui.indicatorList}>
-                            {p.indicators.map((ind) => (
-                                <div key={ind.assignmentId} className={ui.indicatorItem}>
-                                    <span>{ind.indicatorName}</span>
-                                    <div className={ui.indicatorRight}>
-                                        <span className={`${ui.result} ${ind.passed ? ui.pass : ui.fail}`}>
-                                            {ind.achievedValue != null ? `${formatNumber(ind.achievedValue)} ${ind.targetUnitName}` : "—"}
-                                            {ind.achievementPercentage != null && ` (${formatNumber(ind.achievementPercentage)}%)`}
-                                            {ind.passed ? <Check size={12} /> : <X size={12} />}
-                                        </span>
-                                        <span className={ui.goal}>Meta: {goalText(ind)}</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </section>
-
-                <section className={base.card}>
-                    <div className={base.cardHeader}>
-                        <h2 className={base.cardTitle}>Plan de acción</h2>
-                    </div>
-                    <div className={base.cardBody}>
-                        {p.actions.length === 0 && <div className={ui.fieldValue}>Sin acciones registradas.</div>}
-                        {p.actions.map((a, idx) => (
-                            <div key={a.id} className={ui.actionBox}>
-                                <span className={ui.actionNumber}>Acción #{idx + 1}</span>
-                                <div className={ui.actionGrid}>
-                                    <div>
-                                        <span className={ui.fieldLabel}>Tipo de medición</span>
-                                        <div className={ui.fieldValue}>{MEASUREMENT_LABEL[a.measurementType] ?? "—"}</div>
-                                    </div>
-                                    <div>
-                                        <span className={ui.fieldLabel}>Fecha compromiso</span>
-                                        <div className={ui.fieldValue}>{formatDate(a.commitmentDate)}</div>
-                                    </div>
-                                    <div>
-                                        <span className={ui.fieldLabel}>Oportunidad de mejora</span>
-                                        <div className={ui.fieldValue}>{a.improvementOpportunity}</div>
-                                    </div>
-                                    <div>
-                                        <span className={ui.fieldLabel}>Acción a realizar</span>
-                                        <div className={ui.fieldValue}>{a.actionDescription}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                <section className={base.card}>
-                    <div className={base.cardHeader}>
-                        <h2 className={base.cardTitle}>Aprobaciones digitales</h2>
-                    </div>
-                    <div className={base.cardBody}>
-                        <div className={ui.approvalList}>
-                            <div className={`${ui.approvalItem} ${ui.done}`}>
-                                <Check size={15} />
-                                <div>
-                                    <span className={ui.approvalName}>Coach — {p.coachName ?? "—"}</span>
-                                    <span className={ui.approvalDate}>{formatDateTime(p.submittedAt)}</span>
-                                </div>
-                            </div>
-                            {approved ? (
-                                <div className={`${ui.approvalItem} ${ui.done}`}>
-                                    <Check size={15} />
-                                    <div>
-                                        <span className={ui.approvalName}>Colaborador — {p.memberFullName}</span>
-                                        <span className={ui.approvalDate}>{formatDateTime(p.reviewedAt)}</span>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className={`${ui.approvalItem} ${ui.waiting}`}>
-                                    <Clock size={15} />
-                                    <div>
-                                        <span className={ui.approvalName}>Colaborador — {p.memberFullName}</span>
-                                        <span className={ui.approvalDate}>{pending ? "Pendiente de aprobación" : "Rechazado"}</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    {approved && (
-                        <div className={ui.cardFooter}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`} onClick={() => handleDownloadPDF(p)}>
-                                <Download size={15} /> Descargar PDF
-                            </button>
-                        </div>
-                    )}
-                </section>
-
-                <Modal
-                    open={modal !== null}
-                    title={modal === "approve" ? "Aprobar coaching" : "Rechazar coaching"}
-                    onClose={closeModal}
-                    footer={
-                        <div className={ui.modalFooter}>
-                            <button type="button" className={`${base.btn} ${base.btnOutline} ${base.btnSm}`} onClick={closeModal} disabled={saving}>
-                                Cancelar
-                            </button>
-                            <button type="button" className={`${base.btn} ${base.btnPrimary} ${base.btnSm}`} onClick={handleConfirm} disabled={saving}>
-                                {modal === "approve" ? <><Check size={15} /> Sí, aprobar coaching</> : <><X size={15} /> Sí, rechazar</>}
-                            </button>
-                        </div>
-                    }
-                >
-                    {modal === "approve" ? (
-                        <>
-                            <p className={base.modalText}>
-                                Al aprobar confirmas que has revisado y aceptas el proceso de coaching registrado por tu coach. La aprobación quedará registrada con tu sesión activa.
-                            </p>
-                            <div className={ui.modalGrid}>
-                                <div>
-                                    <span className={base.statLabel}>Usuario que aprueba</span>
-                                    <div className={base.statBox}>{p.memberFullName}</div>
-                                </div>
-                                <div>
-                                    <span className={base.statLabel}>Fecha y hora</span>
-                                    <div className={base.statBox}>{approveStamp}</div>
-                                </div>
-                            </div>
-                            <div className={base.warningBanner}>
-                                <TriangleAlert size={16} />
-                                <span>Una vez aprobado el proceso quedará protegido. Cualquier modificación posterior invalidará esta aprobación.</span>
-                            </div>
-                        </>
-                    ) : (
-                        <div className={base.field}>
-                            <label className={base.label} htmlFor="cq-reason">Motivo del rechazo</label>
-                            <textarea
-                                id="cq-reason"
-                                className={base.textarea}
-                                rows={4}
-                                maxLength={500}
-                                value={reason}
-                                onChange={(e) => setReason(e.target.value)}
-                            />
-                        </div>
-                    )}
-                </Modal>
-            </div>
-        );
-    }
-
-    /* ===================== LISTADO ===================== */
-    const count = (status) => processes.filter((p) => p.reviewStatus === status).length;
-
-    return (
-        <>
-            <header className={styles.pageHeader}>
-                <div>
-                    <h1 className={styles.title}>Mis procesos de coaching</h1>
-                    <p className={styles.subtitle}>Consulta el historial de tus procesos de coaching. Solo puedes ver tu propia información.</p>
-                </div>
-            </header>
-
-            <div className={base.page}>
-                <div className={base.infoBanner}>
-                    <Info size={16} />
-                    <span>
-                        La información se muestra en modo <strong>solo lectura</strong>. No es posible modificar ningún dato desde esta sección.
-                    </span>
-                </div>
-
-                <div className={ui.stats}>
-                    <StatCard value={processes.length} label="Total procesos" />
-                    <StatCard value={count("Pending")} label="Pend. aprobación" tone={ui.pending} />
-                    <StatCard value={count("Approved")} label="Aprobados" tone={ui.approved} />
-                </div>
-
-                <section className={base.card}>
-                    <div className={base.cardHeader}>
-                        <h2 className={base.cardTitle}>Filtrar procesos</h2>
-                    </div>
-                    <div className={base.cardBody}>
-                        <div className={ui.filterGrid}>
-                            <div className={base.field}>
-                                <label className={base.label} htmlFor="cq-year">Año</label>
-                                <select id="cq-year" className={base.select} value={filters.year} onChange={(e) => setFilters({ ...filters, year: e.target.value })}>
-                                    <option value="todos">Todos los años</option>
-                                    {years.map((y) => <option key={y} value={y}>{y}</option>)}
-                                </select>
-                            </div>
-                            <div className={base.field}>
-                                <label className={base.label} htmlFor="cq-month">Mes</label>
-                                <select id="cq-month" className={base.select} value={filters.month} onChange={(e) => setFilters({ ...filters, month: e.target.value })}>
-                                    <option value="todos">Todos los meses</option>
-                                    {MONTHS.map((m, i) => <option key={m} value={String(i)}>{m}</option>)}
-                                </select>
-                            </div>
-                            <div className={base.field}>
-                                <label className={base.label} htmlFor="cq-status">Estado</label>
-                                <select id="cq-status" className={base.select} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
-                                    <option value="todos">Todos los estados</option>
-                                    {Object.entries(STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <div className={ui.list}>
-                    {loading ? (
-                        <div className={ui.empty}>Cargando procesos...</div>
-                    ) : error ? (
-                        <div className={ui.empty}>{error}</div>
-                    ) : filtered.length === 0 ? (
-                        <div className={ui.empty}>No hay procesos de coaching que coincidan con los filtros.</div>
-                    ) : (
-                        filtered.map((p) => (
-                            <div
-                                key={p.sessionId}
-                                className={ui.row}
-                                onClick={() => setSelectedId(p.sessionId)}
-                                onKeyDown={(e) => e.target === e.currentTarget && onRowKey(e, () => setSelectedId(p.sessionId))}
-                                tabIndex={0}
-                                role="button"
-                                aria-label={`Ver ${processTitle(p)}`}
-                            >
-                                <div className={ui.rowAvatar}>{getInitials(p.coachName)}</div>
-                                <div className={ui.rowInfo}>
-                                    <div className={ui.rowTitle}>{processTitle(p)}</div>
-                                    <div className={ui.rowSub}>Coach: {p.coachName ?? "—"} · {p.indicators.length} indicadores evaluados</div>
-                                </div>
-                                <div className={ui.rowRight}>
-                                    <span className={`${ui.pill} ${STATUS_PILL[p.reviewStatus]}`}>{STATUS_LABEL[p.reviewStatus]}</span>
-                                    <span className={ui.rowDate}>{formatDate(p.submittedAt)}</span>
-                                    <div className={ui.rowButtons}>
-                                        <button
-                                            type="button"
-                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDownloadExcel(p);
-                                            }}
-                                        >
-                                            <Download size={15} /> Excel
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className={`${base.btn} ${base.btnOutline} ${base.btnSm} ${ui.btnTeal}`}
-                                            disabled={!isApproved(p)}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDownloadPDF(p);
-                                            }}
-                                        >
-                                            <Download size={15} /> PDF
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
-        </>
-    );
+/** Datos extra para la ficha del encabezado */
+export const userReportSummary = (rows) => {
+  const count = (status) => rows.filter((u) => String(u.status).toLowerCase() === status).length;
+  const active = count("activo");
+  const inactive = count("inactivo");
+  return [
+    { label: "Activos", value: active, tone: { fg: "#166534" } },
+    { label: "Inactivos", value: inactive, tone: { fg: "#991B1B" } },
+    { label: "Otros estados", value: rows.length - active - inactive },
+  ];
 };
