@@ -1,112 +1,39 @@
-import { useEffect, useState } from "react";
-import { profileService } from "../../../api/profileService";
+Estos son los endpoints de periods
+GET
+/api/periods
+Obtiene el listado de períodos, opcionalmente filtrado por estado.
 
-export const CURRENT_CERTIFIER = "";
 
 
-export const STATUS = {
-    pending: "Pendiente aprobación",
-    approved: "Aprobado",
-    rejected: "No aprobado",
-};
+POST
+/api/periods
+Crea un período.
 
-const API_STATUS = { Pending: STATUS.pending, Approved: STATUS.approved, Rejected: STATUS.rejected };
+{
+  "description": "string",
+  "startDate": "2026-11-26T01:46:44.153Z",
+  "endDate": "2026-11-26T01:46:44.153Z",
+  "status": true
+}
 
-// Adapta una certificación de la API a la forma que usan las pantallas
-export const mapCertification = (c) => ({ ...c, date: c.date.slice(0, 10), status: API_STATUS[c.status] ?? STATUS.rejected });
 
-let mePromise = null;
 
-// Usuario en sesión (id y nombre); se consulta una sola vez
-export const useCurrentUser = () => {
-    const [me, setMe] = useState(null);
-    useEffect(() => {
-        mePromise ??= profileService
-            .get()
-            .then((u) => ({ id: u.id, name: u.fullName?.trim() || `${u.firstName} ${u.lastName}` }))
-            .catch(() => {
-                mePromise = null;
-                return null;
-            });
-        mePromise.then(setMe);
-    }, []);
-    return me;
-};
+GET
+/api/periods/{id}
+Obtiene un período por su identificador.
 
-const isObservations = (col) => col.trim().toLowerCase() === "observaciones";
 
-// Mismo criterio que el backend: ratio = realizados/programados, ce = CE/(CE+NCE), last = promedio de la última columna
-const resolveCalc = (criterion) => {
-    if (criterion.calc === "ratio" || criterion.calc === "ce" || criterion.calc === "last") return criterion.calc;
-    const types = criterion.indicators.map((i) => i.type);
-    if (types.length > 0 && types.every((t) => t === "CE/NCE")) return "ce";
-    const numeric = (t) => t !== "CE/NCE" && t !== "%";
-    return types.length >= 2 && numeric(types[0]) && numeric(types[1]) ? "ratio" : "last";
-};
 
-// Formato de la API listo para el formulario de aplicación (sin la columna de observaciones)
-export const toApplyFormat = (format) => ({
-    id: format.id,
-    name: format.name,
-    minScore: Number(format.minScore),
-    criteria: format.criteria.map((c) => ({
-        ...c,
-        calc: resolveCalc(c),
-        columns: c.columns.filter((col) => !isObservations(col)),
-        noteLabel: `Nota: ${c.name}`,
-    })),
-});
+PUT
+/api/periods/{id}
+Actualiza un período.
 
-/* ---------------- Cálculo de notas ---------------- */
-const round2 = (n) => Number(n.toFixed(2));
-const num = (v) => {
-    const n = parseFloat(v);
-    return Number.isNaN(n) ? null : n;
-};
-const avg = (list) => (list.length ? round2(list.reduce((a, b) => a + b, 0) / list.length) : null);
-const isFilled = (v) => v !== undefined && v !== null && String(v).trim() !== "";
 
-// answers: { [indicatorId]: { [column]: valor, __obs: texto } }
-// Devuelve notas por columna ("NA" | número | null) y la nota del criterio (número | null)
-export const computeCriterion = (criterion, answers = {}) => {
-    const cell = (ind, col) => answers[ind.id]?.[col];
-    const colNotes = {};
 
-    if (criterion.calc === "ratio") {
-        const [prog, real] = criterion.indicators;
-        criterion.columns.forEach((col) => {
-            const p = cell(prog, col);
-            const r = cell(real, col);
-            if (p === "NA" || r === "NA") colNotes[col] = "NA";
-            else if (num(p) > 0 && num(r) !== null) colNotes[col] = Math.min(100, round2((num(r) / num(p)) * 100));
-            else colNotes[col] = null;
-        });
-    } else if (criterion.calc === "ce") {
-        criterion.columns.forEach((col) => {
-            const values = criterion.indicators.map((ind) => cell(ind, col));
-            const ce = values.filter((v) => v === "CE").length;
-            const nce = values.filter((v) => v === "NCE").length;
-            if (ce + nce > 0) colNotes[col] = round2((ce / (ce + nce)) * 100);
-            else colNotes[col] = values.some((v) => v === "NA") ? "NA" : null;
-        });
-    } else {
-        const last = criterion.columns[criterion.columns.length - 1];
-        const values = criterion.indicators.map((ind) => num(cell(ind, last))).filter((v) => v !== null);
-        colNotes[last] = values.length ? Math.min(100, avg(values)) : null;
-    }
+DELETE
+/api/periods/{id}
+Elimina un período.
 
-    const numeric = Object.values(colNotes).filter((v) => typeof v === "number");
-    return { colNotes, nota: avg(numeric) };
-};
 
-export const hasRating = (criterion, answers = {}) =>
-    criterion.indicators.some((ind) => criterion.columns.some((col) => isFilled(answers[ind.id]?.[col])));
 
-// Nota Final = Σ (Nota_Criterio × Peso / 100)
-export const computeFinal = (format, answersByCriterion) => {
-    const rows = format.criteria.map((c) => {
-        const { colNotes, nota } = computeCriterion(c, answersByCriterion[c.id]);
-        return { criterion: c, colNotes, nota, points: round2(((nota ?? 0) * c.weight) / 100) };
-    });
-    return { rows, total: round2(rows.reduce((s, r) => s + r.points, 0)) };
-};
+
