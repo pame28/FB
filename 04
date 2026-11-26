@@ -1,56 +1,180 @@
-USE [BandejaVASA_PRD]
-GO
-CREATE VIEW [dbo].[uvw_CuentasPagos_v2]
-AS
-WITH TarjetasEmpresariales AS
-(
-    SELECT NumeroTarjeta, NoUsuario, EstadoTarjeta, NumTarjetaTruncada
-    FROM (
-        SELECT et.NumeroTarjeta, et.NoUsuario, et.EstadoTarjeta,
-               et.BinTarjeta + 'XXXXXX' + et.TarjetaImprimir AS NumTarjetaTruncada,
-               ROW_NUMBER() OVER (PARTITION BY et.NoUsuario, et.EstadoTarjeta ORDER BY et.FechaFinVigencia DESC) AS fila
-        FROM ETarjetas et WITH (NOLOCK)
-        WHERE et.CategoriaTarjeta = 'E'
-          AND et.EstadoTarjeta IN (20, 25)
-    ) A
-    WHERE fila = 1
-),
-Base AS
-(
-    SELECT  NoCuenta                         AS NoCuenta
-           ,ISNULL(CantidadPagosMN, 0)       AS CantidadPagosMN
-           ,ISNULL(CantidadPagosUSD, 0)      AS CantidadPagosUSD
-           ,MAX(ISNULL(PagoVencidoML, 0))    AS PagoVencidoML
-           ,MAX(ISNULL(PagoVencidoUSD, 0))   AS PagoVencidoUSD
-           ,Tr.EstadoTarjeta                 AS EstadoTarjeta
-           ,Ms.EstadoCuenta                  AS EstadoCuenta
-           ,Ms.CategoriaTarjeta              AS TipoTarjeta
-           ,Te.NumeroTarjeta                 AS NumeroTarjeta
-           ,Te.NumTarjetaTruncada            AS NumTarjetaTruncada
-    FROM MaestroSaldos Ms WITH (NOLOCK)
-    INNER JOIN ETarjetas Tr WITH (NOLOCK)
-        ON Ms.NumeroTarjeta = Tr.NumeroTarjeta
-    INNER JOIN TarjetasEmpresariales Te
-        ON Tr.NoUsuario = Te.NoUsuario AND Tr.EstadoTarjeta = Te.EstadoTarjeta
-       AND Te.NumeroTarjeta = Tr.NumeroTarjeta
-    WHERE Ms.CategoriaTarjeta = 'E'
-      AND Tr.CategoriaTarjeta = 'E'
-      AND Tr.EstadoHabilitar IN ('','I','*','R','U','A','B','E','D','H','G','K','J')
-    GROUP BY NoCuenta, ISNULL(CantidadPagosMN, 0), ISNULL(CantidadPagosUSD, 0),
-             Tr.EstadoTarjeta, Ms.EstadoCuenta, Ms.CategoriaTarjeta,
-             Te.NumeroTarjeta, Te.NumTarjetaTruncada
-),
-m AS
-(
-    SELECT b.*,
-           CASE WHEN b.NoCuenta IS NULL THEN 0
-                ELSE MAX(CASE WHEN b.EstadoTarjeta = 20 THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta)
-           END AS Tiene20
-    FROM Base b
-)
-SELECT NoCuenta, CantidadPagosMN, CantidadPagosUSD, PagoVencidoML, PagoVencidoUSD,
-       EstadoTarjeta, EstadoCuenta, TipoTarjeta, NumeroTarjeta, NumTarjetaTruncada
-FROM m
-WHERE EstadoTarjeta = 20
-   OR (EstadoTarjeta = 25 AND Tiene20 = 0);
-GO
+import { useEffect, useState } from "react";
+import { profileService } from "../../../api/profileService";
+
+export const CURRENT_CERTIFIER = "";
+
+
+export const STATUS = {
+    pending: "Pendiente aprobación",
+    approved: "Aprobado",
+    rejected: "No aprobado",
+};
+
+const API_STATUS = { Pending: STATUS.pending, Approved: STATUS.approved, Rejected: STATUS.rejected };
+
+// Adapta una certificación de la API a la forma que usan las pantallas
+export const mapCertification = (c) => ({ ...c, date: c.date.slice(0, 10), status: API_STATUS[c.status] ?? STATUS.rejected });
+
+let mePromise = null;
+
+// Usuario en sesión (id y nombre); se consulta una sola vez
+export const useCurrentUser = () => {
+    const [me, setMe] = useState(null);
+    useEffect(() => {
+        mePromise ??= profileService
+            .get()
+            .then((u) => ({ id: u.id, name: u.fullName?.trim() || `${u.firstName} ${u.lastName}` }))
+            .catch(() => {
+                mePromise = null;
+                return null;
+            });
+        mePromise.then(setMe);
+    }, []);
+    return me;
+};
+
+const isObservations = (col) => col.trim().toLowerCase() === "observaciones";
+
+// Mismo criterio que el backend: ratio = realizados/programados, ce = CE/(CE+NCE), last = promedio de la última columna
+const resolveCalc = (criterion) => {
+    if (criterion.calc === "ratio" || criterion.calc === "ce" || criterion.calc === "last") return criterion.calc;
+    const types = criterion.indicators.map((i) => i.type);
+    if (types.length > 0 && types.every((t) => t === "CE/NCE")) return "ce";
+    const numeric = (t) => t !== "CE/NCE" && t !== "%";
+    return types.length >= 2 && numeric(types[0]) && numeric(types[1]) ? "ratio" : "last";
+};
+
+// Formato de la API listo para el formulario de aplicación (sin la columna de observaciones)
+export const toApplyFormat = (format) => ({
+    id: format.id,
+    name: format.name,
+    minScore: Number(format.minScore),
+    criteria: format.criteria.map((c) => ({
+        ...c,
+        calc: resolveCalc(c),
+        columns: c.columns.filter((col) => !isObservations(col)),
+        noteLabel: `Nota: ${c.name}`,
+    })),
+});
+
+/* ---------------- Cálculo de notas ---------------- */
+const round2 = (n) => Number(n.toFixed(2));
+const num = (v) => {
+    const n = parseFloat(v);
+    return Number.isNaN(n) ? null : n;
+};
+const avg = (list) => (list.length ? round2(list.reduce((a, b) => a + b, 0) / list.length) : null);
+const isFilled = (v) => v !== undefined && v !== null && String(v).trim() !== "";
+
+// answers: { [indicatorId]: { [column]: valor, __obs: texto } }
+// Devuelve notas por columna ("NA" | número | null) y la nota del criterio (número | null)
+export const computeCriterion = (criterion, answers = {}) => {
+    const cell = (ind, col) => answers[ind.id]?.[col];
+    const colNotes = {};
+
+    if (criterion.calc === "ratio") {
+        const [prog, real] = criterion.indicators;
+        criterion.columns.forEach((col) => {
+            const p = cell(prog, col);
+            const r = cell(real, col);
+            if (p === "NA" || r === "NA") colNotes[col] = "NA";
+            else if (num(p) > 0 && num(r) !== null) colNotes[col] = Math.min(100, round2((num(r) / num(p)) * 100));
+            else colNotes[col] = null;
+        });
+    } else if (criterion.calc === "ce") {
+        criterion.columns.forEach((col) => {
+            const values = criterion.indicators.map((ind) => cell(ind, col));
+            const ce = values.filter((v) => v === "CE").length;
+            const nce = values.filter((v) => v === "NCE").length;
+            if (ce + nce > 0) colNotes[col] = round2((ce / (ce + nce)) * 100);
+            else colNotes[col] = values.some((v) => v === "NA") ? "NA" : null;
+        });
+    } else {
+        const last = criterion.columns[criterion.columns.length - 1];
+        const values = criterion.indicators.map((ind) => num(cell(ind, last))).filter((v) => v !== null);
+        colNotes[last] = values.length ? Math.min(100, avg(values)) : null;
+    }
+
+    const numeric = Object.values(colNotes).filter((v) => typeof v === "number");
+    return { colNotes, nota: avg(numeric) };
+};
+
+export const hasRating = (criterion, answers = {}) =>
+    criterion.indicators.some((ind) => criterion.columns.some((col) => isFilled(answers[ind.id]?.[col])));
+
+// Nota Final = Σ (Nota_Criterio × Peso / 100)
+export const computeFinal = (format, answersByCriterion) => {
+    const rows = format.criteria.map((c) => {
+        const { colNotes, nota } = computeCriterion(c, answersByCriterion[c.id]);
+        return { criterion: c, colNotes, nota, points: round2(((nota ?? 0) * c.weight) / 100) };
+    });
+    return { rows, total: round2(rows.reduce((s, r) => s + r.points, 0)) };
+<<<<<<< HEAD
+};
+=======
+};
+
+
+// /* ---------------- Certificaciones (historial) ---------------- */
+// // Respuestas de ejemplo para que los PDF del mock tengan contenido
+// const sampleAnswers = (criteria, seed) => {
+//     const answers = {};
+//     criteria.forEach((c) => {
+//         answers[c.id] = {};
+//         c.indicators.forEach((ind, i) => {
+//             const row = {};
+//             if (c.calc === "ratio") {
+//                 const programados = 10;
+//                 c.columns.slice(0, 2).forEach((col, k) => {
+//                     row[col] = String(i === 0 ? programados : programados - ((seed + k + i) % 3));
+//                 });
+//             } else if (c.calc === "ce") {
+//                 c.columns.forEach((col, k) => {
+//                     row[col] = c.columns.length > 1 && k === 1 && i === 2 ? "NA" : (seed + i + k) % 4 === 0 ? "NCE" : "CE";
+//                 });
+//             } else {
+//                 c.columns.forEach((col, k) => { row[col] = String(85 + ((seed * 3 + i * 5 + k * 2) % 16)); });
+//             }
+//             if ((seed + i) % 3 === 0) row.__obs = "Se verificó con la documentación de la agencia.";
+//             answers[c.id][ind.id] = row;
+//         });
+//     });
+//     return answers;
+// };
+
+// const cert = (id, teamId, teamName, area, leaderId, leaderName, certifier, formatName, date, status, formatId = "agencias") => {
+//     const criteria = FORMATS[formatId].criteria;
+//     const answers = sampleAnswers(criteria, id);
+//     const resolved = status !== STATUS.pending;
+//     return {
+//         id, teamId, teamName, area, leaderId, leaderName, certifier, formatName, minScore: 70, date, status,
+//         criteria, answers,
+//         score: resolved ? computeFinal({ criteria }, answers).total : null,
+//         suggestions: resolved ? "Reforzar el seguimiento semanal de los coacheos programados y documentar los planes de acción." : "",
+//         registeredAt: `${date}T10:30:00`,
+//         resolvedBy: resolved ? "Administrador operativo" : null,
+//         resolvedAt: resolved ? `${date}T16:00:00` : null,
+//     };
+// };
+
+// let state = {
+//     certifications: [
+//         cert(1, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Carlos Méndez", "Cert. estándar Agencias v2", "2025-05-15", STATUS.pending),
+//         cert(2, 2, "Equipo SPS Norte", "HN - Agencias", 12, "Jorge Mendoza", "Carlos Méndez", "Cert. estándar Agencias v2", "2025-04-10", STATUS.approved),
+//         cert(3, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Roberto Sánchez", "Cert. estándar Agencias v2", "2025-03-02", STATUS.approved),
+//         cert(4, 11, "Equipo CC San Pedro", "HN - Contact Center", 21, "Luis Orellana", "Diana Espinal", "Cert. Contact Center v1", "2025-03-20", STATUS.approved, "contact"),
+//         cert(5, 10, "Equipo Corporativo Central", "Corporativo", 20, "Laura Martínez", "Roberto Sánchez", "Cert. Corporativo v1", "2025-03-05", STATUS.rejected),
+//         cert(6, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Roberto Sánchez", "Cert. estándar Agencias v1", "2025-01-10", STATUS.approved),
+//         cert(7, 2, "Equipo SPS Norte", "HN - Agencias", 12, "Jorge Mendoza", "Roberto Sánchez", "Cert. estándar Agencias v1", "2025-01-10", STATUS.approved),
+//         cert(8, 1, "Equipo La Ceiba A", "HN - Agencias", 11, "Ana Rodríguez", "Carlos Méndez", "Cert. estándar Agencias v1", "2024-10-05", STATUS.approved),
+//     ],
+//     audit: [],
+// };
+>>>>>>> dc1b6d6b71f2294399edd8a63c331a8d0e60e985
+
+
+
+
+
+
+
