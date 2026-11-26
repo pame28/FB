@@ -1,109 +1,56 @@
 USE [BandejaVASA_PRD]
 GO
-
-/****** Objeto: View [dbo].[uvw_CuentasPagos_BK20261124] Fecha de script: 25/11/2026 18:03:08 ******/
-SET ANSI_NULLS ON
+CREATE VIEW [dbo].[uvw_CuentasPagos_v2]
+AS
+WITH TarjetasEmpresariales AS
+(
+    SELECT NumeroTarjeta, NoUsuario, EstadoTarjeta, NumTarjetaTruncada
+    FROM (
+        SELECT et.NumeroTarjeta, et.NoUsuario, et.EstadoTarjeta,
+               et.BinTarjeta + 'XXXXXX' + et.TarjetaImprimir AS NumTarjetaTruncada,
+               ROW_NUMBER() OVER (PARTITION BY et.NoUsuario, et.EstadoTarjeta ORDER BY et.FechaFinVigencia DESC) AS fila
+        FROM ETarjetas et WITH (NOLOCK)
+        WHERE et.CategoriaTarjeta = 'E'
+          AND et.EstadoTarjeta IN (20, 25)
+    ) A
+    WHERE fila = 1
+),
+Base AS
+(
+    SELECT  NoCuenta                         AS NoCuenta
+           ,ISNULL(CantidadPagosMN, 0)       AS CantidadPagosMN
+           ,ISNULL(CantidadPagosUSD, 0)      AS CantidadPagosUSD
+           ,MAX(ISNULL(PagoVencidoML, 0))    AS PagoVencidoML
+           ,MAX(ISNULL(PagoVencidoUSD, 0))   AS PagoVencidoUSD
+           ,Tr.EstadoTarjeta                 AS EstadoTarjeta
+           ,Ms.EstadoCuenta                  AS EstadoCuenta
+           ,Ms.CategoriaTarjeta              AS TipoTarjeta
+           ,Te.NumeroTarjeta                 AS NumeroTarjeta
+           ,Te.NumTarjetaTruncada            AS NumTarjetaTruncada
+    FROM MaestroSaldos Ms WITH (NOLOCK)
+    INNER JOIN ETarjetas Tr WITH (NOLOCK)
+        ON Ms.NumeroTarjeta = Tr.NumeroTarjeta
+    INNER JOIN TarjetasEmpresariales Te
+        ON Tr.NoUsuario = Te.NoUsuario AND Tr.EstadoTarjeta = Te.EstadoTarjeta
+       AND Te.NumeroTarjeta = Tr.NumeroTarjeta
+    WHERE Ms.CategoriaTarjeta = 'E'
+      AND Tr.CategoriaTarjeta = 'E'
+      AND Tr.EstadoHabilitar IN ('','I','*','R','U','A','B','E','D','H','G','K','J')
+    GROUP BY NoCuenta, ISNULL(CantidadPagosMN, 0), ISNULL(CantidadPagosUSD, 0),
+             Tr.EstadoTarjeta, Ms.EstadoCuenta, Ms.CategoriaTarjeta,
+             Te.NumeroTarjeta, Te.NumTarjetaTruncada
+),
+m AS
+(
+    SELECT b.*,
+           CASE WHEN b.NoCuenta IS NULL THEN 0
+                ELSE MAX(CASE WHEN b.EstadoTarjeta = 20 THEN 1 ELSE 0 END) OVER (PARTITION BY b.NoCuenta)
+           END AS Tiene20
+    FROM Base b
+)
+SELECT NoCuenta, CantidadPagosMN, CantidadPagosUSD, PagoVencidoML, PagoVencidoUSD,
+       EstadoTarjeta, EstadoCuenta, TipoTarjeta, NumeroTarjeta, NumTarjetaTruncada
+FROM m
+WHERE EstadoTarjeta = 20
+   OR (EstadoTarjeta = 25 AND Tiene20 = 0);
 GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-
-
-
-
-
-CREATE View [dbo].[uvw_CuentasPagos_BK20261124]
-As
-  WITH TarjetasEmpresariales AS (
-  SELECT NumeroTarjeta, NoUsuario, EstadoTarjeta,NumTarjetaTruncada  FROM (
-  SELECT NumeroTarjeta, NoUsuario, EstadoTarjeta, FechaFinVigencia, Et.BinTarjeta + 'XXXXXX'+ Et.TarjetaImprimir AS NumTarjetaTruncada, ROW_NUMBER() OVER(PARTITION BY et.NoUsuario, ET.EstadoTarjeta ORDER BY et.FechaFinVigencia DESC) fila
-  FROM ETarjetas et WITH(NOLOCK)
-  WHERE ET.CategoriaTarjeta='E'
-  ) A
-  WHERE fila=1
-  ),
-
-   Base As(
-  Select 
-     a.NoCuenta          NoCuenta
-    ,a.CantidadPagosMN      CantidadPagosMN
-    ,a.CantidadPagosUSD      CantidadPagosUSD
-    ,Max(a.PagoVencidoML)    PagoVencidoML
-    ,Max(a.PagoVencidoUSD)    PagoVencidoUSD
-    ,a.EstadoTarjeta      EstadoTarjeta
-    ,a.EstadoCuenta        EstadoCuenta
-    ,a.CategoriaTarjeta      TipoTarjeta
-    ,a.NumeroTarjeta            NumeroTarjeta
-    ,a.NumTarjetaTruncada       NumTarjetaTruncada
-  From 
-    (Select
-      NoCuenta            NoCuenta
-      ,IsNull(CantidadPagosMN, 0)    CantidadPagosMN
-      ,IsNull(CantidadPagosUSD, 0)  CantidadPagosUSD
-      ,IsNull(PagoVencidoML, 0)    PagoVencidoML
-      ,IsNull(PagoVencidoUSD, 0)    PagoVencidoUSD
-      ,Tr.EstadoTarjeta
-      ,Ms.EstadoCuenta
-      ,Ms.CategoriaTarjeta
-      ,Te.NumeroTarjeta 
-      ,Te.NumTarjetaTruncada
-    From
-      MaestroSaldos Ms WITH(NOLOCK)
-    Inner Join
-      ETarjetas Tr WITH(NOLOCK)
-    On
-      Ms.NumeroTarjeta = Tr.NumeroTarjeta
-    INNER JOIN TarjetasEmpresariales Te WITH(NOLOCK)
-    ON 
-      TR.NoUsuario=Te.NoUsuario AND TR.EstadoTarjeta=Te.EstadoTarjeta AND
-      Te.NumeroTarjeta = Tr.NumeroTarjeta
-    Where 
-      Ms.CategoriaTarjeta ='E'
-      And Tr.CategoriaTarjeta='E'
-      And Tr.EstadoHabilitar IN ( '','I','*','R','U','A','B','E','D','H','G','K','J' )
-    Group by
-      NoCuenta
-      ,CantidadPagosMN
-      ,CantidadPagosUSD
-      ,PagoVencidoML
-      ,PagoVencidoUSD
-      ,Tr.EstadoTarjeta
-      ,Ms.EstadoCuenta
-    ,Ms.CategoriaTarjeta
-    ,Te.NumeroTarjeta
-    ,Te.NumTarjetaTruncada ) a
-  Group By
-     a.NoCuenta
-    ,a.CantidadPagosMN
-    ,a.CantidadPagosUSD
-    ,a.EstadoTarjeta
-    ,a.EstadoCuenta
-    ,a.CategoriaTarjeta
-    ,a.NumeroTarjeta
-    ,a.NumTarjetaTruncada 
-  ), 
-  Tarjetas20 As
-  (
-    Select NoCuenta, CantidadPagosMN, CantidadPagosUSD ,PagoVencidoML ,PagoVencidoUSD ,EstadoTarjeta ,EstadoCuenta ,TipoTarjeta ,NumeroTarjeta ,NumTarjetaTruncada
-    From Base WITH(NOLOCK)
-    where EstadoTarjeta = 20 
-  ),
-  Tarjetas25 As
-  (
-    Select NoCuenta, CantidadPagosMN, CantidadPagosUSD ,PagoVencidoML ,PagoVencidoUSD ,EstadoTarjeta ,EstadoCuenta ,TipoTarjeta ,NumeroTarjeta ,NumTarjetaTruncada 
-    From Base A WITH(NOLOCK)
-    Where EstadoTarjeta = 25 
-    And Not Exists (Select 1 From Tarjetas20 B where a.NoCuenta = b.NoCuenta)
-  )
-
-  Select NoCuenta, CantidadPagosMN, CantidadPagosUSD ,PagoVencidoML ,PagoVencidoUSD ,EstadoTarjeta ,EstadoCuenta ,TipoTarjeta ,NumeroTarjeta ,NumTarjetaTruncada
-  From Tarjetas20 WITH(NOLOCK)
-    Union All 
-  Select NoCuenta, CantidadPagosMN, CantidadPagosUSD ,PagoVencidoML ,PagoVencidoUSD ,EstadoTarjeta ,EstadoCuenta ,TipoTarjeta ,NumeroTarjeta ,NumTarjetaTruncada
-  From Tarjetas25 WITH(NOLOCK)
-
-GO
-
-
- 
