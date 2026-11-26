@@ -1,748 +1,451 @@
-import { Briefcase, Building2, CalendarRange, MapPin, Store } from "lucide-react";
-import { catalogServices } from "../../../../api/catalogService";
+import {
+  ShieldCheck, Wrench, GraduationCap, ArrowLeftRight, BarChart3,
+  FileText, Search, Award, Users, User, UserCog, KeyRound, Eye,
+  Building2, Store, MapPin, Briefcase, Shield, GalleryHorizontal,
+  Calendar,
+  UserRoundCheck,
+  Handshake, Braces, LayoutTemplate
+} from "lucide-react";
 
-/**
- * Configuración de cada catálogo.
- * fields: campos del formulario y columnas de la tabla.
- *   type: "text" (por defecto) | "number" | "select" | "date" | "boolean"
- *   required: obligatorio
- *   unique: no permite valores repetidos (ignora tildes y mayúsculas)
- *   options: solo para "select" → [{ value, label }]
- *   defaultValue: valor inicial al crear (p. ej. true para "boolean")
- * feminine: para los textos ("Nueva área" / "Nuevo puesto").
- *
- * Opcionales:
- *   labelField: campo que identifica al registro en mensajes y en la tabla (por defecto "name")
- *   sort: (a, b) => número, orden del listado (por defecto alfabético por labelField)
- *   statusFilter: muestra el filtro Activos / Inactivos (usa el campo "status")
- *   validate: (values, items, currentId) => { campo: "mensaje" } validaciones entre campos
- *   deleteHint: mensaje cuando el backend no permite eliminar
- */
 
-/* ---------- Períodos: validaciones entre campos ---------- */
-const dmy = (iso) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "");
+// Módulo de Administración
+import { UsuariosRolesPage } from "../pages/modules/administration/UsuariosRolesPage";
+import { PermisosRolPage } from "../pages/modules/administration/PermisosRolPage";
+import { VistaUsuarioRolPage } from "../pages/modules/administration/VistaUsuarioRolPage";
+import { AreasPage, AgenciasPage, UbicacionesPage, PuestosPage } from "../pages/modules/administration/catalogs/CatalogPages";
 
-const validatePeriod = (values, items, currentId) => {
-  const errors = {};
-  const { startDate: start, endDate: end } = values;
-  if (!start || !end) return errors;
+// Módulo de Mantenimientos
+import { MantenimientoUsuariosPage } from "../pages/modules/management/MantenimientoUsuariosPage";
+import { EditarPerfilPage } from "../pages/modules/management/EditarPerfilPage";
+import { MantenimientoLiderPage } from "../pages/modules/management/MantenimientoLiderPage";
+import { GestionLideresPage } from "../pages/modules/management/GestionLideresPage";
 
-  // Las fechas vienen como "yyyy-mm-dd": se pueden comparar como texto
-  if (end < start) {
-    errors.endDate = "La fecha fin no puede ser anterior a la fecha inicio.";
-    return errors;
-  }
+// Módulo de Traslados
+import { PendingTransferPage } from "../pages/modules/transfer/PendingTransferPage";
+import { TransferPage } from "../pages//modules/transfer/TransferPage";
+import { RequestTransferPage } from "../pages/modules/transfer/RequestTransferPage";
 
-  // Un período activo no puede traslaparse con otro período activo
-  if (values.status === "true") {
-    const overlap = items.find(
-      (p) =>
-        p.id !== currentId &&
-        p.status === true &&
-        start <= String(p.endDate).slice(0, 10) &&
-        end >= String(p.startDate).slice(0, 10)
-    );
-    if (overlap) {
-      errors.startDate = `Se traslapa con el período activo "${overlap.description?.trim()}" (${dmy(overlap.startDate)} – ${dmy(overlap.endDate)}).`;
-    }
-  }
+// Módulo de Coach
+import { CollaboratorCoachingPage } from "../pages/modules/coach/CollaboratorCoachingPage";
+import { AssignmentCoachingPage } from "../pages/modules/coach/AssignmentCoachingPage";
+import { HistoryCoachingPage } from "../pages/modules/coach/HistoryCoachingPage";
 
-  return errors;
-};
+// Módulo de Consulta
+import { ConsultaCoachingPage } from "../pages/modules/consulta/ConsultaCoachingPage";
+import { ConsultaIndicadoresPage } from "../pages/modules/consulta/ConsultaIndicadoresPage";
 
-export const CATALOG_CONFIGS = {
-  areas: {
-    title: "Áreas",
-    subtitle: "Áreas de la compañía a las que pertenecen los usuarios.",
-    singular: "área",
-    plural: "áreas",
-    feminine: true,
-    icon: Building2,
-    service: catalogServices.areas,
-    fields: [
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. HN - Agencias" },
-    ],
-  },
+// Módulo de Certificacion
+import { ApplyCertificationPage } from "../pages/modules/certification/ApplyCertificationPage";
+import { HistoryCertificationPage } from "../pages/modules/certification/HistoryCertificationPage";
+import { ManageCertificationPage } from "../pages/modules/certification/ManageCertificationPage";
+import { FormatCertificationPage } from "../pages/modules/certification/FormatCertificationPage";
+import { GeneralHistoryCertificationPage } from "../pages/modules/certification/GeneralHistoryCertificationPage";
 
-  branches: {
-    title: "Agencias",
-    subtitle: "Agencias y sucursales de la compañía.",
-    singular: "agencia",
-    plural: "agencias",
-    feminine: true,
-    icon: Store,
-    service: catalogServices.branches,
-    fields: [
-      { name: "code", label: "Código", type: "number", unique: true, width: 120, placeholder: "Ej. 1" },
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Agencia Torre del País" },
-    ],
-  },
+//Módulo Plantillas
+import { MarcadoresPage } from "../pages/modules/templates/markers/MarcadoresPage";
+import { PlantillasPage } from "../pages/modules/templates/templates/PlantillasPage";
 
-  locations: {
-    title: "Ubicaciones",
-    subtitle: "Zonas y ubicaciones generales asignadas a los usuarios.",
-    singular: "ubicación",
-    plural: "ubicaciones",
-    feminine: true,
-    icon: MapPin,
-    service: catalogServices.locations,
-    fields: [
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Zona 1 Foránea" },
+//Módulo Indicadores
+import { IndicadoresPage } from "../pages/modules/indicators/IndicadoresPage";
+
+const RAW_MODULES = [
+  {
+    key: "administracion",
+    moduleId: 2,
+    label: "Administración",
+    description: "Roles, permisos y accesos de los usuarios del sistema.",
+    icon: ShieldCheck,
+    path: "/administracion",
+    pages: [
       {
-        name: "type",
-        label: "Tipo",
-        type: "select",
-        required: true,
-        width: 140,
-        options: [
-          { value: "Zone", label: "Zona" },
-          { value: "General", label: "General" },
+        key: "usuarios-roles",
+        pageId: null,
+        label: "Usuarios y roles",
+        description: "Asigna roles a los usuarios del sistema.",
+        icon: Users,
+        path: "usuarios-roles",
+        component: UsuariosRolesPage,
+      },
+      {
+        key: "permisos-rol",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Permisos por rol",
+        description: "Define qué puede hacer cada rol.",
+        icon: KeyRound,
+        path: "permisos-rol",
+        component: PermisosRolPage,
+      },
+      {
+        key: "vista-roles",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Vista de roles",
+        description: "Consulta los usuarios agrupados por rol.",
+        icon: Eye,
+        path: "vista-roles",
+        component: VistaUsuarioRolPage,
+      },
+
+      //Catalogos
+      {
+        key: "areas",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Áreas",
+        description: "Administra las áreas de la compañía.",
+        icon: Building2,
+        path: "areas",
+        component: AreasPage,
+      },
+      {
+        key: "agencias",
+        pageId: null,
+        label: "Agencias",
+        description: "Administra las agencias y sucursales.",
+        icon: Store,
+        path: "agencias",
+        component: AgenciasPage,
+      },
+      {
+        key: "ubicaciones",
+        pageId: null,
+        label: "Ubicaciones",
+        description: "Administra las zonas asignadas a los usuarios.",
+        icon: MapPin,
+        path: "ubicaciones",
+        component: UbicacionesPage,
+      },
+      {
+        key: "puestos",
+        pageId: null,
+        label: "Puestos",
+        description: "Administra los perfiles de puesto.",
+        icon: Briefcase,
+        path: "puestos",
+        component: PuestosPage,
+      },
+    ],
+  },
+  {
+    key: "mantenimientos",
+    moduleId: 3,
+    label: "Mantenimientos",
+    description: "Gestión de usuarios, perfiles y líderes.",
+    icon: Wrench,
+    path: "/mantenimientos",
+    pages: [
+      {
+        key: "usuarios",
+        pageId: null,
+        label: "Mantenimiento de Usuarios",
+        description: "Crea, edita y desactiva usuarios.",
+        icon: Users,
+        path: "usuarios",
+        component: MantenimientoUsuariosPage,
+      },
+      {
+        key: "editar-perfil",
+        pageId: null,
+        label: "Editar Perfil",
+        description: "Actualiza la información de tu perfil.",
+        icon: User,
+        path: "editar-perfil",
+        component: EditarPerfilPage,
+      },
+      {
+        key: "lider",
+        pageId: null,
+        label: "Mantenimiento de Líder",
+        description: "Administra los líderes y sus equipos.",
+        icon: UserCog,
+        path: "lider",
+        component: MantenimientoLiderPage,
+        // Subpáginas: no salen en el menú, se abren desde la página padre y heredan su permiso
+        children: [
+          {
+            key: "gestion-lideres",
+            label: "Gestión de líderes",
+            path: "gestion-lideres",
+            component: GestionLideresPage,
+          },
         ],
       },
     ],
   },
 
-  positions: {
-    title: "Puestos",
-    subtitle: "Perfiles de puesto de los colaboradores.",
-    singular: "puesto",
-    plural: "puestos",
-    feminine: false,
-    icon: Briefcase,
-    service: catalogServices.positions,
-    fields: [
-      { name: "name", label: "Nombre", required: true, unique: true, placeholder: "Ej. Cajero" },
+
+  {
+    key: "plantillas",
+    moduleId: null, // Pendiente: aún no existe en la BD
+    label: "Plantillas",
+    description: "Formatos y plantillas de evaluación.",
+    icon: FileText,
+    path: "/plantillas",
+    pages: [
+      {
+        key: "marcadores",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Marcadores",
+        description: "Variables disponibles para las plantillas de indicadores.",
+        icon: Braces,
+        path: "marcadores",
+        component: MarcadoresPage,
+      },
+      {
+        key: "plantillas",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Plantillas",
+        description: "Estructuras de indicadores construidas con marcadores.",
+        icon: LayoutTemplate,
+        path: "plantillas",
+        component: PlantillasPage,
+      },
     ],
   },
 
-  periods: {
-    title: "Períodos",
-    subtitle: "Períodos de evaluación a los que pertenecen los indicadores.",
-    singular: "período",
-    plural: "períodos",
-    feminine: false,
-    icon: CalendarRange,
-    service: catalogServices.periods,
-    labelField: "description",
-    statusFilter: true,
-    // Los más recientes primero
-    sort: (a, b) => String(b.startDate).localeCompare(String(a.startDate)),
-    validate: validatePeriod,
-    deleteHint: "No se pudo eliminar. Es posible que el período tenga indicadores asociados; puedes desactivarlo en lugar de eliminarlo.",
-    fields: [
-      { name: "description", label: "Descripción", required: true, unique: true, placeholder: "Ej. 2026 - Periodo 1" },
-      { name: "startDate", label: "Fecha inicio", type: "date", required: true, width: 130 },
-      { name: "endDate", label: "Fecha fin", type: "date", required: true, width: 130 },
-      { name: "status", label: "Estado", type: "boolean", width: 110, defaultValue: true },
-    ],
+  // Módulos futuros: cuando existan en la BD, se les agrega moduleId y sus páginas
+  {
+    key: "coach",
+    moduleId: 4,
+    label: "Coach",
+    description: "Sesiones y seguimiento de coaching.",
+    icon: GraduationCap,
+    path: "/coach",
+    pages: [
+      {
+        key: "coach-colaborador",
+        pageId: null,
+        label: "Coaching a colaborador",
+        description: "Registra el proceso de coaching, indicadores y plan de acción para sus colaboradores asignados.",
+        icon: Users,
+        path: "colaborador",
+        component: CollaboratorCoachingPage,
+      },
+      {
+        key: "coach-indicadores",
+        pageId: null,
+        label: "Asignación de indicadores",
+        description: "Asigna indicadores a colaboradores y solicita su aceptación para habilitarlos en el proceso de coaching",
+        icon: GalleryHorizontal,
+        path: "asignar-indicador",
+        component: AssignmentCoachingPage,
+      },
+      {
+        key: "coach-historial",
+        pageId: null,
+        label: "Historial de coaching",
+        description: "Consulta los procesos de coaching aplicados y descarga el PDF de cada uno",
+        icon: Shield,
+        path: "historial",
+        component: HistoryCoachingPage,
+      },
+    ]
   },
-};
+  {
+    key: "traslados",
+    moduleId: 5,
+    label: "Traslados",
+    description: "Movimientos de personal entre equipos.",
+    icon: ArrowLeftRight,
+    path: "/traslados",
+    pages: [
+      {
+        key: "traslados-pendientes",
+        pageId: null,
+        label: "Traslados pendientes",
+        description: "Gestiona las solicitudes de traslado de usuarios",
+        icon: Users,
+        path: "pendientes",
+        component: PendingTransferPage,
+      },
+      {
+        key: "traslados",
+        pageId: null,
+        label: "Trasladar",
+        description: "Ejecución inmediata del traslado",
+        icon: ArrowLeftRight,
+        path: "trasladar",
+        component: TransferPage,
+      },
+      {
+        key: "solicitar-traslados",
+        pageId: null,
+        label: "Solicitar Traslado",
+        description: "El traslado quedará en estado Pendiente hasta ser aprobado",
+        icon: Handshake,
+        path: "request",
+        component: RequestTransferPage,
+      },
+    ]
+  },
+  {
+    key: "indicadores",
+    moduleId: null,
+    label: "Indicadores",
+    description: "Métricas y resultados de desempeño.",
+    icon: BarChart3,
+    path: "/indicadores",
+    pages: [
+      {
+        key: "indicadores",
+        pageId: null, // Pendiente: aún no existe en la BD
+        label: "Indicadores",
+        description: "Indicadores construidos a partir de las plantillas.",
+        icon: BarChart3,
+        path: "indicadores",
+        component: IndicadoresPage,
+      },
+    ]
+  },
 
+  {
+    key: "consulta",
+    moduleId: 6,
+    label: "Consulta",
+    description: "Búsqueda y consulta de información.", icon: Search,
+    path: "/consulta",
+    pages: [
+      {
+        key: "consulta-coach",
+        pageId: null,
+        label: "Consulta Coach",
+        description: "Consulta el historial de tus procesos de coaching",
+        icon: Shield,
+        path: "coach",
+        component: ConsultaCoachingPage,
+      },
+      {
+        key: "consulta-indicadores",
+        pageId: null,
+        label: "Consulta Indicadores",
+        description: "Consulta y aprueba los indicadores que te fueron asignados",
+        icon: BarChart3,
+        path: "indicadores",
+        component: ConsultaIndicadoresPage,
+      },
+    ]
+  },
+  {
+    key: "certificaciones",
+    moduleId: 7,
+    label: "Certificaciones",
+    description: "Gestión de certificaciones del personal.",
+    icon: Award, path: "/certificaciones",
+    pages: [
+      {
+        key: "aplicar",
+        pageId: null,
+        label: "Aplicar certificacíón",
+        description: "Selecciona un equipo y aplica la certificación a su líder o líderes designados",
+        icon: Award,
+        path: "aplicar",
+        component: ApplyCertificationPage,
+      },
+      {
+        key: "historial",
+        pageId: null,
+        label: "Historial",
+        description: "Certificaciones de todos los equipos que tienes asignados — incluyendo las realizadas por otros certificadores",
+        icon: Shield,
+        path: "historial",
+        component: HistoryCertificationPage,
+      },
+      {
+        key: "gestion",
+        pageId: null,
+        label: "Gestión de certificadores",
+        description: "Designa qué usuarios pueden aplicar certificaciones. Solo los certificadores designados pueden iniciar el proceso.",
+        icon: UserRoundCheck,
+        path: "gestion-certificadores",
+        component: ManageCertificationPage,
+      },
+      {
+        key: "formato",
+        pageId: null,
+        label: "Formato de certificación",
+        description: "Crea y edita el formato que se usará al aplicar certificaciones a los equipos. Solo puede existir un formato activo por equipo.",
+        icon: FileText,
+        path: "formato",
+        component: FormatCertificationPage,
+      },
+      {
+        key: "historial-general",
+        pageId: null,
+        label: "Historial general",
+        description: "Consulta todas las certificaciones aplicadas en el sistema, de todos los equipos y áreas.",
+        icon: Calendar,
+        path: "historial-general",
+        component: GeneralHistoryCertificationPage,
+      },
+    ]
+  },
 
-
-
-
-
-
-
-
-
-
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { ConfirmDialog, Datatable, useToast } from "../../../../shared/components";
-import { CatalogFormModal } from "./CatalogFormModal";
-import { normalizeText } from "../../../../helpers/format";
-import styles from "../../../Pages.module.css";
-
-const PAGE_SIZE = 10;
-
-const STATUS_FILTERS = [
-  { value: "todos", label: "Todos los estados" },
-  { value: "true", label: "Activos" },
-  { value: "false", label: "Inactivos" },
 ];
 
-const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-
-// "2026-11-01T00:00:00" → "01/11/2026" (sin pasar por Date: no hay desfase de zona horaria)
-const formatDate = (value) => String(value).slice(0, 10).split("-").reverse().join("/");
-
-// Solo estos tipos participan en la búsqueda de texto
-const SEARCHABLE = [undefined, "text", "number", "select"];
-
-export function CatalogCrudPage({ config }) {
-  const {
-    title, subtitle, singular, plural, feminine, icon: Icon, service, fields,
-    labelField = "name", sort, statusFilter, deleteHint,
-  } = config;
-  const e = feminine ? "a" : "o";
-  const article = feminine ? "la" : "el";
-  const labelOf = (it) => String(it?.[labelField] ?? "").trim();
-
-  const toast = useToast();
-
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("todos");
-  const [page, setPage] = useState(1);
-
-  const [form, setForm] = useState({ open: false, item: null });
-
-  const [toDelete, setToDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
-
-  /* ---------- Carga ---------- */
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setItems(await service.list());
-    } catch (err) {
-      setError(err.noAccess
-        ? `No tienes permiso para ver ${plural}.`
-        : `No se pudo cargar el listado de ${plural}.`);
-    } finally {
-      setLoading(false);
-    }
-  }, [service, plural]);
-
-  useEffect(() => { load(); }, [load]);
-
-  /* ---------- Búsqueda, filtro, orden y paginación (en el navegador) ---------- */
-  const filtered = useMemo(() => {
-    const q = normalizeText(search);
-    const searchable = fields.filter((f) => SEARCHABLE.includes(f.type));
-
-    let list = q
-      ? items.filter((it) =>
-          String(it.id).includes(q) || searchable.some((f) => normalizeText(it[f.name]).includes(q)))
-      : items;
-
-    if (statusFilter && status !== "todos") {
-      list = list.filter((it) => String(it.status) === status);
-    }
-
-    const byLabel = (a, b) => String(a[labelField] ?? "").localeCompare(String(b[labelField] ?? ""), "es");
-    return [...list].sort(sort ?? byLabel);
-  }, [items, search, status, statusFilter, fields, labelField, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const rows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
-  /* ---------- Acciones ---------- */
-  const handleSaved = (item, isEdit) => {
-    setForm({ open: false, item: null });
-    toast.success(
-      `${capitalize(singular)} ${isEdit ? "actualizad" : "cread"}${e}`,
-      `"${labelOf(item)}" se ${isEdit ? "actualizó" : "agregó"} correctamente.`
-    );
-    load();
-  };
-
-  const openDelete = (item) => {
-    setDeleteError("");
-    setToDelete(item);
-  };
-
-  const confirmDelete = async () => {
-    setDeleting(true);
-    setDeleteError("");
-    try {
-      await service.remove(toDelete.id);
-      toast.success(`${capitalize(singular)} eliminad${e}`, `"${labelOf(toDelete)}" se eliminó correctamente.`);
-      setToDelete(null);
-      load();
-    } catch (err) {
-      setDeleteError(err.noAccess
-        ? `No tienes permiso para eliminar ${plural}.`
-        : err.response?.data?.message
-          ?? deleteHint
-          ?? `No se pudo eliminar. Es posible que ${article} ${singular} esté asignad${e} a uno o más usuarios.`);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  /* ---------- Columnas ---------- */
-  const dash = <span className={styles.muted}>—</span>;
-
-  const renderValue = (f, it) => {
-    const value = it[f.name];
-    if (value === null || value === undefined || value === "") return dash;
-    switch (f.type) {
-      case "number":
-        return <span className={styles.mono}>{value}</span>;
-      case "date":
-        return <span className={styles.mono}>{formatDate(value)}</span>;
-      case "boolean":
-        return value
-          ? <span className={`${styles.tag} ${styles.tagTeal}`}>Activo</span>
-          : <span className={`${styles.tag} ${styles.tagNeutral}`}>Inactivo</span>;
-      case "select": {
-        const label = f.options.find((o) => o.value === value)?.label ?? value;
-        return <span className={`${styles.tag} ${styles.tagBlue}`}>{label}</span>;
-      }
-      default:
-        return f.name === labelField ? <span className={styles.cellMain}>{value}</span> : value;
-    }
-  };
-
-  const columns = [
-    {
-      key: "id",
-      header: "ID",
-      width: 80,
-      render: (it) => <span className={styles.mono}>{it.id}</span>,
-    },
-    ...fields.map((f) => ({
-      key: f.name,
-      header: f.label,
-      width: f.width,
-      render: (it) => renderValue(f, it),
-    })),
-    {
-      key: "actions",
-      header: "Acciones",
-      align: "right",
-      width: 120,
-      render: (it) => (
-        <div className={styles.rowActions}>
-          <button type="button" className={styles.iconBtn} title="Editar"
-            aria-label={`Editar ${labelOf(it)}`} onClick={() => setForm({ open: true, item: it })}>
-            <Pencil size={16} />
-          </button>
-          <button type="button" className={`${styles.iconBtn} ${styles.iconBtnDanger}`} title="Eliminar"
-            aria-label={`Eliminar ${labelOf(it)}`} onClick={() => openDelete(it)}>
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ),
-    },
-  ];
-
-  const hasFilters = Boolean(search) || status !== "todos";
-
-  return (
-    <>
-      <header className={styles.pageHeader}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div className={styles.headerIcon}>
-            <Icon size={26} />
-          </div>
-          <div>
-            <span className={styles.eyebrow}>Administración</span>
-            <h1 className={styles.title}>{title}</h1>
-            <p className={styles.subtitle}>{subtitle}</p>
-          </div>
-        </div>
-
-        <div className={styles.actions}>
-          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`}
-            onClick={() => setForm({ open: true, item: null })}>
-            <Plus size={18} /> Nuev{e} {singular}
-          </button>
-        </div>
-      </header>
-
-      {error && (
-        <div className={`${styles.banner} ${styles.bannerError}`} role="alert">
-          <AlertCircle size={18} />
-          <p>
-            {error}{" "}
-            <button type="button" className={styles.linkBtn} style={{ padding: 0 }} onClick={load}>
-              Reintentar
-            </button>
-          </p>
-        </div>
-      )}
-
-      <section className={styles.panel}>
-        <div className={styles.toolbar}>
-          <label className={styles.search}>
-            <Search size={16} />
-            <input className={styles.input} placeholder={`Buscar ${plural}...`} value={search}
-              onChange={(ev) => { setSearch(ev.target.value); setPage(1); }}
-              aria-label={`Buscar ${plural}`} />
-          </label>
-
-          {statusFilter && (
-            <select className={styles.select} style={{ width: "auto" }} value={status}
-              onChange={(ev) => { setStatus(ev.target.value); setPage(1); }}
-              aria-label="Filtrar por estado">
-              {STATUS_FILTERS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          )}
-
-          {!loading && (
-            <span className={styles.count}>
-              {filtered.length} {filtered.length === 1 ? singular : plural}
-            </span>
-          )}
-        </div>
-
-        <Datatable
-          columns={columns}
-          rows={rows}
-          loading={loading}
-          emptyMessage={hasFilters
-            ? (search ? `No hay resultados para "${search}".` : `No hay ${plural} con ese estado.`)
-            : `Aún no hay ${plural} registrad${e}s.`}
-          pagination={{
-            page: currentPage,
-            pageSize: PAGE_SIZE,
-            totalCount: filtered.length,
-            totalPages,
-            onPageChange: setPage,
-          }}
-        />
-      </section>
-
-      <CatalogFormModal
-        open={form.open}
-        item={form.item}
-        items={items}
-        config={config}
-        onClose={() => setForm({ open: false, item: null })}
-        onSaved={handleSaved}
-      />
-
-      <ConfirmDialog
-        open={Boolean(toDelete)}
-        danger
-        title={`¿Eliminar ${singular}?`}
-        message="Esta acción no se puede deshacer."
-        detail={toDelete && (
-          <div className={styles.personChip}>
-            <div className={styles.personAvatar}><Icon size={18} /></div>
-            <div className={styles.personInfo}>
-              <span className={styles.personName}>{labelOf(toDelete)}</span>
-              {toDelete.code != null && <span className={styles.personMeta}>Código: {toDelete.code}</span>}
-              {toDelete.startDate && (
-                <span className={styles.personMeta}>
-                  {formatDate(toDelete.startDate)} – {formatDate(toDelete.endDate)}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-        confirmText={deleting ? "Eliminando..." : "Sí, eliminar"}
-        loading={deleting}
-        error={deleteError}
-        onConfirm={confirmDelete}
-        onCancel={() => setToDelete(null)}
-      />
-    </>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import { useEffect, useState } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
-import { Modal } from "../../../../shared/components";
-import { normalizeText } from "../../../../helpers/format";
-import styles from "../../../Pages.module.css";
-
-const FORM_ID = "catalog-form";
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-// "Name" (backend) → "name" (formulario)
-const mapApiErrors = (errors = {}) =>
-  Object.fromEntries(
-    Object.entries(errors).map(([key, msg]) => [key.charAt(0).toLowerCase() + key.slice(1), msg])
-  );
-
-// Valor del registro → valor del input
-const toValue = (f, item) => {
-  const raw = item?.[f.name];
-  if (f.type === "date") return raw ? String(raw).slice(0, 10) : "";          // "2026-11-01T00:00:00" → "2026-11-01"
-  if (f.type === "boolean") return String(raw ?? f.defaultValue ?? true);     // true → "true"
-  return raw ?? f.defaultValue ?? "";
-};
-
-const toValues = (fields, item) => Object.fromEntries(fields.map((f) => [f.name, toValue(f, item)]));
-
-const validate = (fields, values, items, currentId, extraValidate) => {
-  const errors = {};
-
-  fields.forEach((f) => {
-    const value = String(values[f.name] ?? "").trim();
-
-    if (f.required && !value) {
-      errors[f.name] = `${f.label} es obligatorio.`;
-      return;
-    }
-
-    if (f.type === "number" && value && (!Number.isInteger(Number(value)) || Number(value) < 0)) {
-      errors[f.name] = `${f.label} debe ser un número entero positivo.`;
-      return;
-    }
-
-    if (f.type === "date" && value && !DATE_RE.test(value)) {
-      errors[f.name] = `${f.label} no es una fecha válida.`;
-      return;
-    }
-
-    // Duplicados: compara sin tildes ni mayúsculas y excluye el registro que se está editando
-    if (f.unique && value) {
-      const duplicate = items.find(
-        (it) => it.id !== currentId && normalizeText(it[f.name]) === normalizeText(value)
-      );
-      if (duplicate) errors[f.name] = `Ya existe un registro con ese ${f.label.toLowerCase()} (ID ${duplicate.id}).`;
-    }
-  });
-
-  // Validaciones entre campos definidas en la configuración (solo si cada campo ya es válido)
-  if (extraValidate && Object.keys(errors).length === 0) {
-    Object.assign(errors, extraValidate(values, items, currentId));
-  }
-
-  return errors;
-};
-
-// Valores del formulario → body para la API
-const toBody = (fields, values) =>
-  Object.fromEntries(
-    fields.map((f) => {
-      const raw = values[f.name];
-      if (f.type === "number") return [f.name, raw === "" || raw === null ? null : Number(raw)];
-      if (f.type === "select") return [f.name, raw];
-      if (f.type === "boolean") return [f.name, raw === "true"];
-      if (f.type === "date") return [f.name, raw || null];                     // "yyyy-mm-dd", sin hora
-      return [f.name, String(raw ?? "").trim()];
-    })
-  );
-
-export function CatalogFormModal({ open, item, items = [], config, onClose, onSaved }) {
-  const { singular, plural, feminine, fields, service, validate: extraValidate } = config;
-  const isEdit = Boolean(item);
-  const e = feminine ? "a" : "o";
-
-  const [values, setValues] = useState({});
-  const [errors, setErrors] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-
-  useEffect(() => {
-    if (open) {
-      setValues(toValues(fields, item));
-      setErrors({});
-      setSubmitError("");
-    }
-  }, [open, item, fields]);
-
-  const handleChange = (ev) => {
-    const { name, value } = ev.target;
-    setValues((v) => ({ ...v, [name]: value }));
-    setErrors((err) => ({ ...err, [name]: undefined }));
-  };
-
-  const handleSubmit = async (ev) => {
-    ev.preventDefault();
-    const found = validate(fields, values, items, item?.id, extraValidate);
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-
-    setSaving(true);
-    setSubmitError("");
-    const body = toBody(fields, values);
-
-    try {
-      const saved = isEdit ? await service.update(item.id, body) : await service.create(body);
-      onSaved(saved && typeof saved === "object" ? saved : { ...item, ...body }, isEdit);
-    } catch (err) {
-      const data = err.response?.data;
-      if (data?.errors) setErrors(mapApiErrors(data.errors));
-      setSubmitError(
-        err.noAccess
-          ? `No tienes permiso para ${isEdit ? "editar" : "crear"} ${plural}.`
-          : data?.message ?? "No se pudo guardar. Intenta de nuevo."
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleClose = () => { if (!saving) onClose(); };
-
-  const renderInput = (f, index) => {
-    const common = {
-      id: `catalog-${f.name}`,
-      name: f.name,
-      value: values[f.name] ?? "",
-      onChange: handleChange,
-      "aria-invalid": !!errors[f.name],
-      autoFocus: index === 0,
+// Agrega a cada página (y subpágina) su ruta completa, ej: "/mantenimientos/lider/gestion-lideres"
+export const MODULES = RAW_MODULES.map((m) => ({
+  ...m,
+  pages: m.pages.map((p) => {
+    const fullPath = `${m.path}/${p.path}`;
+    return {
+      ...p,
+      fullPath,
+      children: (p.children ?? []).map((c) => ({ ...c, fullPath: `${fullPath}/${c.path}` })),
     };
-    const invalid = errors[f.name] ? styles.invalid : "";
+  }),
+}));
 
-    if (f.type === "select") {
-      return (
-        <select {...common} className={`${styles.select} ${invalid}`}>
-          <option value="">Selecciona una opción</option>
-          {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      );
-    }
+/* ============================================================
+   Accesos
+   ============================================================ */
 
-    if (f.type === "boolean") {
-      return (
-        <select {...common} className={`${styles.select} ${invalid}`}>
-          <option value="true">Activo</option>
-          <option value="false">Inactivo</option>
-        </select>
-      );
-    }
+// Páginas sin pageId: visibles en desarrollo (npm run dev), ocultas en producción
+// const SHOW_PENDING_PAGES = import.meta.env.DEV;
+const SHOW_PENDING_PAGES = true;
+// Módulos "Próximamente": cambia a false si prefieres ocultarlos
+const SHOW_COMING_SOON = true;
 
-    if (f.type === "date") {
-      return <input {...common} type="date" className={`${styles.input} ${invalid}`} />;
-    }
-
-    return (
-      <input
-        {...common}
-        type={f.type === "number" ? "number" : "text"}
-        min={f.type === "number" ? 0 : undefined}
-        inputMode={f.type === "number" ? "numeric" : undefined}
-        className={`${styles.input} ${invalid}`}
-        placeholder={f.placeholder}
-        autoComplete="off"
-      />
-    );
-  };
-
-  return (
-    <Modal
-      open={open}
-      size="sm"
-      title={isEdit ? `Editar ${singular}` : `Nuev${e} ${singular}`}
-      onClose={handleClose}
-      footer={
-        <>
-          <button type="button" className={`${styles.btn} ${styles.btnOutline}`} onClick={handleClose} disabled={saving}>
-            Cancelar
-          </button>
-          <button type="submit" form={FORM_ID} className={`${styles.btn} ${styles.btnPrimary}`} disabled={saving}>
-            {saving && <Loader2 size={18} className={styles.spin} />}
-            {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Guardar"}
-          </button>
-        </>
-      }
-    >
-      <form id={FORM_ID} className={styles.form} style={{ gridTemplateColumns: "1fr" }} onSubmit={handleSubmit} noValidate>
-        {submitError && (
-          <div className={`${styles.banner} ${styles.bannerError}`} role="alert" style={{ marginBottom: 0 }}>
-            <AlertCircle size={18} />
-            <p>{submitError}</p>
-          </div>
-        )}
-
-        {isEdit && (
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="catalog-id">
-              ID <span className={styles.readOnlyTag}>SOLO LECTURA</span>
-            </label>
-            <input id="catalog-id" className={styles.input} value={item.id} readOnly />
-          </div>
-        )}
-
-        {fields.map((f, index) => (
-          <div key={f.name} className={styles.field}>
-            <label className={styles.label} htmlFor={`catalog-${f.name}`}>
-              {f.label}
-              {f.required && <span className={styles.required}>*</span>}
-            </label>
-            {renderInput(f, index)}
-            {errors[f.name] && <span className={styles.fieldError}>{errors[f.name]}</span>}
-          </div>
-        ))}
-      </form>
-    </Modal>
+/**
+ * Devuelve solo los módulos y páginas que el rol puede ver.
+ * Se usa en Home, Sidebar y AppRouter.
+ */
+export const getAllowedModules = (role) => {
+  const allowedPageIds = new Set(
+    role?.modules?.flatMap((m) => m.pages.map((p) => p.pageId)) ?? []
   );
-}
 
+  const canSeePage = (page) =>
+    page.pageId == null ? SHOW_PENDING_PAGES : allowedPageIds.has(page.pageId);
 
+  return MODULES.flatMap((m) => {
+    if (m.pages.length === 0) return SHOW_COMING_SOON ? [m] : [];
 
-
-
-
-
-
-
-
-
-
-
-
-
-import { CatalogCrudPage } from "./CatalogCrudPage";
-import { CATALOG_CONFIGS } from "./catalogConfigs";
-
-export const AreasPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.areas} />;
-export const AgenciasPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.branches} />;
-export const UbicacionesPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.locations} />;
-export const PuestosPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.positions} />;
-export const PeriodosPage = () => <CatalogCrudPage config={CATALOG_CONFIGS.periods} />;
-
-
-
-
-
-
-
-
-import { apiFeedbackAuthorized } from "./APIS";
-import { endpointsAPI } from "./endpointApi";
-
-// Crea un servicio CRUD para cualquier catálogo con la forma estándar /api/xxx y /api/xxx/{id}
-const createCatalogService = (endpoint) => ({
-  list: async () => {
-    const { data } = await apiFeedbackAuthorized.get(endpoint);
-    const result = data.data;
-    return Array.isArray(result) ? result : result?.items ?? [];
-  },
-
-  create: async (body) => {
-    const { data } = await apiFeedbackAuthorized.post(endpoint, body);
-    return data.data;
-  },
-
-  update: async (id, body) => {
-    const { data } = await apiFeedbackAuthorized.put(`${endpoint}/${id}`, { id, ...body });
-    return data.data;
-  },
-
-  remove: async (id) => {
-    await apiFeedbackAuthorized.delete(`${endpoint}/${id}`);
-  },
-});
-
-export const catalogServices = {
-  areas: createCatalogService(endpointsAPI.companyAreas),
-  branches: createCatalogService(endpointsAPI.companyBranches),
-  locations: createCatalogService(endpointsAPI.companyLocations),
-  positions: createCatalogService(endpointsAPI.companyPositions),
-  periods: createCatalogService(endpointsAPI.periods),
+    const pages = m.pages.filter(canSeePage);
+    return pages.length > 0 ? [{ ...m, pages }] : []; // sin páginas permitidas, el módulo no aparece
+  });
 };
 
+/**
+ * Junta todos los permisos del rol en un Set, ej: "edit.users", "read.users"...
+ * Lo usa usePermissions() para mostrar u ocultar botones.
+ */
+export const getPermissions = (role) =>
+  new Set(
+    role?.modules?.flatMap((m) => m.pages.flatMap((p) => p.permissions)) ?? []
+  );
+
+/* ============================================================
+   Breadcrumb del navbar
+   ============================================================ */
+export const getBreadcrumb = (pathname) => {
+  const module = MODULES.find((m) => pathname === m.path || pathname.startsWith(`${m.path}/`));
+  if (!module) return [];
+
+  const crumbs = [{ label: module.label, to: module.path }];
+  const page = module.pages.find((p) => pathname === p.fullPath || pathname.startsWith(`${p.fullPath}/`));
+
+  if (page) {
+    crumbs.push({ label: page.label, to: page.fullPath });
+    const child = page.children.find((c) => pathname.startsWith(c.fullPath));
+    if (child) crumbs.push({ label: child.label, to: child.fullPath });
+  }
+  return crumbs;
+};
