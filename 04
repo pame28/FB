@@ -1,132 +1,15 @@
-USE [BPSGRC]
-GO
+USE [BPSGRC];
 
-/****** Object:  View [dbo].[uvw_TARJETAS_VASA]    Script Date: 26/11/2026 16:40:41 ******/
-SET ANSI_NULLS ON
-GO
+DECLARE @T TABLE (Num VARCHAR(20));
+INSERT INTO @T VALUES ('1000000003147940'), ('1000000003764693'), ('1000000003161546');
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-
-
-
-
-
-CREATE VIEW [dbo].[uvw_TARJETAS_VASA]
-AS
-
-SELECT
-	  Sal.NumeroTarjeta
-	  ,Sal.Nombre 
-	  ,'HN' Moneda
-      ,CASE WHEN Sal.NoClienteUnico LIKE ' %' THEN '0' ELSE Sal.NoClienteUnico END   'CIF'
-      ,Sal.ImporteLimiteCompra 'LimiteCredito'
-      ,Sal.BinTarjeta
-      ,Sal.TNAInteresConsumoFinanML 'Tasa'
-      ,Sal.Dias_Mora_ML DiasMora
-      ,Sal.SaldoActualML SaldoActual
-      ,Sal.InteresSuspensoFinanciacionML 'InteresesSuspenso'
-      ,case when YEAR(Sal.FechaAltaCuenta) = 1900 then Sal.FechaAltaTarjeta ELSE Sal.FechaAltaCuenta END 'FechaAlta'
-      ,Sal.FechaVencimientoCuenta 'FechaVencimiento'
-      ,0 SaldoConsumido
-      --,Sal.PagoMinimoUltimaLiquidacionML 'CapitalPagoMinimo' --MODIFICADO 16/10/2019 SOLICITADO POR VICTORIA LARA
-	  ,Sal.CapitalPagoMinimoML 'CapitalPagoMinimo'
-      ,Sal.FechaGeneracion
-      ,Sal.SaldoIntraMN 'SaldoIntra'
-      ,Sal.ModeloLiquidacion
-      ,Sal.GrupoAfinidad
-      ,Sal.CodigoProducto
-      ,Sal.PagoMinimoUltimaLiquidacionML 'PagoMinimo'
-      ,Sal.MonedaLimiteCompra
-FROM uvw_SaldosTarjetas Sal
-
-UNION
-
-
-SELECT
-	  Sal.NumeroTarjeta
-	  ,Sal.Nombre
-	  ,'DO' 'Moneda'
-      ,CASE WHEN Sal.NoClienteUnico LIKE ' %' THEN '0' ELSE Sal.NoClienteUnico END   'CIF'
-      ,Sal.ImporteLimiteCompra 'LimiteCredito'
-      ,Sal.BinTarjeta
-      ,Sal.TNAInteresConsumoFinanUSD 'Tasa'
-      ,Sal.Dias_Mora_USD DiasMora
-      ,Sal.SaldoActualUSD SaldoActual
-      ,Sal.InteresSuspensoFinanciacionUSD 'InteresesSuspenso'
-      ,case when YEAR(Sal.FechaAltaCuenta) = 1900 then Sal.FechaAltaTarjeta ELSE Sal.FechaAltaCuenta END 'FechaAlta'
-      ,Sal.FechaVencimientoCuenta 'FechaVencimiento'
-      ,0 'SaldoConsumido'
-      --,Sal.PagoMinimoUltimaLiquidacionUSD 'CapitalPagoMinimo' --MODIFICADO 16/10/2019 SOLICITADO POR VICTORIA LARA
-	  ,Sal.CapitalPagoMinimoUSD 'CapitalPagoMinimo'
-      ,Sal.FechaGeneracion
-      ,Sal.SaldoIntraME 'SaldoIntra'
-      ,Sal.ModeloLiquidacion
-      ,Sal.GrupoAfinidad
-      ,Sal.CodigoProducto
-      ,Sal.PagoMinimoUltimaLiquidacionUSD 'PagoMinimo'
-      ,Sal.MonedaLimiteCompra
-FROM uvw_SaldosTarjetas Sal
-
-
-
-
-
-
-
-
-
-GO
-
-
-
-
-USE [BPSGRC]
-GO
-
-/****** Object:  View [dbo].[uvw_SaldosTarjetas]    Script Date: 26/11/2026 16:41:07 ******/
-SET ANSI_NULLS ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-
-
--- =============================================
--- Author:		Orlin Alvarado
--- Create date: 2014-10-02
--- Description:	Obtiene los saldos diarios de las tarjetas
--- =============================================
-
-CREATE VIEW [dbo].[uvw_SaldosTarjetas]
-AS
-
-SELECT *
-FROM   TarjetasPersonales
-UNION all
-SELECT * FROM TarjetaNoRenovar
-UNION all
-SELECT *
-FROM   TarjetasCastigadas
-UNION all
-SELECT * FROM TarjetasEmpresariales
-UNION ALL
-SELECT * FROM TarjetasEmpresarialesProblemas
-UNION all
-SELECT * FROM TarjetasProblemasNC
-UNION all
-SELECT * FROM TarjetasProblemasF1
-UNION all
-SELECT * FROM TarjetasCanceladas
-UNION all
-SELECT * FROM TarjetasEmpresasCastigadas
-UNION ALL
-SELECT * FROM TarjetasEmpresasNuevas 
-
-
-
-GO
-
-
+SELECT 'TarjetasPersonales' AS Origen, NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasPersonales WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetaNoRenovar', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetaNoRenovar WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasCastigadas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasCastigadas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasEmpresariales', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresariales WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasEmpresarialesProblemas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresarialesProblemas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasProblemasNC', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasProblemasNC WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasProblemasF1', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasProblemasF1 WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasCanceladas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasCanceladas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasEmpresasCastigadas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresasCastigadas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
+UNION ALL SELECT 'TarjetasEmpresasNuevas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresasNuevas WHERE NumeroTarjeta IN (SELECT Num FROM @T);
