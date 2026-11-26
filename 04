@@ -1,237 +1,25 @@
-using ApiCoaching.Data;
-using ApiCoaching.Dtos.Teams;
-using ApiCoaching.Models;
-using ApiCoaching.Repositories.Interfaces;
-using Microsoft.EntityFrameworkCore;
+  // GET /api/logged-user/coaching/team-members?companyAreaId=&teamId=&companyPositionId=&search=
+  // Los filtros vacíos no se envían. La respuesta viene agrupada por equipo y se aplana para la tabla.
+  loggedUserTeamsMembers: async ({ area, team, position, search } = {}) => {
+    const { data } = await apiFeedbackAuthorized.get(endpointsAPI.loggedUserTeamMembers, {
+      params: {
+        companyAreaId: area || null,
+        teamId: team || null,
+        companyPositionId: position || null,
+        search: search?.trim() || null,
+      },
+    });
+    return (data.data ?? []).flatMap((t) =>
+      t.members.map((m) => ({ ...m, teamId: t.teamId, teamName: t.teamName }))
+    );
+  },
 
-namespace ApiCoaching.Repositories
-{
-    public class TeamsRepository(AppDbContext dbContext) : ITeamsRepository
-    {
-        private readonly AppDbContext _dbContext = dbContext;
 
-        public async Task<List<Team>> GetAll()
-        {
-            return await _dbContext.Teams
-                .Include(x => x.CompanyArea)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyPosition)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyBranch)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyLocation)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyArea)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyPosition)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyBranch)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyLocation)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyArea)
-                .OrderBy(x => x.Name)
-                .ToListAsync();
-        }
 
-        public async Task<List<Team>> GetByLeaderUserId(string leaderUserId)
-        {
-            return await _dbContext.Teams
-                .AsNoTracking()
-                .Where(x => x.Leaders.Any(leader => leader.LeaderUserId == leaderUserId))
-                .OrderBy(x => x.Name)
-                .Select(x => new Team
-                {
-                    Id = x.Id,
-                    Name = x.Name
-                })
-                .ToListAsync();
-        }
 
-        public async Task<List<CoachActiveMemberDto>> GetMembersWithOngoingAssignments(string leaderUserId, string? name, string? employeeCode)
-        {
-            var query = _dbContext.TeamsMembers
-                .AsNoTracking()
-                .Where(member => member.Team.Leaders.Any(leader => leader.LeaderUserId == leaderUserId))
-               .Where(member => member.IndicatorAssignments.Any(assignment =>
-                    assignment.Session.AcceptanceStatus == CoachingSessionAcceptanceStatus.Accepted &&
-                    assignment.Indicator.Status == IndicatorStatus.Active && assignment.EvaluatedAt == null));
 
-            query = ApplyActiveMemberFilters(query, name, employeeCode);
 
-            var orderedQuery = query
-                .OrderBy(member => member.User.FirstName)
-                .ThenBy(member => member.User.LastName)
-                .ThenBy(member => member.TeamId);
 
-            return await ProjectActiveMembers(orderedQuery).ToListAsync();
-        }
 
-        private static IQueryable<TeamMember> ApplyActiveMemberFilters(
-            IQueryable<TeamMember> query, string? name, string? employeeCode)
-        {
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                var searchName = name.Trim();
-                query = query.Where(member =>
-                    (member.User.FullName != null && member.User.FullName.Contains(searchName)) ||
-                    (member.User.FirstName + " " + member.User.LastName).Contains(searchName));
-            }
 
-            if (!string.IsNullOrWhiteSpace(employeeCode))
-            {
-                var searchEmployeeCode = employeeCode.Trim();
-                query = query.Where(member => member.User.EmployeeCode != null &&
-                    member.User.EmployeeCode.Contains(searchEmployeeCode));
-            }
-
-            return query;
-        }
-
-        private static IQueryable<CoachActiveMemberDto> ProjectActiveMembers(IQueryable<TeamMember> query)
-        {
-            return query.Select(member => new CoachActiveMemberDto
-                {
-                    Id = member.MemberUserId,
-                    FullName = string.IsNullOrWhiteSpace(member.User.FullName)
-                        ? member.User.FirstName + " " + member.User.LastName
-                        : member.User.FullName,
-                    EmployeeCode = member.User.EmployeeCode,
-                    CompanyPosition = member.User.CompanyPosition == null ? null : member.User.CompanyPosition.Name,
-                    CompanyBranch = member.User.CompanyBranch == null ? null : member.User.CompanyBranch.Name,
-                    CompanyArea = member.User.CompanyArea == null ? null : member.User.CompanyArea.Name,
-                    CompanyUbication = member.User.CompanyLocation == null ? null : member.User.CompanyLocation.Name,
-                    Status = member.User.Status.ToString(),
-                    TeamId = member.TeamId,
-                    TeamName = member.Team.Name
-                });
-        }
-
-        public async Task<List<LeaderTeamMemberDto>> GetMembersByLeaderUserId(
-            string leaderUserId,
-            int? companyAreaId,
-            int? teamId,
-            int? companyPositionId,
-            string? search = null)
-        {
-            var query = _dbContext.TeamsMembers
-                .AsNoTracking()
-                .Where(member => member.Team.Leaders.Any(leader => leader.LeaderUserId == leaderUserId));
-
-            if (companyAreaId.HasValue)
-            {
-                query = query.Where(member => member.Team.CompanyAreaId == companyAreaId.Value);
-            }
-
-            if (teamId.HasValue)
-            {
-                query = query.Where(member => member.TeamId == teamId.Value);
-            }
-
-            if (companyPositionId.HasValue)
-            {
-                query = query.Where(member => member.User.CompanyPositionId == companyPositionId.Value);
-            }
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var term = search.Trim();
-                query = query.Where(member =>
-                    (member.User.EmployeeCode != null && member.User.EmployeeCode.Contains(term)) ||
-                    (member.User.FullName != null && member.User.FullName.Contains(term)) ||
-                    (member.User.FirstName + " " + member.User.LastName).Contains(term));
-            }
-
-            return await query
-                .OrderBy(member => member.User.FirstName)
-                .ThenBy(member => member.User.LastName)
-                .Select(member => new LeaderTeamMemberDto
-                {
-                    Id = member.User.Id,
-                    EmployeeId = member.User.EmployeeCode,
-                    FullName = member.User.FullName ?? member.User.FirstName + " " + member.User.LastName,
-                    
-                    CompanyPosition = member.User.CompanyPosition == null
-                        ? null
-                        : member.User.CompanyPosition.Name,
-                    CompanyLocation = member.User.CompanyLocation == null
-                        ? null
-                        : member.User.CompanyLocation.Name,
-                    TeamId = member.TeamId,
-                    CompanyArea = member.User.CompanyArea == null
-                        ? null
-                        : member.User.CompanyArea.Name,
-
-                    TeamName = member.Team.Name,
-                    Status = member.User.Status.ToString(),
-                    TotalIndicators = member.IndicatorAssignments.Count(assignment =>
-                        assignment.Session.AcceptanceStatus == CoachingSessionAcceptanceStatus.Accepted &&
-                        assignment.Indicator.Status == IndicatorStatus.Active &&
-                        assignment.Indicator.Period.Status)
-                })
-                .ToListAsync();
-        }
-
-        public async Task<Team?> GetById(int id)
-        {
-            return await _dbContext.Teams
-                .Include(x => x.CompanyArea)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyPosition)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyBranch)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyLocation)
-                .Include(x => x.Leaders)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyArea)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyPosition)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyBranch)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyLocation)
-                .Include(x => x.Members)
-                    .ThenInclude(x => x.User)
-                        .ThenInclude(x => x.CompanyArea)
-                .FirstOrDefaultAsync(x => x.Id == id);
-        }
-
-        public async Task<bool> ExistsById(int id)
-        {
-            return await _dbContext.Teams.AnyAsync(x => x.Id == id);
-        }
-
-        public async Task<int> Create(Team team)
-        {
-            await _dbContext.Teams.AddAsync(team);
-            return await _dbContext.SaveChangesAsync();
-        }
-
-        public async Task<int> Update(Team team)
-        {
-            _dbContext.Teams.Update(team);
-            return await _dbContext.SaveChangesAsync();
-        }
-
-        public async Task<int> Delete(Team team)
-        {
-            _dbContext.Teams.Remove(team);
-            return await _dbContext.SaveChangesAsync();
-        }
-    }
-}
+query = query.Where(member => member.User.CompanyAreaId == companyAreaId.Value);
