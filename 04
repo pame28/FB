@@ -1,15 +1,496 @@
-USE [BPSGRC];
+USE [BPSGRC]
+GO
+/****** Object:  StoredProcedure [dbo].[usp_CR_PROC_CARGATABLA_SALDOS]    Script Date: 26/11/2026 16:52:29 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+-- =============================================
+-- Author:		Orlin Alvarado
+-- Create date: 2015-10-29
+-- Description:	Carga la tabla de Saldos Tarjetas
+-- =============================================
+-- Modificado:	Orlin Alvarado
+-- Create date: 2016-12-28
+-- Description:	Se agregó validación para que se tome las tarjetas con fecha de vencimiento maxima, para evitar 
+--				duplicadas
+-- =============================================
+-- Modificado:	Orlin Alvarado
+-- Create date: 2017-07-04
+-- Description:	Actualización para cambiar el tipo, para las empresas nuevas castigadas
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_CR_PROC_CARGATABLA_SALDOS] 
+	-- Add the parameters for the stored procedure here
+AS
+BEGIN
+	-- SET NOCOUNT ON added to prevent extra result sets from
+	-- interfering with SELECT statements.
+	SET NOCOUNT ON;
 
-DECLARE @T TABLE (Num VARCHAR(20));
-INSERT INTO @T VALUES ('1000000003147940'), ('1000000003764693'), ('1000000003161546');
+    -- Insert statements for procedure here
+	TRUNCATE TABLE TarjetasSaldos
+	INSERT INTO TarjetasSaldos 
+    SELECT Pos.NumeroTarjeta
+		  ,isnull(Cue.NumeroCuentaATH, '') 'NumeroCuentaATH'
+          ,Usu.NoUsuario
+          ,Usu.NoClienteUnico
+          ,LTRIM(Rtrim(Usu.NombreUsuario) + ' ' + RTRIM(Usu.DenominacionCuenta)) 'Nombre'
+          ,Usu.FechaAltaCuenta
+          ,Usu.ImporteLimiteCompra
+          ,CAST(DATEADD(s,-1,DATEADD(mm, DATEDIFF(m,0,Usu.FechaVencimientoCuenta)+1,0)) AS DATE) FechaVencimientoCuenta 
+          ,Usu.FechaBajaCuenta
+          ,Usu.Cartera
+          ,Usu.EstadoCuenta
+          ,Usu.SubEstado 'SubEstadoCuenta'
+          ,Usu.RTN
+          ,Usu.CodigoProducto
+          ,Usu.ModeloLiquidacion
+          ,Usu.GrupoAfinidad
+          ,Tar.FechaAltaTarjeta
+          ,Tar.EstadoTarjeta
+          ,Tar.CategoriaTarjeta
+          ,Tar.NoDocumento
+          ,Tar.NoEmpleadoCtaEmpresa
+          ,Tar.CodigoProblemaTarjeta
+          ,Tar.EstadoHabilitar
+          ,b.BIN BinTarjeta
+          ,b.Empresarial
+          ,Pos.SaldoActualUSD
+          ,Pos.SaldoActualML
+          ,Pos.PeriodosImpagosActualUSD
+          ,Pos.PeriodosImpagosActualML
+          ,Pos.InteresSuspensoFinanciacionML
+          ,Pos.InteresSuspensoFinanciacionUSD
+          ,Pos.PagoMinimoUltimaLiquidacionML
+          ,Pos.PagoMinimoUltimaLiquidacionUSD
+          ,isnull(case when Pos.TNAInteresConsumoFinanML > 0 THEN Pos.TNAInteresConsumoFinanML ELSE PMod.TasaML END, 59.00) 'TNAInteresConsumoFinanML'
+          ,isnull(case when Pos.TNAInteresConsumoFinanUSD > 0 THEN Pos.TNAInteresConsumoFinanUSD ELSE PMod.TasaUSD END, 35.00) 'TNAInteresConsumoFinanUSD'
+          ,Pos.FechaGeneracion
+          --,Pos.CapitalPagoMinimoML --MODIFICADO POR CONTROL DE CAMBIOS 08/09/2021
+		  ,Cast(SUBSTRING(T.Filler1,1,16) as money)/100 CapitalPagoMinimoML
+          --,Pos.CapitalPagoMinimoUSD --MODIFICADO POR CONTROL DE CAMBIOS 08/09/2021
+		  ,Cast(SUBSTRING(T.Filler1,17,16) as money)/100 CapitalPagoMinimoUSD
+          ,Gen.genFecha
+          ,Pos.DiasAtrasoActualML
+           'Dias_Mora_ML'
+          ,Pos.DiasAtrasoActualUSD
+           'Dias_Mora_USD'
+          ,isnull(Intra.SaldoIntraMN, 0) 'SaldoIntraMN'
+          ,isnull(Intra.SaldoIntraME, 0) 'SaldoIntraME'
+          ,isnull(Extra.SaldoExtraMN, 0) 'SaldoExtraMN'
+          ,isnull(Extra.SaldoExtraME, 0) 'SaldoExtraME'
+          ,Pos.MonedaLimiteCompra
+    FROM   EPosicionDiaria Pos
+           INNER JOIN ETarjetas Tar
+                ON  Pos.NumeroTarjeta = Tar.NumeroTarjeta
+           INNER JOIN EUsuarios Usu
+                ON  Tar.NoUsuario = Usu.NoUsuario
+		   ---- MODIFICADO POR CONTROL DE CAMBIOS 08/09/2021
+		   INNER JOIN (select NoUsuario, NoCuentaClaro, Filler1 from eposiciondiaria where numerotarjeta='0000000000000000') T
+		        ON T.NoCuentaClaro=Tar.NoCuentaClaro
+		   -----------------------------------------------------
+           LEFT JOIN GENERALES Gen
+                ON  Gen.genStatus = 1
+           LEFT JOIN uvw_SaldosIntra Intra
+				ON Intra.NumeroCuenta = Pos.NoUsuario
+		   LEFT JOIN uvw_SaldosExtra Extra
+				ON Extra.NumeroCuenta = Pos.NoUsuario
+		   LEFT JOIN ParModelosLiquidacion PMod
+			    ON Pos.ModeloLiquidacion = PMod.ModeloLiquidacion
+		   LEFT JOIN ParBINProducto b
+				ON Pos.CodigoProducto = b.Producto
+		   LEFT JOIN CuentasATH Cue
+				ON Pos.NoUsuario = Cue.NumeroCuentaVASA
+    WHERE Usu.ModeloLiquidacion <> '999'
+    AND USU.NoUsuario <> '5000001599489' --Tarjeta de emergencia
+    --AND Pos.NoClienteUnico NOT LIKE ' %' Se comenta por descuadre incidencia 294250 Diferencia Cartera MasterCard
+	AND len(ltrim(rtrim(Pos.NoClienteUnico))) > 0 and Pos.NumeroTarjeta <> '0000000000000000'
+    AND NOT EXISTS (SELECT 1 FROM uvw_CuentasCanceladas ucc WHERE ucc.NoUsuario = Usu.NoUsuario)
+    AND b.BIN NOT IN('419800')
 
-SELECT 'TarjetasPersonales' AS Origen, NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasPersonales WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetaNoRenovar', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetaNoRenovar WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasCastigadas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasCastigadas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasEmpresariales', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresariales WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasEmpresarialesProblemas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresarialesProblemas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasProblemasNC', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasProblemasNC WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasProblemasF1', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasProblemasF1 WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasCanceladas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasCanceladas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasEmpresasCastigadas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresasCastigadas WHERE NumeroTarjeta IN (SELECT Num FROM @T)
-UNION ALL SELECT 'TarjetasEmpresasNuevas', NumeroTarjeta, NoClienteUnico, SaldoActualML, SaldoActualUSD FROM TarjetasEmpresasNuevas WHERE NumeroTarjeta IN (SELECT Num FROM @T);
+	
+	--ACTUALIZA LA FECHA DE VENCIMIENTO
+	update s
+	set s.FechaVencimientoCuenta=f.FechaFinVigencia
+	from TarjetasSaldos s
+	inner join (
+	SELECT s.NoUsuario, Max(t.FechaFinVigencia) FechaFinVigencia
+	from TarjetasSaldos s
+	inner join ETarjetas t on s.NoUsuario=t.NoUsuario
+	group by 
+	s.NoUsuario) f on s.NoUsuario=f.NoUsuario
+	
+    			
+
+
+TRUNCATE TABLE TarjetasEmpresasNuevas
+INSERT INTO TarjetasEmpresasNuevas
+	SELECT DISTINCT
+	      'EmpresasNuevas' 'Tipo' 
+		  ,b.NoUsuario 'NumeroTarjeta'
+		  ,b.NumeroCuentaATH
+	      ,b.NoUsuario
+	      ,b.NoClienteUnico
+	      ,b.Nombre
+	      ,b.FechaAltaCuenta
+	      ,b.ImporteLimiteCompra
+	      ,b.FechaVencimientoCuenta
+	      ,b.FechaBajaCuenta
+	      ,b.Cartera
+	      ,b.EstadoCuenta
+	      ,b.SubEstadoCuenta
+	      ,b.RTN
+	      ,b.CodigoProducto
+	      ,b.ModeloLiquidacion
+	      ,b.GrupoAfinidad
+	      ,CAST(GETDATE() AS DATE) 'FechaAltaTarjeta'
+	      ,'' EstadoTarjeta
+	      ,'' CategoriaTarjeta
+	      ,b.RTN 'NoDocumento'
+	      ,'' 'NoEmpleadoCtaEmpresa'
+	      ,'' 'CodigoProblemaTarjeta'
+	      ,'' 'EstadoHabilitar'
+	      ,b.BinTarjeta
+	      ,b.Empresarial
+	      ,b.SaldoActualUSD
+	      ,b.SaldoActualML
+	      ,b.PeriodosImpagosActualUSD
+	      ,b.PeriodosImpagosActualML
+	      ,b.InteresSuspensoFinanciacionML
+	      ,b.InteresSuspensoFinanciacionUSD
+	      ,b.PagoMinimoUltimaLiquidacionML
+	      ,b.PagoMinimoUltimaLiquidacionUSD
+	      ,b.TNAInteresConsumoFinanML
+	      ,b.TNAInteresConsumoFinanUSD
+	      ,b.FechaGeneracion
+	      ,b.CapitalPagoMinimoML
+	      ,b.CapitalPagoMinimoUSD
+	      ,b.genFecha
+	      ,b.Dias_Mora_ML
+	      ,b.Dias_Mora_USD
+	      ,b.SaldoIntraMN
+	      ,b.SaldoIntraME
+	      ,b.SaldoExtraMN
+	      ,b.SaldoExtraME
+	      ,b.MonedaLimiteCompra
+	FROM   
+		TarjetasSaldos b
+		
+	WHERE  (b.FechaAltaCuenta > '2015-09-30') 
+	AND b.Empresarial = 1
+	OR b.NoUsuario = '5000001178969' --Cuenta creada antes de la migración
+	OR (b.FechaAltaCuenta > '2015-09-10' AND b.CodigoProducto IN('VI0502'))
+	--										  OR (b.NoUsuario = '5000001178550')
+	
+
+--2017-07-04 - Actualización para cambiar el tipo, para las empresas nuevas castigadas
+UPDATE Ten
+SET Ten.Tipo = 'EmprCastigadas' 
+FROM TarjetasEmpresasNuevas Ten
+WHERE (Ten.ModeloLiquidacion = 900 OR Ten.GrupoAfinidad IN('0010', '0022'))
+
+TRUNCATE TABLE TarjetasAnteriores
+INSERT INTO TarjetasAnteriores
+	SELECT  *  FROM TarjetasSaldos b
+	WHERE b.FechaAltaTarjeta >= '2014-12-16' AND  NOT EXISTS ( SELECT TOP 1 e.NoUsuario FROM TarjetasEmpresasNuevas e
+	                                                           WHERE b.NoUsuario = e.NoUsuario)
+
+TRUNCATE TABLE TarjetasEmpresasCastigadas;
+
+
+WITH cte_EmpresasCastigadas
+AS
+(
+	SELECT 'EmpresasCastigadas' Tipo,* FROM TarjetasAnteriores TarAnt
+	WHERE TarAnt.CategoriaTarjeta = 'E'
+	AND TarAnt.NoEmpleadoCtaEmpresa = 'T'
+	AND (TarAnt.ModeloLiquidacion = 900 OR TarAnt.GrupoAfinidad IN('0010', '0022'))
+)
+,cte_EmpresasCastigadasMax
+AS
+(
+	SELECT NoUsuario,max(NumeroTarjeta) NumeroTarjeta FROM cte_EmpresasCastigadas ctc
+	GROUP BY ctc.NoUsuario
+)
+
+INSERT INTO TarjetasEmpresasCastigadas
+SELECT * FROM cte_EmpresasCastigadas A
+WHERE EXISTS(SELECT 1 FROM cte_EmpresasCastigadasMax B WHERE A.NumeroTarjeta = b.NumeroTarjeta)
+
+TRUNCATE TABLE TarjetasCastigadas;
+
+WITH cte_TarjetasCastigadas
+AS
+(
+    SELECT 'TarjetasCastigadas' Tipo, * 
+    FROM   TarjetasAnteriores TarAnt
+    WHERE  TarAnt.CategoriaTarjeta = '0'
+           AND (TarAnt.ModeloLiquidacion = '900' OR TarAnt.GrupoAfinidad IN('0010', '0022'))
+)
+,cte_TarjetasCastigasMax
+AS
+(
+	SELECT NoUsuario,max(NumeroTarjeta) NumeroTarjeta FROM cte_TarjetasCastigadas ctc
+	GROUP BY ctc.NoUsuario
+)
+
+INSERT INTO TarjetasCastigadas
+SELECT * FROM cte_TarjetasCastigadas A
+WHERE EXISTS(SELECT 1 FROM cte_TarjetasCastigasMax B WHERE A.NumeroTarjeta = b.NumeroTarjeta)
+          	
+	
+TRUNCATE TABLE TarjetasPersonales;
+
+WITH cte_TarjetasPersonales
+AS
+(
+      SELECT 'TarjetasPersonales' Tipo, *
+      FROM   TarjetasAnteriores TarAnt
+      WHERE  TarAnt.CategoriaTarjeta = '0'
+             AND TarAnt.EstadoTarjeta = '20'
+             AND (TarAnt.EstadoHabilitar = ' ' OR (TarAnt.EstadoHabilitar <> ' ' AND (TarAnt.SaldoActualML <> 0 OR TarAnt.SaldoActualUSD <> 0))) 
+             AND NOT EXISTS(SELECT 1 FROM TarjetasCastigadas tc
+                            WHERE tc.NoUsuario = TarAnt.NoUsuario)
+),
+cte_TarjetasMaxFechaAltaTarjeta
+AS
+(
+SELECT  NoUsuario,max(NumeroTarjeta) NumeroTarjeta FROM cte_TarjetasPersonales
+ GROUP BY NoUsuario
+)
+
+INSERT INTO TarjetasPersonales 
+SELECT * FROM cte_TarjetasPersonales A
+WHERE EXISTS(SELECT 1 FROM cte_TarjetasMaxFechaAltaTarjeta b WHERE A.NumeroTarjeta = B.NumeroTarjeta)             
+
+
+
+TRUNCATE TABLE TarjetasEmpresariales;
+
+WITH cte_TarjetasEmpresariales
+AS
+(
+	SELECT 'TarjetasEmpresariales' Tipo,* FROM TarjetasAnteriores TarAnt
+	WHERE TarAnt.CategoriaTarjeta = 'E'
+	AND TarAnt.NoEmpleadoCtaEmpresa = 'T'
+	AND TarAnt.EstadoTarjeta IN('20','22')
+	AND NOT EXISTS(SELECT 1 FROM TarjetasEmpresasCastigadas ec WHERE ec.NoUsuario = TarAnt.NoUsuario)
+)
+,cte_MaxTarjetasEmpresariales
+AS
+(
+	SELECT cte.NoUsuario, max(cte.NumeroTarjeta) NumeroTarjeta FROM cte_TarjetasEmpresariales cte
+	GROUP BY cte.NoUsuario
+)
+
+
+INSERT INTO TarjetasEmpresariales
+SELECT * FROM cte_TarjetasEmpresariales A
+WHERE EXISTS(SELECT * FROM cte_MaxTarjetasEmpresariales B WHERE A.NumeroTarjeta = B.NumeroTarjeta); 
+
+
+WITH cte_TarjetasEmpresarialesCanceladas
+AS
+(
+	SELECT 'EmpresasCanceladas' Tipo,* FROM TarjetasAnteriores TarAnt
+	WHERE TarAnt.CategoriaTarjeta = 'E'
+	AND TarAnt.NoEmpleadoCtaEmpresa = 'T'
+	AND TarAnt.EstadoTarjeta = '29'
+	AND NOT EXISTS(SELECT 1 FROM TarjetasEmpresariales ec WHERE ec.NoUsuario = TarAnt.NoUsuario)
+	AND (TarAnt.SaldoActualUSD <> 0 OR TarAnt.SaldoActualML <> 0) 
+)
+,cte_MaxTarjetasEmpresarialesCanceladas
+AS
+(
+	SELECT cte.NoUsuario, max(cte.NumeroTarjeta) NumeroTarjeta FROM cte_TarjetasEmpresarialesCanceladas cte
+	GROUP BY cte.NoUsuario	
+)
+
+INSERT INTO TarjetasEmpresariales
+SELECT * FROM cte_TarjetasEmpresarialesCanceladas A
+WHERE EXISTS(SELECT * FROM cte_MaxTarjetasEmpresarialesCanceladas B WHERE A.NumeroTarjeta = B.NumeroTarjeta); 
+
+
+TRUNCATE TABLE TarjetasEmpresarialesProblemas;
+
+WITH cte_TarjetasEmpresarialesProblemas
+AS
+( 
+	SELECT 'TarjetasEmpresarialesProblemas' Tipo,* FROM TarjetasAnteriores TarAnt
+	WHERE TarAnt.CategoriaTarjeta = 'E'
+	AND TarAnt.NoEmpleadoCtaEmpresa = 'T'
+	AND TarAnt.EstadoTarjeta = '25'
+	AND NOT EXISTS(SELECT 1 FROM TarjetasCastigadas tc
+                            WHERE tc.NoUsuario = TarAnt.NoUsuario)
+	AND NOT EXISTS(SELECT 1 FROM TarjetasEmpresasCastigadas ec WHERE ec.NoUsuario = TarAnt.NoUsuario)                            
+	AND NOT EXISTS(SELECT TOP 1 p.NoUsuario FROM TarjetasEmpresariales p
+                            WHERE p.NoUsuario = TarAnt.NoUsuario)
+
+)
+, 
+cte_TarjetasMaxFechaAltaTarjeta
+AS
+(
+SELECT  NoUsuario,max(NumeroTarjeta) NumeroTarjeta FROM cte_TarjetasEmpresarialesProblemas
+ GROUP BY NoUsuario
+)
+
+INSERT INTO TarjetasEmpresarialesProblemas
+SELECT * FROM cte_TarjetasEmpresarialesProblemas A
+WHERE EXISTS(SELECT 1 FROM cte_TarjetasMaxFechaAltaTarjeta b WHERE A.NumeroTarjeta = B.NumeroTarjeta)             
+
+
+
+
+
+TRUNCATE TABLE TarjetaNoRenovar;
+ 
+
+WITH cte_TarjetaNoRenovar
+AS
+(
+	SELECT 'TarjetaNoRenovar' Tipo,*
+      FROM   TarjetasAnteriores TarAnt
+      WHERE  TarAnt.CategoriaTarjeta = '0'
+             AND TarAnt.EstadoTarjeta = '22'
+              AND NOT EXISTS(SELECT 1 FROM TarjetasCastigadas tc
+                            WHERE tc.NoUsuario = TarAnt.NoUsuario)
+             AND NOT EXISTS(SELECT TOP 1 p.NoUsuario FROM TarjetasPersonales p
+                            WHERE p.NoUsuario = TarAnt.NoUsuario)
+)
+,cte_TarjetaNoRenovarMax
+AS
+(
+	SELECT NoUsuario, MAX(NumeroTarjeta) NumeroTarjeta  FROM cte_TarjetaNoRenovar
+	GROUP BY NoUsuario
+)
+
+INSERT INTO TarjetaNoRenovar
+SELECT * FROM cte_TarjetaNoRenovar A
+WHERE EXISTS(SELECT * FROM cte_TarjetaNoRenovarMax B
+             WHERE A.NumeroTarjeta = B.NumeroTarjeta)
+
+TRUNCATE TABLE TarjetasProblemasNC;
+WITH cte_TarjetasProblemasNC
+AS
+(
+	SELECT 'TarjetasProblemasNC' Tipo, * 
+      FROM   TarjetasAnteriores TarAnt
+      WHERE  TarAnt.CategoriaTarjeta = '0'
+             AND TarAnt.EstadoTarjeta = '25'
+             AND TarAnt.CodigoProblemaTarjeta = 'NC'
+              AND NOT EXISTS(SELECT 1 FROM TarjetasCastigadas tc
+                            WHERE tc.NoUsuario = TarAnt.NoUsuario)
+             AND NOT EXISTS(SELECT TOP 1 p.NoUsuario FROM TarjetasPersonales p
+                            WHERE p.NoUsuario = TarAnt.NoUsuario)
+             AND NOT EXISTS (SELECT TOP 1 n.NoUsuario FROM TarjetaNoRenovar n
+                             WHERE n.NoUsuario = TarAnt.NoUsuario)
+)
+,cte_TarjetasProblemasNCMax
+AS
+(
+	SELECT NoUsuario, MAX(NumeroTarjeta) NumeroTarjeta  FROM cte_TarjetasProblemasNC
+	GROUP BY NoUsuario
+)
+
+INSERT INTO TarjetasProblemasNC	
+SELECT * FROM cte_TarjetasProblemasNC A
+WHERE EXISTS(SELECT * FROM cte_TarjetasProblemasNCMax B
+             WHERE A.NumeroTarjeta = B.NumeroTarjeta)
+						  
+
+TRUNCATE TABLE TarjetasProblemasF1;
+
+WITH cte_TarjetasProblemasF1
+AS
+(
+	SELECT 'TarjetasProblemasF1' Tipo, * 
+      FROM   TarjetasAnteriores TarAnt
+      WHERE  TarAnt.CategoriaTarjeta = '0'
+             AND TarAnt.EstadoTarjeta = '25'
+              AND NOT EXISTS(SELECT 1 FROM TarjetasCastigadas tc
+                            WHERE tc.NoUsuario = TarAnt.NoUsuario)
+             AND NOT EXISTS (SELECT TOP 1 n.NoUsuario FROM TarjetasProblemasNC n
+                             WHERE n.NoUsuario = TarAnt.NoUsuario)
+             AND NOT EXISTS(SELECT TOP 1 p.NoUsuario FROM TarjetasPersonales p
+                            WHERE p.NoUsuario = TarAnt.NoUsuario)
+             AND NOT EXISTS (SELECT TOP 1 n.NoUsuario FROM TarjetaNoRenovar n
+                             WHERE n.NoUsuario = TarAnt.NoUsuario)
+                            
+),
+cte_MaxTarjetasProblemasF1
+AS
+(
+	SELECT cte.NoUsuario, MAX(cte.NumeroTarjeta) NumeroTarjeta FROM cte_TarjetasProblemasF1 cte
+	GROUP BY cte.NoUsuario
+)
+
+
+INSERT INTO TarjetasProblemasF1	
+SELECT * FROM cte_TarjetasProblemasF1 A
+WHERE EXISTS(SELECT 1 FROM cte_MaxTarjetasProblemasF1 B WHERE A.NumeroTarjeta = B.NumeroTarjeta) 
+
+		  
+
+TRUNCATE TABLE TarjetasCanceladas;
+
+WITH cte_TarjetasCanceladas
+AS
+(
+	  SELECT 'TarjetasCanceladas' Tipo, * 
+      FROM   TarjetasAnteriores TarAnt
+      WHERE  TarAnt.CategoriaTarjeta = '0'
+             AND TarAnt.EstadoTarjeta = '29'
+              AND NOT EXISTS(SELECT 1 FROM TarjetasCastigadas tc
+                            WHERE tc.NoUsuario = TarAnt.NoUsuario)
+             AND NOT EXISTS(SELECT TOP 1 p.NoUsuario FROM TarjetasPersonales p
+                            WHERE p.NoUsuario = TarAnt.NoUsuario)
+			 AND NOT EXISTS(SELECT TOP 1 p.NoUsuario FROM TarjetasProblemasF1 p
+                            WHERE p.NoUsuario = TarAnt.NoUsuario)
+			 AND NOT EXISTS(SELECT TOP 1 p.NoUsuario FROM TarjetasProblemasNC p
+							WHERE p.NoUsuario = TarAnt.NoUsuario)
+			 And NOT EXISTS (SELECT TOP 1 p.NoUsuario FROM TarjetaNoRenovar p	--2017 02 20 Ajuste por Cuenta con 2 TC
+                    WHERE p.NoUsuario = TarAnt.NoUsuario)							                            
+			 AND (TarAnt.SaldoActualML <> 0 OR TarAnt.SaldoActualUSD <> 0)
+)
+,cte_cte_TarjetasCanceladasMax
+as
+(
+	SELECT NoUsuario, MAX(NumeroTarjeta) NumeroTarjeta  FROM cte_TarjetasCanceladas
+	GROUP BY NoUsuario
+)  
+
+INSERT INTO TarjetasCanceladas
+SELECT * FROM  cte_TarjetasCanceladas A
+WHERE EXISTS ( SELECT * FROM cte_cte_TarjetasCanceladasMax B 
+where A.NumeroTarjeta = B.NumeroTarjeta)
+
+
+
+
+INSERT INTO MaestroExtras
+  (
+    NumeroCuenta
+   ,NumeroTarjeta
+   ,FechaOrigen
+   ,NoCUT
+  )
+SELECT cp.NumeroCuenta
+      ,cp.NumeroTarjeta
+      ,cp.FechaOriginalCupon
+      ,cp.CodigoTransaccion
+FROM   CuotasPendientes cp
+WHERE  EXISTS(
+           SELECT *
+           FROM   uvw_EXTRAS_VASA uev
+           WHERE  uev.IdExtra IS NULL
+                  AND uev.CodigoTransaccion = cp.CodigoTransaccion
+       )   
+ORDER BY cp.CodigoTransaccion ASC                                                   	
+
+
+END
+
+
+/****** Object:  StoredProcedure [dbo].[usp_CR_PROC_OPERACIONES_TC_VASA]    Script Date: 10/20/2016 18:19:22 ******/
+SET ANSI_NULLS ON
