@@ -1,51 +1,11 @@
-USE [BPSGRC]
-GO
-/****** Object:  StoredProcedure [dbo].[usp_GetOperaciones]    Script Date: 26/11/2026 15:24:10 ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
--- =============================================
--- Author:		Mauricio Calderon
--- Create date: 08/07/2019
--- Description:	Obtiene Operaciones TC
--- =============================================
-ALTER PROCEDURE [dbo].[usp_GetOperaciones] 
-AS
-BEGIN
-	-- SET NOCOUNT ON added to prevent extra result sets from
-	-- interfering with SELECT statements.
-	SET NOCOUNT ON;
+USE [BPSGRC];
 
-    -- Insert statements for procedure here
-	--------OPERACIONES 130000
-	UPDATE O
-	SET O.opeSaldoTotal = O.opeSaldoVi + O.opeSaldoMo + O.opeSaldoVe + O.opeSaldoEj
-	FROM operaciones O
-	WHERE opeTipo = '130000'
-
-	--------OPERACIONES 130100, 130200
-	UPDATE O
-	SET O.opeSaldoTotal = opeSaldoVi + opeSaldoMo
-	FROM operaciones O
-	WHERE opeTipo IN ('130100', '130200')
-
-
-	--------SALDO TOTAL < 0 SE COLOCA 0
-	UPDATE O
-	SET O.opeSaldoTotal = 0
-	FROM operaciones O
-	WHERE O.opeSaldoTotal < 0
-
-
-	SELECT        opeNum, opeMoneda, dbo.PadLeft(18, ' ', CifCliente) as CifCliente, opeTipIns, opeCodIns, opeFecRep, opeFecOto, opeFecVen, opeSaldoVi, opeSaldoMo, 
-                         opeSaldoVe, opeSaldoCo, opeSaldoEj, opeSaldoCa, opeGar, opeTipo, opeCateg, opeTipCred, opeMontoOt, opeIntXcob, opeIntSus, opeValGar, opeTasa, opeForPago, 
-                         opePerGra, opeDiasMora, opeCredEsp, opeSalCXC, opeRefin, opeMoraCap, opeZona, opeMoraInt, opeDepto, opeFdic, opeBrch, opeStatus, opeProducto, opeOrigen, 
-                         opeEmpresa, OpeProductoByte, opeStatusByte, opeFrecPagInt, opeSector, opeOficial, opeInCong, opeGenDiv, opeRegion, opeRefinByte, opeVecesRefin, 
-                         opeFecUltPagCapital, opeCAT, opeMontoCuotaPagar, opeTasaInteresMoratoria, opeSaldoTotal
-	FROM            operaciones
-	WHERE        (opeTipo IN (130000, 130100, 130200)) 
-					
-	order by cifcliente
-END
-
+SELECT  opeNum, opeMoneda, dbo.PadLeft(18, ' ', CifCliente) AS CifCliente, opeTipIns, opeCodIns, opeFecRep, opeFecOto, opeFecVen, opeSaldoVi, opeSaldoMo,
+        opeSaldoVe, opeSaldoCo, opeSaldoEj, opeSaldoCa, opeGar, opeTipo, opeCateg, opeTipCred, opeMontoOt, opeIntXcob, opeIntSus, opeValGar, opeTasa, opeForPago,
+        opePerGra, opeDiasMora, opeCredEsp, opeSalCXC, opeRefin, opeMoraCap, opeZona, opeMoraInt, opeDepto, opeFdic, opeBrch, opeStatus, opeProducto, opeOrigen,
+        opeEmpresa, OpeProductoByte, opeStatusByte, opeFrecPagInt, opeSector, opeOficial, opeInCong, opeGenDiv, opeRegion, opeRefinByte, opeVecesRefin,
+        opeFecUltPagCapital, opeCAT, opeMontoCuotaPagar, opeTasaInteresMoratoria, opeSaldoTotal
+FROM    operaciones
+WHERE   opeTipo IN (130000, 130100, 130200)
+  AND   opeNum IN ('1000000003147940', '1000000003764693', '1000000003161546')
+ORDER BY CifCliente;
